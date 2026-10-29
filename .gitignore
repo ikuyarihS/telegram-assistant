@@ -1,0 +1,24 @@
+# Private: credentials, logins and your chats. Never commit or share these.
+.env
+*.session
+*.session-journal
+config.json
+out/
+chats/
+senders.json
+tasks.json
+sync-state.json
+summary.json
+channels.txt
+dialogs.tsv
+logs/
+
+# Made by the installers and by Python
+.venv/
+venv/
+bin/
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pytest_cache/

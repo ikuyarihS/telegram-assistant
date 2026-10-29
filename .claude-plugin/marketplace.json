@@ -1,0 +1,11 @@
+{
+  "name": "tgkit",
+  "owner": { "name": "TG Kit" },
+  "plugins": [
+    {
+      "name": "tgkit",
+      "source": "./",
+      "description": "Search, summarize and track tasks from your own Telegram chats."
+    }
+  ]
+}
