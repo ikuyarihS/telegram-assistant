@@ -7,18 +7,19 @@ itself a minute after the page is closed.
 """
 
 import argparse
+import signal
 import sys
 import threading
 import time
 import webbrowser
 
-from . import config
+from . import applog, config
 from .appserver import App, serve
 
 IDLE_STOP = 90  # seconds without a ping from an open page (browser mode only)
 
 
-def _window(url: str) -> bool:
+def _window(url: str, home=None) -> bool:
     try:
         import webview  # noqa: PLC0415
     except ImportError:
@@ -28,9 +29,19 @@ def _window(url: str) -> bool:
                               text_select=True)
         webview.start()
     except Exception as exc:  # noqa: BLE001
-        print(f"The TG Kit window could not open ({type(exc).__name__}); using the browser.", file=sys.stderr)
+        applog.caught("the window could not open", exc, home)  # the details go to the log file
+        print("The TG Kit window could not open; using the browser.", file=sys.stderr)
         return False
     return True
+
+
+def _stop_on_sigterm() -> None:
+    """A polite stop (SIGTERM) ends the app the same way as closing it: through the
+    `finally` below, so the window's own sync ends too."""
+    try:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    except (ValueError, OSError, AttributeError):  # not the main thread, or no SIGTERM here
+        pass
 
 
 def run(argv=None) -> int:
@@ -46,12 +57,13 @@ def run(argv=None) -> int:
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
     worker = threading.Thread(target=httpd.serve_forever, daemon=True)
     worker.start()
+    _stop_on_sigterm()
     try:
         if args.no_window:
             print(f"TG Kit is running at {url}  (Ctrl+C stops it)", flush=True)
             while True:
                 time.sleep(3600)
-        if not args.browser and _window(url):
+        if not args.browser and _window(url, app.home):
             return 0
         webbrowser.open(url)
         print(f"TG Kit opened in your browser: {url}", flush=True)
@@ -62,6 +74,9 @@ def run(argv=None) -> int:
     except KeyboardInterrupt:
         return 0
     finally:
+        # Closing the window ends the server; a `tgkit sync` the window started ends
+        # with it (only its own processes, the same rules as Stop and retry).
+        app.close()
         httpd.shutdown()
 
 

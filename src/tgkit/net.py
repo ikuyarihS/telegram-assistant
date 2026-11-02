@@ -285,6 +285,12 @@ async def sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool = False, dry_run: b
 SWITCHED_LINE = "Switched accounts:"  # the window reads this line (appserver.App.sync)
 
 
+def other_account(owner: dict | None, me: dict | None) -> bool:
+    """Is this computer logged in to another Telegram account than the one whose chats
+    are shown? The one check sync, add, the window and search --online all use."""
+    return bool(owner and me and str(owner.get("id")) != str(me["id"]))
+
+
 async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lock=None) -> int:
     store = ctx.store
 
@@ -306,7 +312,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
         # switches to the logged-in account's chats (under its own sync lock) and
         # gets theirs instead; the other account's chats are moved aside, kept.
         owner, me = account.owner(ctx.base), await session_me(client)
-        if owner and me and str(owner.get("id")) != str(me["id"]):
+        if other_account(owner, me):
             if dry_run:
                 print("This computer is logged in to another Telegram account; a real sync "
                       "switches to that account's chats first.")
@@ -343,7 +349,8 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                 entity = await client.get_entity(target)
             except Exception as exc:  # noqa: BLE001
                 applog.caught("sync: a chat could not be opened", exc, ctx.base)
-                print(f"Skipped {title}: {type(exc).__name__}: {exc}", file=sys.stderr)
+                print(f"Skipped {title}: Telegram could not open this chat. Check that it still exists "
+                      "and that you are a member.", file=sys.stderr)
                 failed += 1
                 continue
 
@@ -365,7 +372,8 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                 failure = exc
             except Exception as exc:  # noqa: BLE001
                 applog.caught("sync: fetching new messages failed", exc, ctx.base)
-                print(f"  {title}: {type(exc).__name__}: {exc}", file=sys.stderr)
+                print(f"  {title}: getting new messages stopped with an error (details in the log file).",
+                      file=sys.stderr)
                 failure = exc
 
             if dry_run:
@@ -425,7 +433,8 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                     fresh_meta["partial"] = True
                 write_json(d / "channel.json", fresh_meta)
             except Exception as exc:  # noqa: BLE001
-                print(f"  {title}: channel.json not refreshed ({type(exc).__name__})", file=sys.stderr)
+                applog.caught("sync: channel.json not refreshed", exc, ctx.base)
+                print(f"  {title}: the chat's name could not be refreshed this time.", file=sys.stderr)
 
     if not dry_run:
         store.merge_senders(names)
@@ -544,10 +553,9 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
         applog.caught("add: copying a chat failed", exc, ctx.base)
         failure = exc
 
-    if not rows:
-        why = f" ({type(failure).__name__})" if failure else ""
+    if not rows:  # plain words only: the error's kind and detail are in the log file
         raise UserError(
-            f"Could not read any messages from '{title}'{why}.",
+            f"Could not read any messages from '{title}'.",
             "Check that the chat still exists and that you are a member, then try again.",
         )
     # Newest first, like every messages.jsonl. A seed that stopped early holds
@@ -703,6 +711,19 @@ async def server_search(ctx: Ctx, query: str, dirs: list[Path], limit: int) -> i
     store = ctx.store
     total = 0
     async with connected(ctx) as client:
+        # Read-only, but never through another account's login: the chats shown belong
+        # to one account (the same check sync and the window make). It switches nothing.
+        owner, me = account.owner(ctx.base), await session_me(client)
+        if other_account(owner, me):
+            now = me.get("name") or (f"@{me['username']}" if me.get("username") else "another Telegram account")
+            shown = owner.get("name") or (f"@{owner['username']}" if owner.get("username") else "another account")
+            raise UserError(
+                f"Nothing was searched: this computer is now logged in to {now}, "
+                f"but the chats in TG Kit belong to {shown}.",
+                f"To use {now}'s chats, press Get new messages in the TG Kit window "
+                "(or run: tgkit sync); TG Kit then switches to them and keeps the others aside. "
+                "Then search again.",
+            )
         await client.get_dialogs()
         for d in dirs:
             target = target_for(d)
@@ -711,7 +732,8 @@ async def server_search(ctx: Ctx, query: str, dirs: list[Path], limit: int) -> i
             try:
                 entity = await client.get_entity(target)
             except Exception as exc:  # noqa: BLE001
-                print(f"Skipped {store.title(d)}: {type(exc).__name__}", file=sys.stderr)
+                applog.caught("search --online: a chat could not be opened", exc, ctx.base)
+                print(f"Skipped {store.title(d)}: Telegram could not open this chat.", file=sys.stderr)
                 continue
             lines = []
             async for msg in client.iter_messages(entity, search=query, limit=limit):

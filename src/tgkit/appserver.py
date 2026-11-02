@@ -53,6 +53,73 @@ def _python() -> str:
     return str(exe)
 
 
+_JOB = None  # Windows: the job the window's own `tgkit sync` runs in (made once, held until exit)
+_JOB_LOCK = threading.Lock()
+
+
+def _job_handle():
+    """A Windows job object that ends every process in it when this server ends, even
+    when the server is killed (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: the system closes
+    the handle). Only processes this server started are put in it. None elsewhere,
+    or when Windows refuses."""
+    global _JOB
+    if os.name != "nt":
+        return None
+    with _JOB_LOCK:
+        if _JOB is not None:
+            return _JOB or None
+        _JOB = 0
+        try:
+            import ctypes  # noqa: PLC0415
+            from ctypes import wintypes  # noqa: PLC0415
+
+            class _Basic(ctypes.Structure):
+                _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                            ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                            ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                            ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                            ("SchedulingClass", wintypes.DWORD)]
+
+            class _Extended(ctypes.Structure):
+                _fields_ = [("BasicLimitInformation", _Basic), ("IoInfo", ctypes.c_uint64 * 6),
+                            ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                            ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            k32.CreateJobObjectW.restype = wintypes.HANDLE
+            k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+            k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+            k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+            k32.CloseHandle.argtypes = [wintypes.HANDLE]
+            job = k32.CreateJobObjectW(None, None)
+            if not job:
+                return None
+            info = _Extended()
+            info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            if not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+                k32.CloseHandle(job)
+                return None
+            _JOB = (k32, job)
+        except Exception as exc:  # noqa: BLE001
+            applog.caught("window: no job object for the sync", exc)
+            return None
+        return _JOB
+
+
+def _end_with_server(proc) -> bool:
+    """Put a process this server just started into its job: it then ends when the
+    server ends, however the server ends. A venv launcher's own child (the lock
+    holder) is in the job too: a process started inside a job stays in it."""
+    job = _job_handle()
+    if not job:
+        return False
+    k32, handle = job
+    try:
+        return bool(k32.AssignProcessToJobObject(handle, int(proc._handle)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 # The only links /api/open-link opens, each for a chat that is in TG Kit (see
 # store.telegram_link). (pattern, which chats it may name, has a message number)
 _OPEN_FORMS = (
@@ -211,6 +278,21 @@ class App:
         if proc.poll() is None:
             proc.kill()  # the launcher (or the holder itself when it is the direct child)
 
+    def close(self) -> None:
+        """The window is closing or the server is ending: end the window's own `tgkit
+        sync` (its launcher and the lock holder it proves by its token), the same rules
+        as Stop and retry. Never another program. A sync ended partway commits nothing
+        partial: the sync guard is unchanged and every file is written whole or not at
+        all (R1); the next sync fetches the rest."""
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            self._end_own_sync(lock_status(self.home))
+            proc.wait(timeout=10)
+        except Exception as exc:  # noqa: BLE001
+            applog.caught("window close: ending its own sync", exc, self.home)
+
     def stop_lock(self) -> dict:
         """Stop and retry: end this window's own hung task so the system frees its
         lock. Never another program, never a file deleted (an interrupted write
@@ -351,6 +433,7 @@ class App:
             except OSError as exc:
                 yield {"type": "error", "message": f"Could not start the sync ({exc}).", "hint": ""}
                 return
+            _end_with_server(proc)  # ends with this window, even when the window is killed
             self._proc, self._proc_owner = proc, owner
             done, added, text, switched = 0, 0, [], False
             try:

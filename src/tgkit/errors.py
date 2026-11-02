@@ -224,7 +224,13 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
     (r"'(.*)' is not a task number\.", "'{0}' không phải số thứ tự của việc."),
     (r"There is no task number (.+)\.", "Không có việc số {0}."),
     (r"'(.*)' is already in TG Kit\.", "'{0}' đã có trong TG Kit."),
-    (r"Could not read any messages from '(.*)'(.*)\.", "Không đọc được tin nào từ '{0}'{1}."),
+    (r"Could not read any messages from '(.*)'\.", "Không đọc được tin nào từ '{0}'."),
+    (r"Nothing was searched: this computer is now logged in to (.+), but the chats in TG Kit belong to (.+)\.",
+     "Chưa tìm gì cả: máy này đang đăng nhập {0}, nhưng các nhóm trong TG Kit là của {1}."),
+    (r"To use (.+)'s chats, press Get new messages in the TG Kit window \(or run: tgkit sync\); "
+     r"TG Kit then switches to them and keeps the others aside\. Then search again\.",
+     "Để dùng các nhóm của {0}, bấm Lấy tin mới trong cửa sổ TG Kit (hoặc chạy: tgkit sync); "
+     "TG Kit sẽ chuyển sang các nhóm đó và cất các nhóm kia sang một bên. Rồi tìm lại."),
     (r"'(.*)' appeared in TG Kit while adding it; nothing was overwritten\.",
      "'{0}' đã xuất hiện trong TG Kit trong lúc thêm; không ghi đè gì."),
     (r"The fetched copy was left in (.+)\.", "Bản đã tải được để lại ở {0}."),
