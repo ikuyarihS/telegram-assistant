@@ -70,7 +70,13 @@ correct change is to set the watermark to `min(fresh) - 1`, never to relax the
 guard.
 
 Seeding a NEW chat (`add_chat`) may keep a partial fetch: it holds the newest
-N with no hole above them, and later syncs start from its newest id.
+N with no hole above them, and later syncs start from its newest id. Such a
+copy is marked `"partial": true` in `channel.json` (a sync keeps the mark) and
+is never reported as added: the window shows it as an error with a Retry, and
+every picker (the window's Add chats, `tgkit add`) lists it as tickable with
+"copied only in part", so the way back survives a restart. Picking it copies
+the chat again, moving the cut-short folder aside to
+`.partial-old-<name>-<stamp>`, never deleting it.
 
 ### R5 - Media duplicates are recoverable; lost messages are not
 
@@ -124,7 +130,15 @@ second sync), and let a sync running past the age limit lose its lock. A dry
 run writes nothing and takes no lock.
 
 The lock file holds the holder's pid, start, what it does and a heartbeat
-(`SyncLock.beat`: every chat, every message fetched, at most once a second).
+(`SyncLock.beat`: every chat, every message fetched and every chunk of a file
+being downloaded, at most once a second, so a long download is never taken
+for a hang). A `tgkit sync` started by the window also carries the window's
+token (`TGKIT_LOCK_OWNER`, stored as `owner`): a venv launcher puts a process
+between the window and the holder, so the pid alone cannot say whose it is,
+and Stop ends only processes it can prove are its own: the holder whose token
+matches, then the launcher it holds a handle to. Never a process-tree walk
+(`taskkill /T`): Windows keeps stale parent ids after a pid is reused, so a
+walk can end an unrelated program.
 `store.lock_status` reads it without touching the lock: a lock held with no
 heartbeat for `STUCK_AFTER` (180) seconds, or under a pid that is no longer
 running, is stuck (a login waits for a person: 15 minutes). The window shows

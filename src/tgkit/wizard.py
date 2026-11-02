@@ -129,7 +129,8 @@ def pick_dialogs(dialogs: list[dict], query: str | None, ask, say, page: int = 4
             shown = dialogs
         say("")
         for i, d in enumerate(shown[:page], 1):
-            added = "   (already added)" if d.get("added") else ""
+            added = ("   (copied only in part: pick it to copy again)" if d.get("partial")
+                     else "   (already added)" if d.get("added") else "")
             say(f"  {i:>3}. {d['name']}  [{d['kind']}]{added}")
         if len(shown) > page:
             say(f"  ... and {len(shown) - page} more. Type a word to narrow the list.")

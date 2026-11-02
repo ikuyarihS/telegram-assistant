@@ -148,6 +148,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suParkedAt: (p) => `This is another Telegram account: the chats of the earlier one were moved to ${p}. Nothing was deleted.`,
       suRestored: "The chats this account had here before are back.",suAdded: (n) => `Added ${n} ${plural(n, "chat", "chats")}. Ask away, or add more.`,
       suNoneAdded: "No chat was added.", suPickOne: "Tick at least one chat.", suAlready: "already added",
+      suPartial: "copied only in part: tick to copy again",
       suNoChats: "No chats found.", kindGroup: "group", kindChannel: "channel", kindUser: "person",
       suShowKind: "Show", suKindAll: "All", suKindGroups: "Groups", suKindChannels: "Channels", suKindPeople: "People",
       suPickAll: "Select all", suPickShown: (n) => `Select all ${n} shown`,
@@ -164,9 +165,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suFolderHelp: "For example D:\\TG Kit. TG Kit makes the folder if it is not there yet.",
       progWaiting: "Waiting", progCopying: (n) => `Copying: ${n} ${plural(n, "message", "messages")} so far`,
       progDone: (n) => `Done: ${n} ${plural(n, "message", "messages")}`, progAlready: "Already in TG Kit",
+      progPartial: (n) => `Stopped early: only ${n} ${plural(n, "message", "messages")} copied, older ones are missing. Check your internet connection, then press Retry.`,
       progStopped: "Stopped", progRetry: "Retry", progList: "Copying the ticked chats",
-      suAddedSome: (n, f) => `Added ${n} ${plural(n, "chat", "chats")}. ${f} could not be copied: see the list, and press Retry there.`,
-      suNoneCopied: (f) => `${f} ${plural(f, "chat", "chats")} could not be copied: see the list, and press Retry there.`,
+      suAddedSome: (n, f) => `Added ${n} ${plural(n, "chat", "chats")}. ${f} could not be fully copied: see the list, and press Retry there.`,
+      suNoneCopied: (f) => `${f} ${plural(f, "chat", "chats")} could not be fully copied: see the list, and press Retry there.`,
       stopRetry: "Stop and retry", stopping: "Stopping...",
       lockStuck: (m) => `Getting new messages has made no progress for ${m} minutes.`,
       lockGone: "The program that was getting new messages ended without finishing.",
@@ -269,6 +271,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suParkedAt: (p) => `Đây là tài khoản Telegram khác: các nhóm của tài khoản trước đã được chuyển vào ${p}. Không có gì bị xóa.`,
       suRestored: "Các nhóm trước đây của tài khoản này đã trở lại.",suAdded: (n) => `Đã thêm ${n} nhóm. Hỏi ngay, hoặc thêm nhóm khác.`,
       suNoneAdded: "Chưa thêm nhóm nào.", suPickOne: "Đánh dấu ít nhất một nhóm.", suAlready: "đã thêm",
+      suPartial: "mới sao chép một phần: đánh dấu để sao chép lại",
       suNoChats: "Không tìm thấy nhóm nào.", kindGroup: "nhóm", kindChannel: "kênh", kindUser: "người",
       suShowKind: "Hiện", suKindAll: "Tất cả", suKindGroups: "Nhóm", suKindChannels: "Kênh", suKindPeople: "Người",
       suPickAll: "Chọn tất cả", suPickShown: (n) => `Chọn cả ${n} mục đang hiện`,
@@ -285,9 +288,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suFolderHelp: "Ví dụ D:\\TG Kit. TG Kit tự tạo thư mục nếu chưa có.",
       progWaiting: "Đang chờ", progCopying: (n) => `Đang sao chép: đã có ${n} tin`,
       progDone: (n) => `Xong: ${n} tin`, progAlready: "Đã có trong TG Kit",
+      progPartial: (n) => `Dừng giữa chừng: mới sao chép ${n} tin, còn thiếu tin cũ hơn. Kiểm tra mạng rồi bấm Thử lại.`,
       progStopped: "Đã dừng", progRetry: "Thử lại", progList: "Đang sao chép các nhóm đã chọn",
-      suAddedSome: (n, f) => `Đã thêm ${n} nhóm. ${f} nhóm chưa sao chép được: xem danh sách và bấm Thử lại ở đó.`,
-      suNoneCopied: (f) => `${f} nhóm chưa sao chép được: xem danh sách và bấm Thử lại ở đó.`,
+      suAddedSome: (n, f) => `Đã thêm ${n} nhóm. ${f} nhóm chưa sao chép đủ: xem danh sách và bấm Thử lại ở đó.`,
+      suNoneCopied: (f) => `${f} nhóm chưa sao chép đủ: xem danh sách và bấm Thử lại ở đó.`,
       stopRetry: "Dừng và thử lại", stopping: "Đang dừng...",
       lockStuck: (m) => `Việc lấy tin mới đã không tiến triển trong ${m} phút.`,
       lockGone: "Chương trình đang lấy tin mới đã tắt khi chưa xong.",
@@ -1320,7 +1324,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
         el("input", { type: "checkbox", value: d.id, checked: d.added || d.picked, disabled: d.added,
           onchange: (e) => { d.picked = e.target.checked; syncPickBar(); } }),
         el("span", { class: "pick-name" }, d.name),
-        el("span", { class: "pick-kind" }, d.added ? t("suAlready") : kindLabel(d.kind))))));
+        // a first copy cut short: tickable, says so, so its Retry survives a restart
+        d.partial ? el("span", { class: "pick-kind bad" }, t("suPartial"))
+          : el("span", { class: "pick-kind" }, d.added ? t("suAlready") : kindLabel(d.kind))))));
   }
 
   async function loadDialogs(opts) {
@@ -1375,8 +1381,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     return limit === "all" ? "all" : Number(limit);
   }
 
+  // A copy cut short (partial) is a failure: its own words and a Retry, never "Done".
+  function progBad(r) { return r.state === "error" || r.state === "stopped" || (r.state === "done" && !!r.partial); }
+
   function progText(r) {
     if (r.state === "copying") return t("progCopying", r.count || 0);
+    if (r.state === "done" && r.partial) return t("progPartial", r.count || 0);
     if (r.state === "done") return r.already ? t("progAlready") : t("progDone", r.count || 0);
     if (r.state === "stopped") return t("progStopped");
     if (r.state === "error") return [r.message, r.hint].filter(Boolean).join(" ");
@@ -1388,7 +1398,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.suProg.hidden = !rows.length;
     const names = Object.fromEntries(suDialogs.map((d) => [d.id, d.name]));
     ui.suProgList.replaceChildren(...rows.map((r) => {
-      const failed = r.state === "error" || r.state === "stopped";
+      const failed = progBad(r);
       return el("li", { class: `prog-row ${r.state}` },
         el("span", { class: "prog-name" }, r.name || names[r.id] || r.id),
         el("span", { class: failed ? "prog-state bad" : "prog-state" }, progText(r)),
@@ -1421,7 +1431,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     if (!p) return;
     if (suRetryAfterStop) {  // Stop and retry: copy again the chats the stop cut short
       suRetryAfterStop = false;
-      const again = (p.rows || []).filter((r) => r.state === "stopped" || r.state === "error").map((r) => r.id);
+      const again = (p.rows || []).filter(progBad).map((r) => r.id);
       if (again.length) { suStartAdd(again, true); return; }
     }
     suAddedAny = suAddedAny || p.added > 0;

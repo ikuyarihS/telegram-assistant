@@ -194,15 +194,18 @@ def remember_sender(names: dict, msg) -> None:
         names[str(getattr(sid, "user_id", sid))] = name
 
 
-async def _download(client, msg, media, row, media_dir: Path, rel_folder: str, cap: int, flood) -> int:
-    """Download one attachment; failures are recorded on the row, never fatal."""
+async def _download(client, msg, media, row, media_dir: Path, rel_folder: str, cap: int, flood,
+                    beat=None) -> int:
+    """Download one attachment; failures are recorded on the row, never fatal.
+    `beat()` runs for every chunk received: a big file is progress, not a hang."""
     size = media.get("size") or 0
     if size and size > cap:
         row["media_skipped"] = f"size {size} > cap {cap}"
         return 0
     media_dir.mkdir(parents=True, exist_ok=True)
+    kw = {"progress_callback": lambda _got, _total: beat()} if beat is not None else {}
     try:
-        path = await client.download_media(msg, file=str(media_dir))
+        path = await client.download_media(msg, file=str(media_dir), **kw)
         if path:
             row["media_path"] = str(Path(rel_folder) / "media" / Path(path).name)
             return 1
@@ -353,7 +356,8 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                     row = message_row(msg, media)
                     remember_sender(names, msg)
                     if media and not dry_run:
-                        await _download(client, msg, media, row, d / "media", d.name, ctx.max_media, flood)
+                        await _download(client, msg, media, row, d / "media", d.name, ctx.max_media, flood,
+                                        beat)
                     fresh.append(row)
             except flood as exc:
                 print(f"  {title}: Telegram asked to wait {exc.seconds}s; stopping this chat",
@@ -416,7 +420,10 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
 
             # Keep the title current; a renamed chat otherwise keeps a stale one.
             try:
-                write_json(d / "channel.json", entity_meta(entity))
+                fresh_meta = entity_meta(entity)
+                if store.meta(d).get("partial"):  # still missing older messages: keep saying so
+                    fresh_meta["partial"] = True
+                write_json(d / "channel.json", fresh_meta)
             except Exception as exc:  # noqa: BLE001
                 print(f"  {title}: channel.json not refreshed ({type(exc).__name__})", file=sys.stderr)
 
@@ -471,8 +478,25 @@ def followed_keys(store) -> set:
     return {chat_key(store.meta(d)) for d in store.chat_dirs() if store.meta(d).get("id") is not None}
 
 
-async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_count=None) -> dict:
-    """Fetch a chat that has no folder yet. Refuses if its folder exists at all.
+def _same_chat(store: Store, meta: dict, final: Path) -> Path | None:
+    """The folder already holding this chat (by folder name or by id), or None."""
+    if final.exists():
+        return final
+    key = chat_key(meta)
+    return next((d for d in store.chat_dirs() if store.meta(d).get("id") is not None
+                 and chat_key(store.meta(d)) == key), None)
+
+
+def partial_keys(store: Store) -> set:
+    """Chats whose first copy stopped early (channel.json "partial"): Retry copies them again."""
+    return {chat_key(store.meta(d)) for d in store.chat_dirs() if store.meta(d).get("partial")}
+
+
+async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_count=None,
+                   beat=None) -> dict:
+    """Fetch a chat that has no folder yet. Refuses if its folder exists, unless
+    that folder is a first copy that stopped early ("partial"): then the chat is
+    copied again and the old folder is moved aside (`.partial-old-*`), never deleted.
 
     The original seeding path opened messages.jsonl in "w" mode and once
     destroyed a dump. Here the chat is built in a hidden staging folder and
@@ -483,7 +507,8 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
     title = meta.get("title") or display_name(entity) or label
     base = folder_for(entity, label)
     final = store.chats / base
-    if final.exists() or chat_key(meta) in followed_keys(store):
+    prev = _same_chat(store, meta, final)
+    if prev is not None and not store.meta(prev).get("partial"):
         raise UserError(
             f"'{title}' is already in TG Kit.",
             "To get its new messages run: tgkit sync",
@@ -505,9 +530,11 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
             media = media_summary(msg)
             row = message_row(msg, media)
             remember_sender(names, msg)
+            if beat is not None:
+                beat()
             if media:
                 files += await _download(client, msg, media, row, staging / "media", base,
-                                         ctx.max_media, flood)
+                                         ctx.max_media, flood, beat)
             rows.append(row)
             if on_count is not None:
                 on_count(len(rows))
@@ -526,9 +553,15 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
     # Newest first, like every messages.jsonl. A seed that stopped early holds
     # the newest N with no hole ABOVE them, so later syncs stay correct.
     rows.sort(key=lambda r: r["id"], reverse=True)
-    write_json(staging / "channel.json", meta)
+    write_json(staging / "channel.json", {**meta, "partial": True} if failure else meta)
     atomic_write(staging / "messages.jsonl",
                  "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    if final.exists() and final != prev:  # checked BEFORE moving anything aside
+        raise UserError(f"'{title}' appeared in TG Kit while adding it; nothing was overwritten.",
+                        f"The fetched copy was left in {staging}.")
+    if prev is not None and prev.exists():  # the earlier, cut-short copy: kept aside
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        prev.rename(store.chats / f".partial-old-{prev.name}-{stamp}")
     if final.exists():
         raise UserError(f"'{title}' appeared in TG Kit while adding it; nothing was overwritten.",
                         f"The fetched copy was left in {staging}.")
@@ -596,16 +629,18 @@ async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick, progre
             else:
                 dialogs = await list_dialogs(client)
                 existing = {d.name for d in ctx.store.chat_dirs()}
-                keys = followed_keys(ctx.store)
+                keys, cut = followed_keys(ctx.store), partial_keys(ctx.store)
                 for dlg in dialogs:
+                    # a first copy cut short is offered again (every picker: window and terminal)
+                    dlg["partial"] = chat_key(entity_meta(dlg["entity"])) in cut
                     dlg["added"] = (folder_for(dlg["entity"], dlg["name"]) in existing
-                                    or chat_key(entity_meta(dlg["entity"])) in keys)
+                                    or chat_key(entity_meta(dlg["entity"])) in keys) and not dlg["partial"]
     if chosen is None:
         chosen = pick(dialogs, query)
     if not chosen:
         return 0
     report({"type": "plan", "chats": [{"id": _dlg_key(d), "name": d["name"]} for d in chosen]})
-    added = 0
+    added = stored = cut_short = 0  # stored: folders written; added: copied in full
     # The same lock as sync: add_chat checks its folders, then renames into
     # chats/ and rewrites sync-state.json, which a running sync also rewrites.
     with SyncLock(ctx.store.home, "add") as lock:
@@ -619,10 +654,17 @@ async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick, progre
                     lock.beat()
                     report({"type": "chat", "id": key, "state": "copying", "count": n})
                 try:
-                    got = await add_chat(client, ctx, dlg["entity"], dlg["name"], limit, counted)
-                    added += 1
-                    report({"type": "chat", "id": key, "state": "done", "count": got["messages"],
-                            "partial": got["partial"]})
+                    got = await add_chat(client, ctx, dlg["entity"], dlg["name"], limit, counted, lock.beat)
+                    stored += 1
+                    added += 0 if got["partial"] else 1
+                    cut_short += 1 if got["partial"] else 0
+                    ev = {"type": "chat", "id": key, "state": "done", "count": got["messages"],
+                          "partial": got["partial"]}
+                    if got["partial"]:  # a copy cut short is not a success: say so, offer Retry
+                        ev.update(message=f"Copied only {got['messages']} messages of '{dlg['name']}': "
+                                          "the copy stopped early, older messages are missing.",
+                                  hint="Check your internet connection, then press Retry for this chat.")
+                    report(ev)
                 except UserError as exc:
                     print(exc.render())
                     report({"type": "chat", "id": key, "state": "error", "message": exc.message, "hint": exc.hint})
@@ -632,10 +674,13 @@ async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick, progre
                                     "Check your internet connection, then press Retry for this chat.")
                     print(err.render())
                     report({"type": "chat", "id": key, "state": "error", "message": err.message, "hint": err.hint})
-        if added:
+        if stored:
             write_summary(ctx.store)
     if added:
         print(f"Added {added} chat(s). Try: tgkit summary")
+    if cut_short:
+        print(f"{cut_short} chat(s) stopped early and are missing older messages. "
+              "Run tgkit add again and pick them to copy them again.")
     return 0
 
 

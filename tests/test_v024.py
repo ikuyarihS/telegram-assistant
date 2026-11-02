@@ -52,9 +52,9 @@ class Account:
     """One Telegram account, as Telethon shows it. `fail` chats raise while fetched;
     `hang` chats yield their first message, then wait until `release` is set."""
 
-    def __init__(self, me_id, chats, fail=(), hang=(), authorized=True):
+    def __init__(self, me_id, chats, fail=(), hang=(), authorized=True, drop=()):
         self.me_id, self.chats = me_id, chats
-        self.fail, self.hang = set(fail), set(hang)
+        self.fail, self.hang, self.drop = set(fail), set(hang), set(drop)
         self.authorized = authorized
         self.release = threading.Event()
 
@@ -108,6 +108,8 @@ class _Client:
             if entity.id in acc.fail:
                 raise RuntimeError("boom-fetch")
             for n, m in enumerate(msgs[: limit or None]):
+                if n == 1 and entity.id in acc.drop:
+                    raise ConnectionError("network dropped")  # after the first message
                 if n == 1 and entity.id in acc.hang:
                     while not acc.release.is_set():
                         await asyncio.sleep(0.02)
@@ -294,6 +296,54 @@ def test_b3_one_failed_chat_keeps_its_error_and_retries_alone(codes, monkeypatch
     rows = rows_by_id(wait_job(tg))
     assert [rows[k]["state"] for k in ("-1005001", "-1005002", "-1005003")] == ["done"] * 3
     assert len([n for n in names(home) if n.endswith(("5001", "5002", "5003"))]) == 3
+
+
+def test_b3_a_copy_cut_short_is_an_error_with_retry_not_added(codes, monkeypatch):
+    home = codes
+    acc = use(monkeypatch, Account(101, b_chats(), drop={5001}))
+    tg = setupflow.TelegramSetup(home)
+    tg.add(["-1005001"], 1000)
+    st = wait_job(tg)
+    row = rows_by_id(st)["-1005001"]
+    assert row["partial"] and row["count"] == 1 and "older messages are missing" in row["message"] and row["hint"]
+    assert st["added"] == 0 and st["failed"] == 1  # never counted as added
+    first = next(d for d in Store(home).chat_dirs() if d.name.endswith("5001"))
+    assert json.loads((first / "channel.json").read_text(encoding="utf-8"))["partial"]
+    # TG Kit closed and opened again: the picker still offers it, marked, tickable
+    entry = next(d for d in setupflow.TelegramSetup(home).dialogs()["dialogs"] if d["id"] == "-1005001")
+    assert entry["partial"] and not entry["added"]
+    acc.drop.clear()
+    tg.add(["-1005001"], 1000, keep=True)  # Retry copies the chat again
+    row = rows_by_id(wait_job(tg))["-1005001"]
+    assert row["state"] == "done" and not row["partial"] and row["count"] == 3
+    again = next(d for d in Store(home).chat_dirs() if d.name.endswith("5001"))
+    assert "partial" not in json.loads((again / "channel.json").read_text(encoding="utf-8"))
+    kept = [p for p in (home / "chats").iterdir() if p.name.startswith(".partial-old-")]
+    assert len(kept) == 1 and (kept[0] / "messages.jsonl").exists()  # the cut-short copy is kept
+
+
+def test_b2_own_sync_is_known_by_its_token_behind_a_launcher(home):
+    app = App(home, claude=ClaudeRunner(cmd=[]), token=TOKEN)
+    lock = SyncLock(home, "sync")
+    monkey = os.environ.get(storemod.OWNER_ENV)
+    os.environ[storemod.OWNER_ENV] = "tok123"
+    try:
+        lock.acquire()
+    finally:
+        if monkey is None:
+            os.environ.pop(storemod.OWNER_ENV, None)
+        else:
+            os.environ[storemod.OWNER_ENV] = monkey
+    try:
+        assert lock_status(home)["owner"] == "tok123"
+        app._proc = type("P", (), {"pid": -1, "poll": lambda self: None})()  # a launcher, other pid
+        app._proc_owner = "tok123"
+        assert app._own_child(lock_status(home))
+        app._proc_owner = "other"
+        assert not app._own_child(lock_status(home))
+    finally:
+        app._proc = None
+        lock.release()
 
 
 def test_b3_the_window_shows_each_failed_chat_over_http(codes, monkeypatch):

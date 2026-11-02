@@ -286,10 +286,15 @@ class TelegramSetup:
                     res = account.adopt(self.home, await net.session_me(client), locked=True)
                     found = await net.list_dialogs(client)
                     existing = {d.name for d in ctx.store.chat_dirs()}
-                    keys = net.followed_keys(ctx.store)
-                    rows = [{"id": str(d["id"]), "name": d["name"], "kind": d["kind"],
-                             "added": (net.folder_for(d["entity"], d["name"]) in existing
-                                       or net.chat_key(net.entity_meta(d["entity"])) in keys)} for d in found]
+                    keys, cut = net.followed_keys(ctx.store), net.partial_keys(ctx.store)
+                    rows = []
+                    for d in found:
+                        # a first copy cut short stays tickable, marked, so Retry survives a restart
+                        partial = net.chat_key(net.entity_meta(d["entity"])) in cut
+                        added = (net.folder_for(d["entity"], d["name"]) in existing
+                                 or net.chat_key(net.entity_meta(d["entity"])) in keys)
+                        rows.append({"id": str(d["id"]), "name": d["name"], "kind": d["kind"],
+                                     "added": added and not partial, "partial": partial})
                     return rows, res
         try:
             rows, res = net.run(fetch())
@@ -355,11 +360,12 @@ class TelegramSetup:
                     if d is None:
                         row.update(state="error", message="Telegram did not list this chat.",
                                    hint="Open Add chats again to see your chats as they are now.")
-                    elif d.get("added"):
+                    elif d.get("added") and not d.get("partial"):
                         row.update(name=d["name"], state="done", already=True)
-                    else:
+                    else:  # new, or a first copy cut short that Retry copies again
                         row["name"] = d["name"]
-            return [d for d in dialogs if str(d["id"]) in wanted and not d.get("added")]
+            return [d for d in dialogs
+                    if str(d["id"]) in wanted and (not d.get("added") or d.get("partial"))]
 
         def progress(ev):
             with self._job_lock:
@@ -409,8 +415,10 @@ class TelegramSetup:
         with self._job_lock:
             rows = [dict(r) for r in job["rows"]]
             out = {"running": job["running"], "rows": rows,
-                   "added": sum(1 for r in rows if r["state"] == "done" and not r.get("already")),
-                   "failed": sum(1 for r in rows if r["state"] in ("error", "stopped")),
+                   # a copy cut short ("partial") is a failure with a Retry, never "added"
+                   "added": sum(1 for r in rows if r["state"] == "done" and not r.get("already")
+                                and not r.get("partial")),
+                   "failed": sum(1 for r in rows if r["state"] in ("error", "stopped") or r.get("partial")),
                    "error": job["error"]}
             out.update(_switch_fields(job["switch"]))
         return out

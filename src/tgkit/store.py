@@ -139,6 +139,8 @@ class SyncLock:
         self._fd = fd
         self.held = True
         self._info = {"pid": os.getpid(), "started": now, "beat": now, "what": self.what}
+        if os.environ.get(OWNER_ENV):  # the window that started this process (App.sync)
+            self._info["owner"] = os.environ[OWNER_ENV]
         self._write()
         return self
 
@@ -192,10 +194,15 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-# A holder with no heartbeat for this long is shown as stuck (a sync beats for every
-# chat, every 100 messages and every file). A login waits for a person typing a
-# code, so it is never stuck before its own limit (setupflow.LOGIN_TIMEOUT).
+# A holder with no heartbeat for this long is shown as stuck. A sync or add beats
+# for every chat, every message and every chunk of a file it downloads (at most once
+# a second), so a long download is never taken for a hang. A login waits for a
+# person typing a code, so it is never stuck before its own limit
+# (setupflow.LOGIN_TIMEOUT).
 STUCK_AFTER = 180
+# A token the window passes to the `tgkit sync` it starts; the lock file carries it,
+# so the window knows its own sync even when a launcher put a process in between.
+OWNER_ENV = "TGKIT_LOCK_OWNER"
 LOGIN_STUCK_AFTER = 15 * 60
 
 
@@ -258,7 +265,7 @@ def lock_status(home: Path, name: str = LOCK_NAME) -> dict:
             finally:
                 os.close(fd)
     out = {"held": held, "pid": info.get("pid"), "what": info.get("what"),
-           "started": info.get("started"), "beat": info.get("beat"),
+           "started": info.get("started"), "beat": info.get("beat"), "owner": info.get("owner"),
            "alive": None, "idle": None, "stuck": False, "mine": False}
     if not held:
         return out

@@ -31,7 +31,7 @@ from .claude import ClaudeRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
 from .net import SWITCHED_LINE
-from .store import Store, _ident, _username, is_dead_link, lock_status
+from .store import OWNER_ENV, Store, _ident, _username, is_dead_link, lock_status
 
 STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
@@ -118,6 +118,7 @@ class App:
         self._sync_busy = threading.Lock()
         self._check_busy = threading.Lock()  # the account check when the window opens
         self._proc = None  # the window's own `tgkit sync`, while it runs
+        self._proc_owner = None  # the token that `tgkit sync` writes into the lock file
         self._settings_lock = threading.Lock()
         self._status = None
         self.tg = setupflow.TelegramSetup(self.home)  # setup inside the window
@@ -177,9 +178,38 @@ class App:
         """Who holds the sync lock and whether it looks hung; can_stop when the holder
         is this window's own task (its sync, its copy of ticked chats, its login)."""
         st = lock_status(self.home)
+        return {**st, "can_stop": bool(st["held"] and (self._own_child(st) or st["mine"]))}
+
+    def _own_child(self, st: dict) -> bool:
+        """Is the lock held by the `tgkit sync` this window started? Known by the token
+        it was given (a venv launcher puts a process between, so the pid differs),
+        or by its pid when it is the direct child."""
         proc = self._proc
-        own_child = proc is not None and proc.poll() is None and st.get("pid") == proc.pid
-        return {**st, "can_stop": bool(st["held"] and (own_child or st["mine"]))}
+        if proc is None or proc.poll() is not None:
+            return False
+        return bool((self._proc_owner and st.get("owner") == self._proc_owner) or st.get("pid") == proc.pid)
+
+    def _end_own_sync(self, st: dict) -> None:
+        """End the window's own sync: only processes it can prove are its own. The
+        lock holder is proved by the token it wrote (a venv launcher puts it one
+        process below the child), the launcher by the handle the window holds. No
+        process-tree walk: Windows keeps stale parent ids after a pid is reused, so a
+        walk could end an unrelated program."""
+        proc = self._proc
+        if proc is None:
+            return
+        import signal  # noqa: PLC0415
+
+        holder = st.get("pid")
+        if (holder and holder != proc.pid and self._proc_owner and st.get("owner") == self._proc_owner
+                and lock_status(self.home).get("owner") == self._proc_owner):
+            try:
+                # SIGTERM is TerminateProcess on Windows (signal 1 there is a Ctrl+Break)
+                os.kill(int(holder), signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        if proc.poll() is None:
+            proc.kill()  # the launcher (or the holder itself when it is the direct child)
 
     def stop_lock(self) -> dict:
         """Stop and retry: end this window's own hung task so the system frees its
@@ -191,9 +221,8 @@ class App:
         if not st["can_stop"]:
             raise UserError("Another TG Kit window or terminal is using this data folder.",
                             "Close it, then press Get new messages again. TG Kit never stops another program.")
-        proc = self._proc
-        if proc is not None and proc.poll() is None and st.get("pid") == proc.pid:
-            proc.kill()  # the window's own `tgkit sync`: the system frees its lock
+        if self._own_child(st):
+            self._end_own_sync(st)  # the window's own `tgkit sync`: the system frees its lock
         else:
             self.tg.stop()
         deadline = time.monotonic() + 15
@@ -312,7 +341,9 @@ class App:
             self._after_check()
             total = len(self.store().chat_dirs())
             yield {"type": "start", "chats": total}
-            env = dict(os.environ, TGKIT_HOME=str(self.home), PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+            owner = secrets.token_hex(8)
+            env = dict(os.environ, TGKIT_HOME=str(self.home), PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1",
+                       **{OWNER_ENV: owner})
             try:
                 proc = subprocess.Popen([_python(), "-m", "tgkit", "sync"], env=env,
                                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -320,7 +351,7 @@ class App:
             except OSError as exc:
                 yield {"type": "error", "message": f"Could not start the sync ({exc}).", "hint": ""}
                 return
-            self._proc = proc
+            self._proc, self._proc_owner = proc, owner
             done, added, text, switched = 0, 0, [], False
             try:
                 for raw in proc.stdout:
@@ -342,7 +373,7 @@ class App:
                 if proc.poll() is None:
                     proc.kill()
                 proc.wait()
-                self._proc = None
+                self._proc, self._proc_owner = None, None
             joined = "\n".join(text)
             ev = {"type": "done", "code": proc.returncode, "added": added, "switched": switched,
                   "needs": "setup" if "tgkit setup" in joined else None,
