@@ -15,6 +15,7 @@ If Claude is missing, not signed in, or fails, the caller answers offline.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from . import playbook
+from . import config, playbook, usage
 from .store import atomic_write
 
 # Claude Code's shell tool is Bash, or PowerShell on a PC set up that way. Every
@@ -37,8 +38,11 @@ SHELLS = ("Bash", "PowerShell")
 # tgkit CLI itself refuses every changing command however it is written.
 TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")  # the same as cli.TASK_WRITES
 READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit tasks *",
-                 "tgkit chats*", "tgkit show *", "tgkit media *", "tgkit guide"]
-DENIED_COMMANDS = (["tgkit setup*", "tgkit add*", "tgkit sync*"]
+                 "tgkit chats*", "tgkit show *", "tgkit media *", "tgkit guide",
+                 "tgkit usage", "tgkit usage *", "tgkit claude-status", "tgkit claude-status *"]
+# export writes a file and logout ends the Telegram login: the user does them, never this session.
+DENIED_COMMANDS = (["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit logout*", "tgkit export*",
+                    "tgkit login*"]
                    + [p for w in TASK_WRITES
                       for p in (f"tgkit tasks {w}*", f"tgkit tasks * {w}", f"tgkit tasks * {w} *")])
 READONLY_ENV = "TGKIT_READONLY"  # the same name as cli.READONLY_ENV
@@ -55,9 +59,10 @@ You answer inside the TG Kit window. Here these rules come before the ones above
 
 - Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell,
   whichever you have). Never read, list or print files.
-- This session is read-only. Never run sync, setup, add, `search --online`, or a task change
-  (done, undo, reopen, drop, note, add), even when the user asks: tell them to use the window's
-  buttons (Get new messages, Mark done). The tgkit you run refuses them anyway.
+- This session is read-only. Never run sync, setup, add, logout, export, `search --online`, or a
+  task change (done, undo, reopen, drop, note, add), even when the user asks: tell them to use the
+  window's buttons (Get new messages, Mark done, Save as file, Settings). The tgkit you run refuses
+  them anyway.
 - If a chat has "stale": true, say its copy may be old and suggest the Get new messages button.
 - Answer short and plain; never show commands.
 """
@@ -91,6 +96,115 @@ def find_claude() -> list[str] | None:
     return [found] if found else None
 
 
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+INSTALL_URL = "https://code.claude.com/docs/en/setup"
+# The model aliases every Claude Code knows; more are read from `claude --help`.
+BASE_MODELS = ("sonnet", "opus", "haiku")
+_HELP_CACHE: dict = {}
+
+
+def _run(cmd: list[str], *args: str, timeout: int = 20) -> tuple[int, str]:
+    """Run a quick claude command (help, version, auth status). Never sends a prompt."""
+    try:
+        done = subprocess.run([*cmd, *args], stdin=subprocess.DEVNULL, capture_output=True,
+                              timeout=timeout, creationflags=NO_WINDOW)
+    except (OSError, subprocess.TimeoutExpired):
+        return -1, ""
+    out = (done.stdout or b"").decode("utf-8", "replace") + (done.stderr or b"").decode("utf-8", "replace")
+    return done.returncode, out
+
+
+def _option_block(text: str, flag: str) -> str:
+    """The help lines of one option: its line and the indented lines under it."""
+    m = re.search(rf"^\s*{re.escape(flag)}\b.*(?:\n(?!\s*-)\s{{6,}}\S.*)*", text, re.M)
+    return m.group(0) if m else ""
+
+
+def capabilities(cmd: list[str] | None) -> dict:
+    """What this Claude Code accepts, read from its own `--help` (cached per command).
+    Nothing is guessed: an option missing from the help is not offered."""
+    if not cmd:
+        return {"model": False, "models": [], "effort": False, "efforts": [], "auth": False}
+    key = tuple(cmd)
+    if key in _HELP_CACHE:
+        return _HELP_CACHE[key]
+    code, text = _run(cmd, "--help")
+    model_help = _option_block(text, "--model")
+    effort_help = _option_block(text, "--effort")
+    efforts = []
+    m = re.search(r"\(([a-z]+(?:,\s*[a-z]+)+)\)", effort_help)
+    if m:
+        efforts = [e.strip() for e in m.group(1).split(",") if e.strip()]
+    found = re.findall(r"'([a-z][a-z0-9-]*)'", model_help)
+    models = list(dict.fromkeys([*BASE_MODELS, *found])) if model_help else []
+    caps = {"model": bool(model_help), "models": models, "effort": bool(effort_help and efforts),
+            "efforts": efforts, "auth": bool(re.search(r"^\s+auth\b", text, re.M))}
+    if code == 0:
+        _HELP_CACHE[key] = caps
+    return caps
+
+
+def _caps_view(caps: dict) -> dict:
+    """Capabilities as status shows them; "model" and "effort" there are the chosen values."""
+    return {"models": caps["models"], "efforts": caps["efforts"], "model_supported": caps["model"],
+            "effort_supported": caps["effort"], "auth_supported": caps["auth"]}
+
+
+def settings(home: Path | None) -> dict:
+    cfg = config.load(Path(home)) if home and config.config_path(Path(home)).exists() else {}
+    return {"model": str(cfg.get("claude_model") or ""), "effort": str(cfg.get("claude_effort") or "")}
+
+
+def status(cmd: list[str] | None = None, home: Path | None = None) -> dict:
+    """Claude Code on this computer, in plain states:
+    missing, not_logged_in, connected, or unknown (installed, login not checkable)."""
+    cmd = cmd if cmd is not None else find_claude()
+    chosen = settings(home)
+    out = {"state": "missing", "installed": False, "version": None, "path": None, "logged_in": None,
+           "account": None, "plan": None, "auth_method": None, "install_url": INSTALL_URL,
+           "model": chosen["model"], "effort": chosen["effort"]}
+    if not cmd:
+        out.update(_caps_view(capabilities(None)))
+        out["fix"] = ["Install Claude Code (free with a Claude plan): " + INSTALL_URL,
+                      "Then open a terminal, type claude and log in once.",
+                      "Come back and press Check again."]
+        return out
+    out["installed"], out["path"] = True, cmd[-1]
+    code, text = _run(cmd, "--version")
+    m = re.search(r"\d+\.\d+\.\d+", text)
+    out["version"] = m.group(0) if m else None
+    caps = capabilities(cmd)
+    out.update(_caps_view(caps))
+    if code == -1 and not out["version"]:
+        out["state"] = "missing"
+        out["fix"] = ["Claude Code is installed but does not start. Reinstall it: " + INSTALL_URL]
+        return out
+    out["state"] = "unknown"
+    if caps["auth"]:
+        code, text = _run(cmd, "auth", "status")
+        info = None
+        start = text.find("{")
+        if start >= 0:
+            try:
+                info = json.loads(text[start:text.rfind("}") + 1])
+            except ValueError:
+                info = None
+        if isinstance(info, dict) and "loggedIn" in info:
+            out["logged_in"] = bool(info.get("loggedIn"))
+            out["state"] = "connected" if out["logged_in"] else "not_logged_in"
+            out["account"] = info.get("email") or info.get("orgName")
+            out["plan"] = info.get("subscriptionType")
+            out["auth_method"] = info.get("authMethod")
+    out["fix"] = {
+        "connected": [],
+        "not_logged_in": ["Open a terminal window and type: claude auth login",
+                          "Log in with your Claude account in the browser page that opens.",
+                          "Come back and press Check again."],
+        "unknown": ["If answers fall back to TG Kit only, open a terminal, type claude and log in."],
+    }[out["state"]]
+    return out
+
+
 def _tgkit_dirs() -> list[str]:
     """Folders holding the tgkit command of THIS install, so Claude runs the same one."""
     exe = Path(sys.executable).resolve().parent
@@ -118,8 +232,14 @@ class ClaudeRunner:
             if guide_file is not None:
                 a += ["--append-system-prompt-file", str(guide_file)]
         a += ["--allowedTools", *ALLOWED, "--disallowedTools", *DENIED]
-        if self.model:
-            a += ["--model", self.model]
+        chosen = settings(home)
+        model = self.model or chosen["model"]
+        if model:
+            a += ["--model", model]
+        if chosen["effort"]:
+            caps = capabilities(self.cmd)
+            if caps["effort"] and chosen["effort"] in caps["efforts"]:
+                a += ["--effort", chosen["effort"]]
         if session:
             a += ["--resume", session]
         return a
@@ -136,7 +256,7 @@ class ClaudeRunner:
 
     def stream(self, text: str, home: Path, session: str | None = None,
                chats: list[str] | None = None) -> Iterator[dict]:
-        """Events: session, token, step, step_done, tool_json, final, error."""
+        """Events: session, model, token, step, step_done, tool_json, usage, final, error."""
         first = None
         for ev in self._stream_once(text, home, session, chats or []):
             if ev["type"] == "error" and ev.get("reason") == "compat" and not self.compat:
@@ -199,7 +319,9 @@ class ClaudeRunner:
                 if msg.get("session_id") and msg.get("session_id") != new_session:
                     new_session = msg["session_id"]
                     yield {"type": "session", "id": new_session}
-                if kind == "stream_event":
+                if kind == "system" and msg.get("subtype") == "init" and msg.get("model"):
+                    yield {"type": "model", "model": str(msg["model"])}
+                elif kind == "stream_event":
                     ev = msg.get("event") or {}
                     delta = ev.get("delta") or {}
                     if ev.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
@@ -232,6 +354,9 @@ class ClaudeRunner:
                                 pass
                 elif kind == "result":
                     final = msg
+                    used = usage.from_result(msg)
+                    if used:
+                        yield {"type": "usage", "usage": used}
         finally:
             if proc.poll() is None:
                 proc.kill()

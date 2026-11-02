@@ -48,6 +48,7 @@ def chat_list(store: Store) -> list[dict]:
             "last_message": newest,
             "synced_at": when.replace(microsecond=0).isoformat() if when else None,
             "stale": store.is_stale(when),
+            "link_base": store.link_base(d),
         })
     out.sort(key=lambda c: c["title"].casefold())
     return out
@@ -96,6 +97,7 @@ def hit_dict(store: Store, r: dict, d: Path) -> dict:
         "chat": store.title(d), "folder": d.name, "id": r.get("id"), "date": r.get("date"),
         "sender": store.sender_name(r.get("sender_id")), "text": r.get("text") or "",
         "file": (r.get("media") or {}).get("file_name"), "reply_to": r.get("reply_to_msg_id"),
+        "link": store.message_link(d, r.get("id")),
     }
 
 
@@ -234,18 +236,55 @@ def tasks_card(rows: list[dict], which: str = "open") -> dict:
     } for t in rows]}
 
 
+def source_of(command: str) -> dict | None:
+    """How a `tgkit search|summary|tasks ...` command was asked, so Save as file can run
+    it again for every result. None when the command cannot be read back."""
+    import shlex  # noqa: PLC0415
+
+    try:
+        words = shlex.split(command or "")
+    except ValueError:
+        return None
+    if words[:1] != ["tgkit"] or len(words) < 2:
+        return None
+    sub, rest = words[1], words[2:]
+    opts, pos, i = {}, [], 0
+    while i < len(rest):
+        w = rest[i]
+        if w in ("--chat", "--since", "--limit", "--context") and i + 1 < len(rest):
+            opts[w[2:]] = rest[i + 1]
+            i += 2
+            continue
+        if not w.startswith("-"):
+            pos.append(w)
+        i += 1
+    if sub in ("search", "find") and pos:
+        return {"kind": "search", "query": pos[0], "chat": opts.get("chat"), "since": opts.get("since")}
+    if sub in ("summary", "digest"):
+        return {"kind": "summary", "chat": pos[0] if pos else None, "since": opts.get("since")}
+    if sub in ("tasks", "task", "todo"):
+        which = pos[0] if pos and pos[0] in ("mine", "all", "open") else "open"
+        return {"kind": "tasks", "which": which, "chat": opts.get("chat"), "since": opts.get("since")}
+    return None
+
+
 def card_from_json(command: str, data) -> dict | None:
     """A card from what a `tgkit ... --json` command printed (Claude mode)."""
     if not isinstance(data, dict):
         return None
+    card = None
     if "results" in data and "query" in data:
-        return hits_card(data)
-    if "chats" in data and "window" in data:
-        return summary_card(data)
-    if isinstance(data.get("tasks"), list):
+        card = hits_card(data)
+    elif "chats" in data and "window" in data:
+        card = summary_card(data)
+    elif isinstance(data.get("tasks"), list):
         which = "mine" if " mine" in command else "all" if " all" in command else "open"
-        return tasks_card(data["tasks"], which)
-    return None
+        card = tasks_card(data["tasks"], which)
+    if card is not None:
+        src = source_of(command)
+        if src:
+            card["source"] = src
+    return card
 
 
 # ------------------------------------------------------------------ offline answers
@@ -315,13 +354,15 @@ def answer(base: Path, store: Store, it: Intent) -> dict:
             text = _t(lang, f"Không thấy tin nhắn nào có “{it.query}”{where}{when}. "
                             "Thử ít từ hơn, hoặc gõ không dấu.",
                       f"No messages with “{it.query}”{where}{when}. Try fewer words.")
-        cards = [hits_card(data, it.chat_title, period, stale)] if n else []
+        cards = [{**hits_card(data, it.chat_title, period, stale),
+                  "source": {"kind": "search", "query": it.query, "chat": it.chat, "since": it.since}}] if n else []
         return {"text": text + note, "cards": cards, "action": None if n or not stale else "sync"}
 
     if it.kind == "summary":
         dg = digest.build(store, store.match(it.chat), it.since)
         label = period or _t(lang, "7 ngày qua", "the last 7 days")
         card = summary_card(dg, label)
+        card["source"] = {"kind": "summary", "chat": it.chat, "since": it.since}
         k = len(card["chats"])
         if card["total"]:
             text = _t(lang, f"{label[:1].upper() + label[1:]}: {card['total']} tin nhắn trong {k} nhóm{where}.",
@@ -345,7 +386,9 @@ def answer(base: Path, store: Store, it: Intent) -> dict:
         }[it.which]
         if found:
             head += _t(lang, f" Mới tìm thấy {found} việc trong tin nhắn.", f" {found} new found in your messages.")
-        return {"text": head, "cards": [tasks_card(rows, it.which)] if rows else [], "action": None}
+        cards = [{**tasks_card(rows, it.which),
+                  "source": {"kind": "tasks", "which": it.which, "chat": it.chat, "since": it.since}}] if rows else []
+        return {"text": head, "cards": cards, "action": None}
 
     if it.kind == "chats":
         items = chat_list(store)

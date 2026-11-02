@@ -324,6 +324,22 @@ class Store:
                 pass
         return {}
 
+    def link_base(self, d: Path) -> str | None:
+        """The start of a t.me link to a message of this chat, or None when Telegram has
+        no message links for it (private chats and small basic groups)."""
+        meta = self.meta(d)
+        user = meta.get("username")
+        if meta.get("type") == "Channel":
+            if user and re.fullmatch(r"[A-Za-z0-9_]{4,64}", str(user)):
+                return f"https://t.me/{user}"
+            if str(meta.get("id") or "").isdigit():
+                return f"https://t.me/c/{meta['id']}"
+        return None
+
+    def message_link(self, d: Path, msg_id) -> str | None:
+        base = self.link_base(d)
+        return f"{base}/{int(msg_id)}" if base and str(msg_id).isdigit() else None
+
     def title(self, d: Path) -> str:
         if d not in self._titles:
             meta = self.meta(d)

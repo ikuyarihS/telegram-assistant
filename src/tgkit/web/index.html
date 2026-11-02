@@ -53,6 +53,10 @@
         <label><input type="radio" name="mode" value="offline"> <span data-i18n="offline">TG Kit only</span></label>
       </fieldset>
       <p class="mode-note" id="modeNote"></p>
+      <button class="btn wide" id="settingsBtn" type="button" aria-haspopup="dialog">
+        <span class="btn-label" data-i18n="settings">Settings</span>
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 7.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6Zm6.3 4.2-1.2-.7a5.6 5.6 0 0 0 0-1.4l1.2-.7a.6.6 0 0 0 .2-.8l-1.2-2a.6.6 0 0 0-.8-.2l-1.2.7a5.5 5.5 0 0 0-1.2-.7V4.2a.6.6 0 0 0-.6-.6H8.5a.6.6 0 0 0-.6.6v1.4a5.5 5.5 0 0 0-1.2.7l-1.2-.7a.6.6 0 0 0-.8.2l-1.2 2a.6.6 0 0 0 .2.8l1.2.7a5.6 5.6 0 0 0 0 1.4l-1.2.7a.6.6 0 0 0-.2.8l1.2 2c.2.3.5.4.8.2l1.2-.7c.4.3.8.5 1.2.7v1.4c0 .3.3.6.6.6h2.4c.3 0 .6-.3.6-.6v-1.4c.4-.2.8-.4 1.2-.7l1.2.7c.3.2.6.1.8-.2l1.2-2a.6.6 0 0 0-.2-.8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      </button>
     </div>
   </aside>
 
@@ -63,6 +67,7 @@
       </button>
       <h1 id="title" data-i18n="newChat">New conversation</h1>
       <span class="badge" id="modeBadge"></span>
+      <div class="export-slot" id="convExport" hidden></div>
     </header>
 
     <div class="scroller" id="scroller">
@@ -73,7 +78,7 @@
         <p data-i18n="emptyBody">Search messages, get a summary of what happened, or see your tasks. Type in Vietnamese or English, accents optional.</p>
         <div class="setup-box" id="setupBox" hidden>
           <h3 data-i18n="notConnected">TG Kit is not connected to Telegram yet</h3>
-          <p data-i18n="notConnectedBody">Connect once: a window opens and asks for your Telegram login. Come back here when it is done.</p>
+          <p data-i18n="notConnectedBody">Connect once, right here: about 3 minutes, then pick the chats to follow.</p>
           <button class="btn btn-primary" id="setupBtn" type="button" data-i18n="connect">Connect to Telegram</button>
         </div>
         <ul class="examples" id="examples"></ul>
@@ -92,6 +97,210 @@
     </form>
   </main>
 </div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <p class="toast-text" id="toastText"></p>
+  <button class="link-btn" id="toastShow" type="button" data-i18n="showFolder" hidden>Show in folder</button>
+  <button class="btn btn-quiet toast-close" id="toastClose" type="button" data-i18n-label="close" aria-label="Close">
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+</div>
+
+<dialog class="settings" id="settings" aria-labelledby="setTitle">
+  <div class="settings-head">
+    <h2 id="setTitle" data-i18n="settings">Settings</h2>
+    <button class="btn btn-quiet icon-btn" id="setClose" type="button" data-i18n-label="close" aria-label="Close">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="settings-body">
+    <section class="set-sec" aria-labelledby="secClaude">
+      <h3 id="secClaude" data-i18n="secClaude">Claude</h3>
+      <p class="state-line" id="claudeState"><span class="state-dot" id="claudeDot"></span><span id="claudeStateText" data-i18n="checking">Checking...</span></p>
+      <ol class="fix-steps" id="claudeSteps" hidden></ol>
+      <div class="set-actions">
+        <button class="btn btn-primary" id="claudeInstall" type="button" data-i18n="installClaude" hidden>Get Claude Code</button>
+        <button class="btn" id="claudeLogin" type="button" data-i18n="loginClaude" hidden>Open a window to log in</button>
+        <button class="btn" id="claudeCheck" type="button" data-i18n="checkAgain">Check again</button>
+      </div>
+      <div class="field-row" id="modelRow">
+        <label class="field">
+          <span class="field-label" data-i18n="model">Model for answers</span>
+          <select id="modelPick"></select>
+        </label>
+        <label class="field" id="effortField" hidden>
+          <span class="field-label" data-i18n="effort">Effort</span>
+          <select id="effortPick"></select>
+        </label>
+      </div>
+      <p class="field-help" data-i18n="modelHelp">Claude Code default is a good choice. Opus thinks more and uses more of your plan; Haiku is quickest and uses the least.</p>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secUsage">
+      <h3 id="secUsage" data-i18n="secUsage">Token use</h3>
+      <p class="field-help" data-i18n="usageWhat">Only answers written by Claude use tokens. Search, summary, tasks and Get new messages run on this computer and use none.</p>
+      <dl class="usage-grid" id="usageGrid"></dl>
+      <p class="field-help" id="usageCost" hidden></p>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label" data-i18n="limit">Warn me after this many tokens a day</span>
+          <input id="limitInput" type="number" min="0" step="10000" inputmode="numeric" data-i18n-ph="limitPh" placeholder="0 = no limit">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="hardStop"> <span data-i18n="hardStop">When it is reached, answer without Claude for the rest of the day</span></label>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secExport">
+      <h3 id="secExport" data-i18n="secExport">Saved files</h3>
+      <p class="field-help" data-i18n="exportHelp">Save as file puts Word documents (and Excel, CSV or Markdown when you pick them) in this folder.</p>
+      <label class="field">
+        <span class="field-label" data-i18n="exportDir">Folder</span>
+        <input id="exportDir" type="text" spellcheck="false" autocomplete="off">
+      </label>
+      <div class="set-actions">
+        <button class="btn" id="exportDefault" type="button" data-i18n="useDefault">Use Documents\TG Kit</button>
+        <button class="btn" id="openExport" type="button" data-i18n="openFolder">Open folder</button>
+      </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secData">
+      <h3 id="secData" data-i18n="secData">Copied chats</h3>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label" data-i18n="mediaCap">Keep attached files up to (MB)</span>
+          <input id="mediaCap" type="number" min="1" max="4000" step="10" inputmode="numeric">
+        </label>
+      </div>
+      <p class="field-help" data-i18n="mediaHelp">Bigger files stay on Telegram only; the message still says they exist. Applies to new messages.</p>
+      <p class="field-help"><span data-i18n="dataAt">Stored in</span> <span class="path" id="dataPath"></span></p>
+      <div class="set-actions">
+        <button class="btn" id="addChatsBtn" type="button" data-i18n="addChats">Add chats</button>
+        <button class="btn" id="openData" type="button" data-i18n="openFolder">Open folder</button>
+      </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secAccount">
+      <h3 id="secAccount" data-i18n="secAccount">Telegram account</h3>
+      <p id="accountLine"></p>
+      <p class="field-help" data-i18n="accountHelp">To use another Telegram account, log out here, then press Connect to Telegram. Your messages on Telegram are never touched.</p>
+      <div class="set-actions">
+        <button class="btn btn-danger" id="logoutBtn" type="button" data-i18n="logout">Log out of Telegram</button>
+        <button class="btn" id="connectBtn" type="button" data-i18n="connect" hidden>Connect to Telegram</button>
+      </div>
+      <div class="confirm" id="logoutConfirm" hidden>
+        <p class="confirm-title" data-i18n="logoutAsk">Log out of Telegram on this computer?</p>
+        <fieldset class="choice">
+          <legend id="keepLegend" data-i18n="keepLegend">Your copied chats</legend>
+          <label><input type="radio" name="keep" value="keep" checked> <span data-i18n="keepData">Keep them here (you can still search them)</span></label>
+          <label><input type="radio" name="keep" value="backup"> <span data-i18n="backupData">Move them to a backup folder, so TG Kit starts empty (nothing is deleted)</span></label>
+        </fieldset>
+        <div class="set-actions">
+          <button class="btn btn-danger" id="logoutYes" type="button" data-i18n="logoutYes">Log out</button>
+          <button class="btn" id="logoutNo" type="button" data-i18n="cancel">Cancel</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <p class="settings-foot" id="setStatus" aria-live="polite"></p>
+</dialog>
+
+<dialog class="settings setup" id="setupDlg" aria-labelledby="suTitle">
+  <div class="settings-head">
+    <h2 id="suTitle" data-i18n="suTitle">Connect to Telegram</h2>
+    <button class="btn btn-quiet icon-btn" id="suClose" type="button" data-i18n-label="close" aria-label="Close">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <ol class="su-steps" id="suSteps">
+    <li data-step="codes"><span data-i18n="suStep1">Telegram codes</span></li>
+    <li data-step="login"><span data-i18n="suStep2">Log in</span></li>
+    <li data-step="chats"><span data-i18n="suStep3">Pick chats</span></li>
+  </ol>
+  <div class="settings-body">
+    <form class="su-pane" id="suCodes" hidden>
+      <p data-i18n="suCodesWhy">TG Kit reads your chats with two codes from Telegram. You make them once, on Telegram's own website.</p>
+      <ol class="fix-steps">
+        <li data-i18n="suCodes1">Press Open my.telegram.org and log in with your phone number. Telegram sends the code to your Telegram app.</li>
+        <li data-i18n="suCodes2">Click API development tools. If it asks, type any App title (TG Kit) and Short name (tgkit), then Create application.</li>
+        <li data-i18n="suCodes3">Copy App api_id and App api_hash into the boxes below.</li>
+      </ol>
+      <div class="set-actions">
+        <button class="btn" id="suSite" type="button" data-i18n="suOpenSite">Open my.telegram.org</button>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">api_id</span>
+          <input id="suApiId" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="field-label">api_hash</span>
+          <input id="suApiHash" type="text" spellcheck="false" autocomplete="off" required>
+        </label>
+      </div>
+      <p class="field-help" data-i18n="suCodesSafe">The codes stay on this computer. Any Telegram account can use them.</p>
+      <div class="set-actions">
+        <button class="btn btn-primary" type="submit" data-i18n="suNext">Next</button>
+      </div>
+    </form>
+
+    <form class="su-pane" id="suPhone" hidden>
+      <p data-i18n="suPhoneWhy">Type the phone number of your Telegram account. Telegram sends a login code to your Telegram app.</p>
+      <label class="field">
+        <span class="field-label" data-i18n="suPhone">Phone number, with country code</span>
+        <input id="suPhoneIn" type="tel" autocomplete="tel" placeholder="+84 912 345 678" required>
+      </label>
+      <div class="set-actions">
+        <button class="btn btn-primary" type="submit" data-i18n="suSendCode">Send code</button>
+        <button class="btn" id="suChangeCodes" type="button" data-i18n="suChangeCodes">Change the Telegram codes</button>
+      </div>
+    </form>
+
+    <form class="su-pane" id="suCode" hidden>
+      <p data-i18n="suCodeWhy">Telegram sent a login code to your Telegram app (on your phone or computer). Type it here.</p>
+      <label class="field">
+        <span class="field-label" data-i18n="suCode">Login code</span>
+        <input id="suCodeIn" type="text" inputmode="numeric" autocomplete="one-time-code" required>
+      </label>
+      <p class="field-help" data-i18n="suCodeSafe">Never give this code to anyone. TG Kit uses it only to log in on this computer.</p>
+      <div class="set-actions">
+        <button class="btn btn-primary" type="submit" data-i18n="suLogin">Log in</button>
+        <button class="btn" id="suResend" type="button" data-i18n="suResend">Send a new code</button>
+      </div>
+    </form>
+
+    <form class="su-pane" id="suPassword" hidden>
+      <p data-i18n="suPwWhy">Your account has two-step verification. Type the extra password you set in Telegram.</p>
+      <label class="field">
+        <span class="field-label" data-i18n="suPw">Two-step password</span>
+        <input id="suPwIn" type="password" autocomplete="current-password" required>
+      </label>
+      <div class="set-actions">
+        <button class="btn btn-primary" type="submit" data-i18n="suLogin">Log in</button>
+      </div>
+    </form>
+
+    <form class="su-pane" id="suChats" hidden>
+      <p id="suWho"></p>
+      <p data-i18n="suChatsWhy">Tick the chats TG Kit should copy to this computer. Only these are searched and summarized.</p>
+      <label class="field">
+        <span class="sr-only" data-i18n="suFilter">Find a chat</span>
+        <input id="suFilter" type="search" data-i18n-ph="suFilter" placeholder="Find a chat" autocomplete="off">
+      </label>
+      <ul class="pick-list" id="suList" aria-live="polite"></ul>
+      <fieldset class="choice">
+        <legend data-i18n="suHow">How much history</legend>
+        <label><input type="radio" name="suLimit" value="1000" checked> <span data-i18n="suRecent">The last 1000 messages of each chat (quick)</span></label>
+        <label><input type="radio" name="suLimit" value="all"> <span data-i18n="suAll">Everything (can take a while for big groups)</span></label>
+      </fieldset>
+      <div class="set-actions">
+        <button class="btn btn-primary" id="suAdd" type="submit" data-i18n="suAdd">Add the ticked chats</button>
+        <button class="btn" id="suDone" type="button" data-i18n="suFinish">Done</button>
+      </div>
+    </form>
+  </div>
+  <p class="settings-foot" id="suStatus" aria-live="polite"></p>
+  <p class="settings-foot su-alt"><button class="link-btn" id="suTerminal" type="button" data-i18n="suTerminal">Use the setup window in a terminal instead</button></p>
+</dialog>
 <script src="static/app.js"></script>
 </body>
 </html>

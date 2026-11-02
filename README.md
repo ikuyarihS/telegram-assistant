@@ -70,8 +70,15 @@ menu. It opens the TG Kit window (see [The TG Kit window](#the-tg-kit-window)).
 
 ## First-time setup
 
-The setup has four plain steps. You can stop at any time and start again
-later with `tgkit setup` (or option 7 in the menu).
+**The easy way: in the TG Kit window.** Open TG Kit and press **Connect to
+Telegram**. The same steps as below appear in the window, one at a time: a
+button opens my.telegram.org, you paste the two codes, type your phone number,
+the login code (and your two-step password, if you have one), then tick the
+chats to copy. No terminal is needed. **Add chats** in Settings brings back
+the chat list later.
+
+**In a terminal.** The setup has four plain steps. You can stop at any time
+and start again later with `tgkit setup` (or option 7 in the menu).
 
 1. **Where to keep your data.** Press Enter to use the suggested folder, or
    type another folder (for example on a bigger drive).
@@ -130,6 +137,48 @@ does. Without Claude, TG Kit answers by itself
 with simple rules ("Offline"). You can choose **TG Kit only** at the bottom
 left to never use Claude.
 
+**Open in Telegram.** Under a message found in a group or channel, **Open in
+Telegram** opens that message in your Telegram app (or on the Telegram web
+page when the app is not installed). Private chats and small basic groups have
+no message links in Telegram, so they show no such link.
+
+**Save as file.** Every result (messages found, a summary, your tasks) and the
+whole conversation (top right) has a **Save as file** button: a Word document
+by default, or an Excel sheet, a CSV table or Markdown. Vietnamese letters stay
+intact, links to the messages are included, and an existing file is never
+overwritten. Files go to **Documents\TG Kit** unless you choose another folder
+in Settings; the folder opens with the file selected. Under a result that has
+a file, **Save file** copies that attachment there (only files TG Kit already
+copied during Get new messages; it never downloads anything by itself).
+
+**Settings** (bottom left) has five parts:
+
+- **Claude**: whether Claude Code is installed and logged in, in plain words,
+  with the steps to fix it: **Get Claude Code** opens the install page,
+  **Open a window to log in** starts the Claude login, **Check again** looks
+  again. Here you also pick the **model** for answers (Claude Code default,
+  Sonnet, Opus, Haiku, and any other model your Claude Code names) and, when
+  your Claude Code supports it, the **effort**. Each Claude answer shows the
+  model and the tokens it used.
+- **Token use**: only answers written by Claude use tokens; search, summary,
+  tasks and Get new messages run on your computer and use none. You see the
+  tokens of today, this month and this conversation (input, output and
+  cache), and a cost only when Claude Code reports one, as its own estimate:
+  on a Claude plan you are not billed per answer. You can set a daily number
+  of tokens to be warned at; tick the box under it to make TG Kit answer
+  without Claude for the rest of that day instead.
+- **Saved files**: the folder for Save as file.
+- **Copied chats**: the largest attached file to keep (50 MB unless you change
+  it; bigger files stay on Telegram), where the copies are stored with an
+  **Open folder** button, and **Add chats** to copy more chats.
+- **Telegram account**: **Log out of Telegram** ends TG Kit's login on this
+  computer (your Telegram app and your messages are not touched). It asks
+  first, and asks what to do with the copied chats: keep them, or move them to
+  a backup folder inside your data folder so TG Kit starts empty for another
+  account. Nothing is deleted. Then press **Connect to Telegram** to log in,
+  right in the window, with any account. Your api_id and api_hash stay saved: they work with any
+  account.
+
 The window follows the light or dark theme of your computer. Your questions
 are kept in your data folder; Claude Code can read them with
 `tgkit chats-log --json` (see [Use with Claude Code](#use-with-claude-code)). If
@@ -148,6 +197,7 @@ Open a terminal and type `tgkit`. A menu opens:
   5  Add more chats
   6  Show my chats
   7  Setup (first time, or change settings)
+  8  Log out / switch Telegram account
   0  Quit
 ```
 
@@ -170,6 +220,12 @@ If you prefer typing commands, these need no extra options:
 | Files and photos in a chat | `tgkit media "Team"` |
 | Search Telegram itself (older messages too) | `tgkit search "contract" --online` |
 | Follow more chats | `tgkit add` |
+| Save messages found as a Word file | `tgkit export search "biên bản"` |
+| Save the summary or the tasks (Excel too) | `tgkit export summary`, `tgkit export tasks --format xlsx` |
+| Save a file someone sent | `tgkit export file "Team" 1234` (the message id) |
+| Log out, or switch to another Telegram account | `tgkit logout`, then `tgkit setup` |
+| Tokens used by Claude answers in the window | `tgkit usage` |
+| Is Claude Code installed and logged in | `tgkit claude-status` |
 | Where is my data | `tgkit where` |
 | The instructions for Claude Code | `tgkit guide` |
 | All commands | `tgkit help` |
@@ -227,6 +283,26 @@ plugin gives it), so Claude knows how to read your chats before it answers.
 Claude Code can also see what you asked in the TG Kit window: ask it, for
 example, "continue the search I did in the TG Kit app". It reads your saved
 conversations with `tgkit chats-log --json` and runs the search again.
+
+Claude Code can write reports from your chats too ("make a Word report of
+what the team decided this month"): it reads the summary and search results,
+adds a link to each quoted message, and can save a Word file with
+`tgkit export`. Inside the TG Kit window Claude only reads: it cannot save
+files, log out or change settings there; use the window's buttons for that.
+
+### Connecting Claude to the TG Kit window
+
+The window uses the Claude Code on your computer, with your own Claude login
+(a Claude Pro or Max plan; no separate key). To check it, open **Settings** in
+the window, or type `tgkit claude-status`:
+
+1. **Not installed**: press **Get Claude Code** (or open
+   https://code.claude.com/docs/en/setup) and install it.
+2. **Not logged in**: press **Open a window to log in** (or type
+   `claude auth login` in a terminal) and log in with your Claude account.
+3. Press **Check again**. It says "Connected as ..." when it is ready.
+
+Until then TG Kit answers by itself, and nothing breaks.
 
 ---
 

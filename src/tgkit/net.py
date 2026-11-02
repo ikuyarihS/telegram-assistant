@@ -620,3 +620,16 @@ async def login(ctx: Ctx, ask_phone, ask_code, ask_password) -> dict:
         return {"id": me.id, "name": display_name(me), "username": getattr(me, "username", None)}
     finally:
         await _maybe_await(client.disconnect())
+
+
+async def logout(ctx: Ctx) -> bool:
+    """End this computer's Telegram login on Telegram's side (like Settings > Devices >
+    Terminate). True when Telegram confirmed it. The caller removes the local file."""
+    client = make_client(ctx.base, ctx.cfg)
+    await client.connect()
+    try:
+        if not await client.is_user_authorized():
+            return False
+        return bool(await client.log_out())
+    finally:
+        await _maybe_await(client.disconnect())

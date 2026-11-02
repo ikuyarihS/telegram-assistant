@@ -41,12 +41,73 @@
       links: "Links", files: "Files", replyingTo: "Replying to", notLocal: "a message not in the local copy",
       quiet: "No messages in this period", remove: "Remove conversation", in: "in",
       notConnected: "TG Kit is not connected to Telegram yet",
-      notConnectedBody: "Connect once: a window opens and asks for your Telegram login. Come back here when it is done.",
+      notConnectedBody: "Connect once, right here: about 3 minutes, then pick the chats to follow.",
       setupOpened: "The setup window is open. Come back here when it is done.",
       errGeneric: "Something went wrong. Try again.", errOffline: "TG Kit stopped responding. Close this window and open TG Kit again.",
       wordsMatch: "Every word, in any order", messagesFor: (q) => `“${q}”`, menu: "Show conversations",
       updated: "updated", never: "never", you: "You", summaryOf: (l) => `Summary: ${l}`, yourTasks: "Tasks",
       allChats: "Your chats", file: "File", examplesHead: "Try asking",
+      settings: "Settings", close: "Close", checking: "Checking...", secClaude: "Claude",
+      installClaude: "Get Claude Code", loginClaude: "Open a window to log in", checkAgain: "Check again",
+      model: "Model for answers", effort: "Effort", modelDefault: "Claude Code default", effortDefault: "Claude Code default",
+      modelHelp: "Claude Code default is a good choice. Opus thinks more and uses more of your plan; Haiku is quickest and uses the least.",
+      stMissing: "Claude Code is not on this computer. TG Kit answers by itself until it is.",
+      stNotLogged: "Claude Code is installed but not logged in.",
+      stConnected: (acct, plan) => `Connected${acct ? ` as ${acct}` : ""}${plan ? ` (${plan} plan)` : ""}.`,
+      stUnknown: "Claude Code is installed. Its login could not be checked here.",
+      fixMissing: ["Press Get Claude Code and install it. It comes with a Claude Pro or Max plan.",
+        "Press Open a window to log in, and log in with your Claude account.", "Press Check again."],
+      fixNotLogged: ["Press Open a window to log in.", "Log in with your Claude account in the page that opens.",
+        "Come back and press Check again."],
+      loginOpened: "A window opened. Log in there, then press Check again.",
+      secUsage: "Token use",
+      usageWhat: "Only answers written by Claude use tokens. Search, summary, tasks and Get new messages run on this computer and use none.",
+      today: "Today", month: "This month", thisConv: "This conversation",
+      answersN: (n) => `${n} ${plural(n, "answer", "answers")}`,
+      tokensN: (n) => `${n} tokens`,
+      usageBreak: (i, o, c) => `${i} in, ${o} out, ${c} from cache`,
+      costNote: (c) => `About $${c} this month: Claude Code's own estimate. On a Claude plan you are not billed per answer.`,
+      limit: "Warn me after this many tokens a day", limitPh: "0 = no limit",
+      hardStop: "When it is reached, answer without Claude for the rest of the day",
+      secExport: "Saved files", exportDir: "Folder", useDefault: "Use the default folder", openFolder: "Open folder",
+      exportHelp: "Save as file puts Word documents (and Excel, CSV or Markdown when you pick them) in this folder.",
+      secAccount: "Telegram account",
+      accountHelp: "To use another Telegram account, log out here, then press Connect to Telegram. Your messages on Telegram are never touched.",
+      logout: "Log out of Telegram", logoutAsk: "Log out of Telegram on this computer?", keepLegend: "Your copied chats",
+      keepData: "Keep them here (you can still search them)",
+      backupData: "Move them to a backup folder, so TG Kit starts empty (nothing is deleted)",
+      logoutYes: "Log out", cancel: "Cancel", loggedInAs: (n) => `Logged in to Telegram as ${n}.`,
+      notLoggedIn: "Not logged in to Telegram on this computer.", loggedOut: "Logged out of Telegram.",
+      movedTo: (p) => `Your chats were moved to ${p}.`, saved: "Saved.",
+      exportBtn: "Save as file", fmtDocx: "Word document", fmtXlsx: "Excel sheet", fmtCsv: "CSV table", fmtMd: "Markdown",
+      saving: "Saving...", savedAs: (n) => `Saved ${n}`, showFolder: "Show in folder", saveFile: "Save file",
+      openTg: "Open in Telegram",
+      usageLine: (m, n, b) => `${m ? `${m}, ` : ""}${n} tokens (${b})`, costLine: (c) => `about $${c}, Claude Code's estimate`,
+      secData: "Copied chats", mediaCap: "Keep attached files up to (MB)",
+      mediaHelp: "Bigger files stay on Telegram only; the message still says they exist. Applies to new messages.",
+      dataAt: "Stored in", addChats: "Add chats",
+      suTitle: "Connect to Telegram", suStep1: "Telegram codes", suStep2: "Log in", suStep3: "Pick chats",
+      suCodesWhy: "TG Kit reads your chats with two codes from Telegram. You make them once, on Telegram's own website.",
+      suCodes1: "Press Open my.telegram.org and log in with your phone number. Telegram sends the code to your Telegram app.",
+      suCodes2: "Click API development tools. If it asks, type any App title (TG Kit) and Short name (tgkit), then Create application.",
+      suCodes3: "Copy App api_id and App api_hash into the boxes below.",
+      suOpenSite: "Open my.telegram.org", suCodesSafe: "The codes stay on this computer. Any Telegram account can use them.",
+      suNext: "Next",
+      suPhoneWhy: "Type the phone number of your Telegram account. Telegram sends a login code to your Telegram app.",
+      suPhone: "Phone number, with country code", suSendCode: "Send code", suChangeCodes: "Change the Telegram codes",
+      suCodeWhy: "Telegram sent a login code to your Telegram app (on your phone or computer). Type it here.",
+      suCode: "Login code", suCodeSafe: "Never give this code to anyone. TG Kit uses it only to log in on this computer.",
+      suLogin: "Log in", suResend: "Send a new code",
+      suPwWhy: "Your account has two-step verification. Type the extra password you set in Telegram.",
+      suPw: "Two-step password",
+      suChatsWhy: "Tick the chats TG Kit should copy to this computer. Only these are searched and summarized.",
+      suFilter: "Find a chat", suHow: "How much history",
+      suRecent: "The last 1000 messages of each chat (quick)", suAll: "Everything (can take a while for big groups)",
+      suAdd: "Add the ticked chats", suFinish: "Done", suTerminal: "Use the setup window in a terminal instead",
+      suWorking: "Talking to Telegram...", suLoading: "Loading your chats...", suAdding: "Copying the chats. Big groups take a while...",
+      suWho: (n) => `Logged in as ${n}.`, suAdded: (n) => `Added ${n} ${plural(n, "chat", "chats")}. Ask away, or add more.`,
+      suNoneAdded: "No chat was added.", suPickOne: "Tick at least one chat.", suAlready: "already added",
+      suNoChats: "No chats found.", kindGroup: "group", kindChannel: "channel", kindUser: "person",
     },
     vi: {
       newChat: "Cuộc trò chuyện mới", filter: "Lọc cuộc trò chuyện và nhóm", conversations: "Cuộc trò chuyện",
@@ -74,12 +135,72 @@
       links: "Liên kết", files: "Tệp", replyingTo: "Trả lời", notLocal: "một tin không có trong bản sao",
       quiet: "Không có tin trong khoảng này", remove: "Xóa cuộc trò chuyện", in: "trong",
       notConnected: "TG Kit chưa kết nối với Telegram",
-      notConnectedBody: "Kết nối một lần: một cửa sổ sẽ mở ra để bạn đăng nhập Telegram. Xong thì quay lại đây.",
+      notConnectedBody: "Kết nối một lần ngay tại đây: khoảng 3 phút, rồi chọn các nhóm cần theo dõi.",
       setupOpened: "Cửa sổ cài đặt đã mở. Xong thì quay lại đây.",
       errGeneric: "Có lỗi xảy ra. Thử lại nhé.", errOffline: "TG Kit không phản hồi. Đóng cửa sổ này và mở lại TG Kit.",
       wordsMatch: "Đủ các từ, không theo thứ tự", messagesFor: (q) => `“${q}”`, menu: "Hiện danh sách",
       updated: "cập nhật", never: "chưa bao giờ", you: "Bạn", summaryOf: (l) => `Tóm tắt: ${l}`, yourTasks: "Việc cần làm",
       allChats: "Nhóm của bạn", file: "Tệp", examplesHead: "Thử hỏi",
+      settings: "Cài đặt", close: "Đóng", checking: "Đang kiểm tra...", secClaude: "Claude",
+      installClaude: "Tải Claude Code", loginClaude: "Mở cửa sổ đăng nhập", checkAgain: "Kiểm tra lại",
+      model: "Mô hình trả lời", effort: "Mức suy nghĩ", modelDefault: "Mặc định của Claude Code", effortDefault: "Mặc định của Claude Code",
+      modelHelp: "Mặc định của Claude Code là lựa chọn tốt. Opus suy nghĩ kỹ hơn và dùng nhiều hạn mức hơn; Haiku nhanh nhất và dùng ít nhất.",
+      stMissing: "Máy này chưa có Claude Code. Trong lúc đó TG Kit tự trả lời.",
+      stNotLogged: "Đã cài Claude Code nhưng chưa đăng nhập.",
+      stConnected: (acct, plan) => `Đã kết nối${acct ? ` với ${acct}` : ""}${plan ? ` (gói ${plan})` : ""}.`,
+      stUnknown: "Đã cài Claude Code. Không kiểm tra được trạng thái đăng nhập ở đây.",
+      fixMissing: ["Bấm Tải Claude Code và cài đặt. Claude Code đi kèm gói Claude Pro hoặc Max.",
+        "Bấm Mở cửa sổ đăng nhập và đăng nhập tài khoản Claude.", "Bấm Kiểm tra lại."],
+      fixNotLogged: ["Bấm Mở cửa sổ đăng nhập.", "Đăng nhập tài khoản Claude ở trang vừa mở.", "Quay lại đây và bấm Kiểm tra lại."],
+      loginOpened: "Một cửa sổ đã mở. Đăng nhập ở đó rồi bấm Kiểm tra lại.",
+      secUsage: "Mức dùng token",
+      usageWhat: "Chỉ câu trả lời do Claude viết mới dùng token. Tìm kiếm, tóm tắt, việc cần làm và Lấy tin mới chạy trên máy này, không dùng token.",
+      today: "Hôm nay", month: "Tháng này", thisConv: "Cuộc trò chuyện này",
+      answersN: (n) => `${n} câu trả lời`,
+      tokensN: (n) => `${n} token`,
+      usageBreak: (i, o, c) => `${i} vào, ${o} ra, ${c} từ bộ nhớ đệm`,
+      costNote: (c) => `Khoảng $${c} trong tháng: ước tính của Claude Code. Với gói Claude, bạn không bị tính tiền theo từng câu trả lời.`,
+      limit: "Cảnh báo khi dùng quá số token này mỗi ngày", limitPh: "0 = không giới hạn",
+      hardStop: "Khi đạt mức này, trả lời không dùng Claude đến hết ngày",
+      secExport: "Tệp đã lưu", exportDir: "Thư mục", useDefault: "Dùng thư mục mặc định", openFolder: "Mở thư mục",
+      exportHelp: "Lưu thành tệp sẽ đặt tài liệu Word (và Excel, CSV hay Markdown khi bạn chọn) vào thư mục này.",
+      secAccount: "Tài khoản Telegram",
+      accountHelp: "Để dùng tài khoản Telegram khác, đăng xuất ở đây rồi bấm Kết nối Telegram. Tin nhắn trên Telegram không bị ảnh hưởng.",
+      logout: "Đăng xuất Telegram", logoutAsk: "Đăng xuất Telegram trên máy này?", keepLegend: "Bản sao các nhóm",
+      keepData: "Giữ lại ở đây (vẫn tìm kiếm được)",
+      backupData: "Chuyển vào thư mục sao lưu để TG Kit bắt đầu trống (không xóa gì)",
+      logoutYes: "Đăng xuất", cancel: "Hủy", loggedInAs: (n) => `Đang đăng nhập Telegram với ${n}.`,
+      notLoggedIn: "Máy này chưa đăng nhập Telegram.", loggedOut: "Đã đăng xuất Telegram.",
+      movedTo: (p) => `Các nhóm đã được chuyển vào ${p}.`, saved: "Đã lưu.",
+      exportBtn: "Lưu thành tệp", fmtDocx: "Tài liệu Word", fmtXlsx: "Bảng Excel", fmtCsv: "Bảng CSV", fmtMd: "Markdown",
+      saving: "Đang lưu...", savedAs: (n) => `Đã lưu ${n}`, showFolder: "Mở thư mục", saveFile: "Lưu tệp",
+      openTg: "Mở trên Telegram",
+      usageLine: (m, n, b) => `${m ? `${m}, ` : ""}${n} token (${b})`, costLine: (c) => `khoảng $${c}, ước tính của Claude Code`,
+      secData: "Bản sao các nhóm", mediaCap: "Giữ tệp đính kèm đến (MB)",
+      mediaHelp: "Tệp lớn hơn chỉ nằm trên Telegram; tin nhắn vẫn ghi là có tệp. Áp dụng cho tin mới.",
+      dataAt: "Lưu tại", addChats: "Thêm nhóm",
+      suTitle: "Kết nối Telegram", suStep1: "Mã Telegram", suStep2: "Đăng nhập", suStep3: "Chọn nhóm",
+      suCodesWhy: "TG Kit đọc các nhóm của bạn bằng hai mã của Telegram. Bạn tạo chúng một lần trên trang web của Telegram.",
+      suCodes1: "Bấm Mở my.telegram.org và đăng nhập bằng số điện thoại. Telegram gửi mã vào ứng dụng Telegram của bạn.",
+      suCodes2: "Bấm API development tools. Nếu được hỏi, gõ App title bất kỳ (TG Kit) và Short name (tgkit), rồi bấm Create application.",
+      suCodes3: "Chép App api_id và App api_hash vào hai ô bên dưới.",
+      suOpenSite: "Mở my.telegram.org", suCodesSafe: "Hai mã này chỉ nằm trên máy này. Tài khoản Telegram nào cũng dùng được.",
+      suNext: "Tiếp",
+      suPhoneWhy: "Gõ số điện thoại của tài khoản Telegram. Telegram sẽ gửi mã đăng nhập vào ứng dụng Telegram của bạn.",
+      suPhone: "Số điện thoại, có mã quốc gia", suSendCode: "Gửi mã", suChangeCodes: "Đổi mã Telegram",
+      suCodeWhy: "Telegram đã gửi mã đăng nhập vào ứng dụng Telegram (trên điện thoại hoặc máy tính). Gõ mã đó vào đây.",
+      suCode: "Mã đăng nhập", suCodeSafe: "Đừng đưa mã này cho ai. TG Kit chỉ dùng nó để đăng nhập trên máy này.",
+      suLogin: "Đăng nhập", suResend: "Gửi mã mới",
+      suPwWhy: "Tài khoản của bạn bật xác minh hai bước. Gõ mật khẩu phụ bạn đã đặt trong Telegram.",
+      suPw: "Mật khẩu hai bước",
+      suChatsWhy: "Đánh dấu các nhóm TG Kit sẽ sao chép về máy này. Chỉ những nhóm này được tìm kiếm và tóm tắt.",
+      suFilter: "Tìm nhóm", suHow: "Lấy bao nhiêu tin cũ",
+      suRecent: "1000 tin gần nhất của mỗi nhóm (nhanh)", suAll: "Tất cả (nhóm lớn có thể mất khá lâu)",
+      suAdd: "Thêm các nhóm đã chọn", suFinish: "Xong", suTerminal: "Dùng cửa sổ cài đặt trong terminal",
+      suWorking: "Đang kết nối Telegram...", suLoading: "Đang tải danh sách nhóm...", suAdding: "Đang sao chép các nhóm. Nhóm lớn sẽ mất một lúc...",
+      suWho: (n) => `Đang đăng nhập với ${n}.`, suAdded: (n) => `Đã thêm ${n} nhóm. Hỏi ngay, hoặc thêm nhóm khác.`,
+      suNoneAdded: "Chưa thêm nhóm nào.", suPickOne: "Đánh dấu ít nhất một nhóm.", suAlready: "đã thêm",
+      suNoChats: "Không tìm thấy nhóm nào.", kindGroup: "nhóm", kindChannel: "kênh", kindUser: "người",
     },
   };
   const EXAMPLES = {
@@ -100,6 +221,23 @@
     scroller: $("scroller"), thread: $("thread"), empty: $("empty"), setupBox: $("setupBox"),
     setupBtn: $("setupBtn"), examples: $("examples"), composer: $("composer"), input: $("input"),
     send: $("send"), sendLabel: $("sendLabel"), version: $("version"),
+    settingsBtn: $("settingsBtn"), settings: $("settings"), setClose: $("setClose"), setStatus: $("setStatus"),
+    claudeDot: $("claudeDot"), claudeStateText: $("claudeStateText"), claudeSteps: $("claudeSteps"),
+    claudeInstall: $("claudeInstall"), claudeLogin: $("claudeLogin"), claudeCheck: $("claudeCheck"),
+    modelRow: $("modelRow"), modelPick: $("modelPick"), effortField: $("effortField"), effortPick: $("effortPick"),
+    usageGrid: $("usageGrid"), usageCost: $("usageCost"), limitInput: $("limitInput"), hardStop: $("hardStop"),
+    exportDir: $("exportDir"), exportDefault: $("exportDefault"), openExport: $("openExport"),
+    accountLine: $("accountLine"), logoutBtn: $("logoutBtn"), connectBtn: $("connectBtn"),
+    logoutConfirm: $("logoutConfirm"), logoutYes: $("logoutYes"), logoutNo: $("logoutNo"),
+    convExport: $("convExport"), toast: $("toast"), toastText: $("toastText"), toastShow: $("toastShow"),
+    toastClose: $("toastClose"),
+    mediaCap: $("mediaCap"), dataPath: $("dataPath"), addChatsBtn: $("addChatsBtn"), openData: $("openData"),
+    setupDlg: $("setupDlg"), suClose: $("suClose"), suSteps: $("suSteps"), suStatus: $("suStatus"),
+    suCodes: $("suCodes"), suPhone: $("suPhone"), suCode: $("suCode"), suPassword: $("suPassword"), suChats: $("suChats"),
+    suSite: $("suSite"), suApiId: $("suApiId"), suApiHash: $("suApiHash"), suPhoneIn: $("suPhoneIn"),
+    suChangeCodes: $("suChangeCodes"), suCodeIn: $("suCodeIn"), suResend: $("suResend"), suPwIn: $("suPwIn"),
+    suWho: $("suWho"), suFilter: $("suFilter"), suList: $("suList"), suAdd: $("suAdd"), suDone: $("suDone"),
+    suTerminal: $("suTerminal"),
   };
 
   const app = {
@@ -343,13 +481,100 @@
     return svg;
   }
 
+  // ------------------------------------------------------------ files
+
+  const num = (n) => new Intl.NumberFormat(LANG).format(n || 0);
+  let toastTimer = null;
+  let toastFile = null;
+
+  function toast(text, path, bad) {
+    ui.toastText.textContent = text;
+    toastFile = path || null;
+    ui.toastShow.hidden = !path;
+    ui.toast.classList.toggle("bad", !!bad);
+    ui.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { ui.toast.hidden = true; }, bad ? 12000 : 9000);
+  }
+
+  const FORMATS = [["docx", "fmtDocx"], ["xlsx", "fmtXlsx"], ["csv", "fmtCsv"], ["md", "fmtMd"]];
+
+  // "Save as file": Word by default, other formats in the same small menu.
+  function exportMenu(spec) {
+    const menu = el("div", { class: "export-menu", role: "menu" });
+    const box = el("details", { class: "export" },
+      el("summary", { class: "btn btn-small" }, t("exportBtn")), menu);
+    for (const [fmt, key] of FORMATS) {
+      menu.append(el("button", {
+        type: "button", role: "menuitem",
+        onclick: async () => {
+          box.open = false;
+          toast(t("saving"));
+          try {
+            const r = await api("/api/export", { ...spec, format: fmt, lang: LANG });
+            toast(t("savedAs", r.name), r.path);
+          } catch (e) {
+            toast(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message, null, true);
+          }
+        },
+      }, el("span", {}, t(key)), el("span", { class: "ext" }, `.${fmt}`)));
+    }
+    return box;
+  }
+
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll("details.export[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  });
+
+  function saveFileButton(folder, id) {
+    return el("button", {
+      class: "link-btn", type: "button",
+      onclick: async () => {
+        try {
+          const r = await api("/api/save-file", { folder, id });
+          toast(t("savedAs", r.name), r.path);
+        } catch (e) {
+          toast(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message, null, true);
+        }
+      },
+    }, t("saveFile"));
+  }
+
+  // A link that opens the message in Telegram (only chats Telegram has message links for).
+  function linkFor(folder, id) {
+    const chat = app.chats.find((c) => c.folder === folder);
+    return chat && chat.link_base && id ? `${chat.link_base}/${id}` : null;
+  }
+
+  function tgLink(url) {
+    if (!url) return null;
+    return el("a", {
+      class: "tg-link", href: url, target: "_blank", rel: "noopener noreferrer",
+      onclick: (e) => {
+        e.preventDefault();
+        api("/api/open-link", { url }).catch((err) => toast(err.message, null, true));
+      },
+    }, t("openTg"));
+  }
+
+  function usageText(u, model) {
+    if (!u) return "";
+    const total = (u.input || 0) + (u.output || 0) + (u.cache_read || 0) + (u.cache_write || 0);
+    let s = t("usageLine", model || "", num(total),
+      t("usageBreak", num(u.input), num(u.output), num((u.cache_read || 0) + (u.cache_write || 0))));
+    if (typeof u.cost_usd === "number") s += `, ${t("costLine", u.cost_usd.toFixed(u.cost_usd < 0.1 ? 3 : 2))}`;
+    return s;
+  }
+
   async function refresh() {
     const s = await api("/api/state");
     app.claude = s.claude;
     app.convs = s.conversations || [];
     app.chats = s.chats || [];
     ui.version.textContent = `v${s.version}`;
-    ui.setupBox.hidden = !(!s.logged_in && !app.chats.length);
+    ui.setupBox.hidden = !!app.chats.length;
+    app.loggedIn = !!s.logged_in;
+    ui.setupBtn.textContent = s.logged_in ? t("addChats") : t("connect");
     setMode();
     renderLists();
     return s;
@@ -383,18 +608,21 @@
       box.hidden = false;
       btn.textContent = t("hideCtx");
     });
-    return [el("div", { class: "row-actions" }, btn), box];
+    return [el("div", { class: "row-actions" }, btn, tgLink(item.link || linkFor(item.folder, item.id))), box];
   }
 
   function hitsCard(c) {
     const head = el("header", { class: "card-head" },
       el("h2", {}, t("messagesFor", c.query || "")),
-      el("span", { class: "count" }, c.match === "words" ? `${t("messagesN", c.total)}, ${t("wordsMatch")}` : t("messagesN", c.total)));
+      el("span", { class: "count" }, c.match === "words" ? `${t("messagesN", c.total)}, ${t("wordsMatch")}` : t("messagesN", c.total)),
+      exportMenu({ kind: "card", card: c }));
     const note = c.stale && c.stale.length ? el("p", { class: "card-note" }, t("staleNote", c.stale.join(", "))) : null;
     const rows = el("ul", { class: "rows" }, c.items.map((h) => el("li", { class: "row" },
       metaRow(h),
       h.text ? el("p", { class: "snippet" }, highlight(h.text, c.query)) : null,
-      h.file ? el("span", { class: "file-chip" }, `${t("file")}: `, highlight(h.file, c.query)) : null,
+      h.file ? el("div", { class: "file-row" },
+        el("span", { class: "file-chip" }, `${t("file")}: `, highlight(h.file, c.query)),
+        h.folder ? saveFileButton(h.folder, h.id) : null) : null,
       h.folder ? contextToggle(h) : null)));
     return el("section", { class: "card" }, head, note, rows);
   }
@@ -410,15 +638,18 @@
     return el("p", { class: "quote" }, who, r.text !== null && r.text !== undefined ? `“${r.text}”` : t("notLocal"));
   }
 
-  function msgLine(it) {
-    return [metaRow({ sender: it.sender, time: it.time }, it.due ? el("span", { class: "due" }, `${t("due")}: ${it.due}`) : null),
-      el("p", { class: "snippet" }, it.text || ""), quoteLine(it)];
+  function msgLine(it, folder) {
+    return [metaRow({ sender: it.sender, time: it.time }, [
+      it.due ? el("span", { class: "due" }, `${t("due")}: ${it.due}`) : null,
+      tgLink(linkFor(folder, it.id))]),
+    el("p", { class: "snippet" }, it.text || ""), quoteLine(it)];
   }
 
   function summaryCard(c) {
     const head = el("header", { class: "card-head" },
       el("h2", {}, t("summaryOf", c.label || "")),
-      el("span", { class: "count" }, `${t("messagesN", c.total)}, ${t("chatsN", c.chats.length)}`));
+      el("span", { class: "count" }, `${t("messagesN", c.total)}, ${t("chatsN", c.chats.length)}`),
+      exportMenu({ kind: "card", card: c }));
     const parts = c.chats.map((ch, i) => {
       const body = el("div", { class: "sum-body" });
       if (ch.people && ch.people.length) {
@@ -432,12 +663,15 @@
         metaRow({ sender: (th.people || []).join(", ") }, el("span", {}, t("messagesN", th.messages))),
         el("p", { class: "snippet" }, (th.root && th.root.text) || ""),
       ]);
-      part("questions", ch.questions, msgLine);
-      part("decisions", ch.decisions, msgLine, t("decisionsNote"));
-      part("requests", ch.tasks, msgLine);
+      const line = (it) => msgLine(it, ch.folder);
+      part("questions", ch.questions, line);
+      part("decisions", ch.decisions, line, t("decisionsNote"));
+      part("requests", ch.tasks, line);
       part("links", ch.links, (l) => [metaRow({ sender: l.sender, time: l.time }),
         /^https?:\/\//.test(l.url) ? el("a", { href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.url) : el("span", {}, l.url)]);
-      part("files", ch.files, (f) => [metaRow({ sender: f.sender, time: f.time }), el("span", { class: "file-chip" }, f.name || "")]);
+      part("files", ch.files, (f) => [metaRow({ sender: f.sender, time: f.time }),
+        el("div", { class: "file-row" }, el("span", { class: "file-chip" }, f.name || ""),
+          f.path && ch.folder && f.id ? saveFileButton(ch.folder, f.id) : null)]);
       return el("details", { class: "chat-sum", open: i === 0 },
         el("summary", {}, el("span", { class: "name" }, ch.title), el("span", { class: "count" }, t("messagesN", ch.messages)),
           ch.stale ? el("span", { class: "tag" }, t("stale")) : null),
@@ -471,6 +705,7 @@
         metaRow(task, [
           task.for_me ? el("span", { class: "mine-tag" }, t("forYou")) : null,
           task.due ? el("span", { class: "due" }, `${t("due")}: ${task.due}`) : null,
+          tgLink(linkFor(task.folder, task.msg_id)),
         ])),
       btn);
     return row;
@@ -478,13 +713,15 @@
 
   function tasksCard(c) {
     return el("section", { class: "card" },
-      el("header", { class: "card-head" }, el("h2", {}, t("yourTasks")), el("span", { class: "count" }, t("tasksN", c.items.length))),
+      el("header", { class: "card-head" }, el("h2", {}, t("yourTasks")), el("span", { class: "count" }, t("tasksN", c.items.length)),
+        exportMenu({ kind: "card", card: c })),
       el("ul", { class: "rows" }, c.items.map(taskRow)));
   }
 
   function chatsCard(c) {
     return el("section", { class: "card" },
-      el("header", { class: "card-head" }, el("h2", {}, t("allChats")), el("span", { class: "count" }, t("chatsN", c.items.length))),
+      el("header", { class: "card-head" }, el("h2", {}, t("allChats")), el("span", { class: "count" }, t("chatsN", c.items.length)),
+        exportMenu({ kind: "card", card: c })),
       el("ul", { class: "rows" }, c.items.map((ch) => el("li", { class: "row" },
         el("p", { class: "who" }, ch.title),
         el("div", { class: "row-meta" }, el("span", { class: ch.stale ? "fresh old" : "fresh" },
@@ -549,6 +786,10 @@
       cards(list) { for (const c of list || []) { const n = card(c); if (n) node.append(n); } },
       notice(text) { node.insertBefore(el("p", { class: "notice" }, text), body.nextSibling); },
       error(ev) { node.append(errorBox(ev)); },
+      usage(u, model) {
+        const text = usageText(u, model);
+        if (text) node.insertBefore(el("p", { class: "usage-line" }, text), body.nextSibling);
+      },
     };
   }
 
@@ -570,8 +811,15 @@
     if (turn.error) b.error({ message: turn.text });
     else b.final(turn.text || "");
     if (turn.notice) b.notice(turn.notice);
+    if (turn.usage || turn.model) b.usage(turn.usage || {}, turn.model);
     b.cards(turn.cards);
     return b.node;
+  }
+
+  function showConvExport() {
+    ui.convExport.replaceChildren();
+    ui.convExport.hidden = !app.conv;
+    if (app.conv) ui.convExport.append(exportMenu({ kind: "conversation", conversation: app.conv.id }));
   }
 
   async function openConversation(id) {
@@ -581,6 +829,7 @@
       app.conv = { id: conv.id, title: conv.title };
       ui.title.textContent = conv.title;
       ui.thread.replaceChildren(...(conv.turns || []).map(renderTurn));
+      showConvExport();
       showEmpty(false);
       renderLists();
       closeSide();
@@ -595,6 +844,7 @@
     app.conv = null;
     ui.title.textContent = t("newChat");
     ui.thread.replaceChildren();
+    showConvExport();
     showEmpty(true);
     renderLists();
     closeSide();
@@ -630,6 +880,7 @@
           case "conversation":
             app.conv = { id: ev.id, title: ev.title };
             ui.title.textContent = ev.title;
+            showConvExport();
             break;
           case "mode": b.setMode(ev.mode); break;
           case "token": b.stream(ev.text); break;
@@ -638,7 +889,11 @@
           case "cards": b.cards(ev.cards); break;
           case "notice": b.pending(t("thinking")); b.notice(ev.text); break;
           case "error": b.body.replaceChildren(); b.body.className = "msg-body"; b.error(ev); break;
-          case "done": b.final(ev.text || ""); action = ev.action || null; break;
+          case "done":
+            b.final(ev.text || "");
+            action = ev.action || null;
+            if (ev.turn && (ev.turn.usage || ev.turn.model)) b.usage(ev.turn.usage || {}, ev.turn.model);
+            break;
           default: break;
         }
         scrollDown();
@@ -700,7 +955,8 @@
     refresh().catch(() => {});
   }
 
-  async function openSetup() {
+  // The fallback: `tgkit setup` in a terminal window.
+  async function openTerminalSetup() {
     try {
       const r = await api("/api/setup", {});
       ui.syncStatus.textContent = r.ok ? t("setupOpened") : (r.hint || t("errGeneric"));
@@ -708,6 +964,325 @@
       ui.syncStatus.textContent = e.message;
     }
   }
+
+  // ------------------------------------------------------------ setup in the window
+
+  const PANES = { codes: "suCodes", phone: "suPhone", code: "suCode", password: "suPassword", chats: "suChats" };
+  const STEP_OF = { codes: "codes", phone: "login", code: "login", password: "login", chats: "chats" };
+  let suDialogs = [];
+  let suAddedAny = false;
+
+  function suNote(text, bad) {
+    ui.suStatus.textContent = text || "";
+    ui.suStatus.classList.toggle("bad", !!bad);
+  }
+
+  function suError(e) {
+    suNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message, true);
+  }
+
+  function suShow(pane) {
+    for (const [name, id] of Object.entries(PANES)) ui[id].hidden = name !== pane;
+    const order = ["codes", "login", "chats"];
+    const at = order.indexOf(STEP_OF[pane]);
+    ui.suSteps.querySelectorAll("li").forEach((li, i) => {
+      li.classList.toggle("done", i < at);
+      li.classList.toggle("now", i === at);
+      if (i === at) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    });
+    const first = ui[PANES[pane]].querySelector("input:not([type=radio])");
+    if (first && pane !== "chats") setTimeout(() => first.focus(), 0);
+    if (pane === "chats") loadDialogs();
+  }
+
+  // One request at a time: the pane's buttons wait for Telegram's answer.
+  async function suRun(form, call) {
+    const buttons = form.querySelectorAll("button");
+    buttons.forEach((b) => { b.disabled = true; });
+    suNote(t("suWorking"));
+    try {
+      const r = await call();
+      suNote("");
+      return r;
+    } catch (e) {
+      suError(e);
+      return null;
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  }
+
+  function suAfterLogin(r) {
+    if (!r) return;
+    if (r.step === "code") suShow("code");
+    else if (r.step === "password") suShow("password");
+    else if (r.step === "done") {
+      ui.suWho.textContent = t("suWho", (r.me && r.me.name) || "");
+      refresh().catch(() => {});
+      suShow("chats");
+    }
+  }
+
+  async function openSetup(pane) {
+    if (ui.settings.open) ui.settings.close();
+    if (!ui.setupDlg.open) ui.setupDlg.showModal();
+    suNote("");
+    suAddedAny = false;
+    try {
+      const s = await api("/api/setup/state");
+      ui.suApiId.value = s.api_id || "";
+      ui.suWho.textContent = s.logged_in && s.me ? t("suWho", s.me.name || "") : "";
+      if (typeof pane === "string") suShow(pane);
+      else if (!s.has_codes) suShow("codes");
+      else if (s.step === "code" || s.step === "password") suShow(s.step);
+      else if (!s.logged_in) suShow("phone");
+      else suShow("chats");
+    } catch (e) {
+      suShow("codes");
+      suError(e);
+    }
+  }
+
+  function kindLabel(kind) {
+    const k = (kind || "").toLowerCase();
+    if (k.includes("channel")) return t("kindChannel");
+    if (k.includes("user") || k.includes("person")) return t("kindUser");
+    return t("kindGroup");
+  }
+
+  function renderDialogs() {
+    const q = fold(ui.suFilter.value.trim());
+    const shown = suDialogs.filter((d) => !q || fold(d.name).includes(q));
+    if (!shown.length) {
+      ui.suList.replaceChildren(el("li", { class: "pick-empty" }, suDialogs.length ? t("noMatch") : t("suNoChats")));
+      return;
+    }
+    ui.suList.replaceChildren(...shown.map((d) => el("li", {},
+      el("label", { class: d.added ? "pick added" : "pick" },
+        el("input", { type: "checkbox", value: d.id, checked: d.added || d.picked, disabled: d.added,
+          onchange: (e) => { d.picked = e.target.checked; } }),
+        el("span", { class: "pick-name" }, d.name),
+        el("span", { class: "pick-kind" }, d.added ? t("suAlready") : kindLabel(d.kind))))));
+  }
+
+  async function loadDialogs() {
+    ui.suList.replaceChildren(el("li", { class: "pick-empty" }, t("suLoading")));
+    try {
+      const r = await api("/api/setup/dialogs");
+      suDialogs = r.dialogs || [];
+      renderDialogs();
+    } catch (e) {
+      ui.suList.replaceChildren();
+      suError(e);
+    }
+  }
+
+  ui.suCodes.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await suRun(ui.suCodes, () => api("/api/setup/codes", { api_id: ui.suApiId.value, api_hash: ui.suApiHash.value }));
+    if (r) { ui.suApiHash.value = ""; suShow(r.logged_in ? "chats" : "phone"); }
+  });
+  ui.suPhone.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    suAfterLogin(await suRun(ui.suPhone, () => api("/api/setup/phone", { phone: ui.suPhoneIn.value })));
+  });
+  ui.suCode.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await suRun(ui.suCode, () => api("/api/setup/code", { code: ui.suCodeIn.value }));
+    ui.suCodeIn.value = "";
+    suAfterLogin(r);
+  });
+  ui.suPassword.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await suRun(ui.suPassword, () => api("/api/setup/password", { password: ui.suPwIn.value }));
+    ui.suPwIn.value = "";
+    suAfterLogin(r);
+  });
+  ui.suChats.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const ids = suDialogs.filter((d) => d.picked && !d.added).map((d) => d.id);
+    if (!ids.length) { suNote(t("suPickOne"), true); return; }
+    const limit = (document.querySelector('input[name="suLimit"]:checked') || {}).value || "1000";
+    const buttons = ui.suChats.querySelectorAll("button");
+    buttons.forEach((b) => { b.disabled = true; });
+    suNote(t("suAdding"));
+    try {
+      const r = await api("/api/setup/add", { ids, limit: limit === "all" ? "all" : Number(limit) });
+      suAddedAny = suAddedAny || r.added > 0;
+      suNote(r.added ? t("suAdded", r.added) : [t("suNoneAdded"), ...(r.lines || [])].join(" "), !r.added);
+      refresh().catch(() => {});
+      loadDialogs();
+    } catch (err) {
+      suError(err);
+    } finally {
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  });
+  ui.suFilter.addEventListener("input", renderDialogs);
+  ui.suSite.addEventListener("click", () => api("/api/setup/open-site", {}).catch(suError));
+  ui.suChangeCodes.addEventListener("click", () => suShow("codes"));
+  ui.suResend.addEventListener("click", async () => {
+    await api("/api/setup/cancel", {}).catch(() => {});
+    suShow("phone");
+  });
+  ui.suTerminal.addEventListener("click", async () => {
+    await api("/api/setup/cancel", {}).catch(() => {});
+    ui.setupDlg.close();
+    openTerminalSetup();
+  });
+  ui.suDone.addEventListener("click", () => ui.setupDlg.close());
+  ui.suClose.addEventListener("click", () => ui.setupDlg.close());
+  ui.setupDlg.addEventListener("close", () => {
+    // A login left half done would keep Get new messages waiting: end it.
+    if (!ui.suCode.hidden || !ui.suPassword.hidden) api("/api/setup/cancel", {}).catch(() => {});
+    refresh().catch(() => {});
+    if (suAddedAny) ui.input.focus();
+  });
+
+  // ------------------------------------------------------------ settings
+
+  let setTimer = null;
+  function setNote(text) {
+    ui.setStatus.textContent = text;
+    clearTimeout(setTimer);
+    if (text) setTimer = setTimeout(() => { ui.setStatus.textContent = ""; }, 5000);
+  }
+
+  function fillSelect(select, values, current, defaultLabel) {
+    const opts = [["", defaultLabel], ...values.map((v) => [v, v.charAt(0).toUpperCase() + v.slice(1)])];
+    if (current && !values.includes(current)) opts.push([current, current]);
+    select.replaceChildren(...opts.map(([v, label]) => el("option", { value: v }, label)));
+    select.value = current || "";
+  }
+
+  function showClaude(st) {
+    const states = {
+      connected: ["ok", t("stConnected", st.account, st.plan)],
+      not_logged_in: ["warn", t("stNotLogged")],
+      unknown: ["warn", t("stUnknown")],
+      missing: ["bad", t("stMissing")],
+    };
+    const [dot, text] = states[st.state] || states.unknown;
+    ui.claudeDot.className = `state-dot ${dot}`;
+    ui.claudeStateText.textContent = st.version ? `${text} (v${st.version})` : text;
+    const steps = st.state === "missing" ? t("fixMissing") : st.state === "not_logged_in" ? t("fixNotLogged") : [];
+    ui.claudeSteps.replaceChildren(...steps.map((s) => el("li", {}, s)));
+    ui.claudeSteps.hidden = !steps.length;
+    ui.claudeInstall.hidden = st.state !== "missing";
+    ui.claudeLogin.hidden = !(st.state === "not_logged_in" || st.state === "unknown" || st.state === "missing");
+    ui.claudeLogin.disabled = st.state === "missing";
+    ui.modelRow.hidden = !st.installed;
+  }
+
+  function showSettings(s) {
+    fillSelect(ui.modelPick, s.models || [], s.model, t("modelDefault"));
+    fillSelect(ui.effortPick, s.efforts || [], s.effort, t("effortDefault"));
+    ui.effortField.hidden = !(s.efforts && s.efforts.length);
+    ui.limitInput.value = s.usage_daily_limit ? String(s.usage_daily_limit) : "";
+    ui.hardStop.checked = !!s.usage_hard_stop;
+    ui.exportDir.value = s.export_dir || s.export_now || "";
+    ui.exportDir.placeholder = s.export_default || "";
+    ui.mediaCap.value = String(s.max_media_mb ?? 50);
+    ui.dataPath.textContent = s.home || "";
+    const acc = s.account || {};
+    ui.addChatsBtn.hidden = !acc.logged_in;
+    ui.accountLine.textContent = acc.logged_in ? t("loggedInAs", acc.name || "") : t("notLoggedIn");
+    ui.logoutBtn.hidden = !acc.logged_in;
+    ui.connectBtn.hidden = !!acc.logged_in;
+    ui.logoutConfirm.hidden = true;
+  }
+
+  function showUsage(u) {
+    const box = (label, x) => el("div", {}, el("dt", {}, label), el("dd", {}, t("tokensN", num(x.tokens)),
+      el("span", { class: "sub" }, `${t("answersN", x.answers)}, ${t("usageBreak", num(x.input), num(x.output), num(x.cache_read + x.cache_write))}`)));
+    ui.usageGrid.replaceChildren(box(t("today"), u.today), box(t("month"), u.month),
+      ...(u.conversation ? [box(t("thisConv"), u.conversation)] : []));
+    const cost = u.month && typeof u.month.cost_usd === "number" ? u.month.cost_usd : null;
+    ui.usageCost.hidden = cost === null;
+    if (cost !== null) ui.usageCost.textContent = t("costNote", cost.toFixed(2));
+  }
+
+  async function openSettings() {
+    if (!ui.settings.open) ui.settings.showModal();
+    setNote("");
+    ui.claudeStateText.textContent = t("checking");
+    try {
+      const conv = app.conv ? `?conversation=${encodeURIComponent(app.conv.id)}` : "";
+      const [s, u, st] = await Promise.all([api("/api/settings"), api(`/api/usage${conv}`), api("/api/claude-status")]);
+      showSettings(s);
+      showUsage(u);
+      showClaude(st);
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  async function saveSetting(body) {
+    try {
+      showSettings(await api("/api/settings", body));
+      setNote(t("saved"));
+    } catch (e) {
+      setNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message);
+    }
+  }
+
+  async function recheckClaude() {
+    ui.claudeStateText.textContent = t("checking");
+    ui.claudeDot.className = "state-dot";
+    try {
+      showClaude(await api("/api/claude-status?refresh=1"));
+      showSettings(await api("/api/settings"));
+      refresh().catch(() => {});
+    } catch (e) {
+      setNote(e.message);
+    }
+  }
+
+  ui.settingsBtn.addEventListener("click", openSettings);
+  ui.setClose.addEventListener("click", () => ui.settings.close());
+  ui.settings.addEventListener("click", (e) => { if (e.target === ui.settings) ui.settings.close(); });
+  ui.claudeCheck.addEventListener("click", recheckClaude);
+  ui.claudeInstall.addEventListener("click", () => api("/api/claude/install", {}).catch((e) => setNote(e.message)));
+  ui.claudeLogin.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/claude/login", {});
+      setNote(r.ok ? t("loginOpened") : (r.hint || t("errGeneric")));
+    } catch (e) { setNote(e.message); }
+  });
+  ui.modelPick.addEventListener("change", () => saveSetting({ model: ui.modelPick.value }));
+  ui.effortPick.addEventListener("change", () => saveSetting({ effort: ui.effortPick.value }));
+  ui.limitInput.addEventListener("change", () => saveSetting({ usage_daily_limit: Number(ui.limitInput.value || 0) }));
+  ui.hardStop.addEventListener("change", () => saveSetting({ usage_hard_stop: ui.hardStop.checked }));
+  ui.exportDir.addEventListener("change", () => saveSetting({ export_dir: ui.exportDir.value.trim() }));
+  ui.exportDefault.addEventListener("click", () => saveSetting({ export_dir: "" }));
+  ui.openExport.addEventListener("click", () => api("/api/open-folder", {}).catch((e) => setNote(e.message)));
+  ui.mediaCap.addEventListener("change", () => saveSetting({ max_media_mb: Number(ui.mediaCap.value || 50) }));
+  ui.openData.addEventListener("click", () => api("/api/open-data", {}).catch((e) => setNote(e.message)));
+  ui.addChatsBtn.addEventListener("click", () => openSetup("chats"));
+  ui.logoutBtn.addEventListener("click", () => { ui.logoutConfirm.hidden = false; ui.logoutNo.focus(); });
+  ui.logoutNo.addEventListener("click", () => { ui.logoutConfirm.hidden = true; ui.logoutBtn.focus(); });
+  ui.connectBtn.addEventListener("click", () => { ui.settings.close(); openSetup(); });
+  ui.logoutYes.addEventListener("click", async () => {
+    const data = (document.querySelector('input[name="keep"]:checked') || {}).value || "keep";
+    ui.logoutYes.disabled = true;
+    try {
+      const r = await api("/api/logout", { data });
+      let note = t("loggedOut");
+      if (r.backup) note += ` ${t("movedTo", r.backup)}`;
+      if (r.telegram_note) note += ` ${r.telegram_note}`;
+      setNote(note);
+      showSettings(await api("/api/settings"));
+      refresh().catch(() => {});
+    } catch (e) {
+      setNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message);
+    } finally {
+      ui.logoutYes.disabled = false;
+    }
+  });
+  ui.toastClose.addEventListener("click", () => { ui.toast.hidden = true; });
+  ui.toastShow.addEventListener("click", () => {
+    if (toastFile) api("/api/reveal", { path: toastFile }).catch(() => {});
+  });
 
   // ------------------------------------------------------------ input
 
@@ -726,7 +1301,11 @@
   });
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newConversation(); }
-    else if (e.key === "Escape") { if (app.busy) stop(); else closeSide(); }
+    else if (e.key === "Escape") {
+      document.querySelectorAll("details.export[open]").forEach((d) => { d.open = false; });
+      if (ui.settings.open || ui.setupDlg.open) return;
+      if (app.busy) stop(); else closeSide();
+    }
   });
   ui.newChat.addEventListener("click", newConversation);
   ui.filter.addEventListener("input", renderLists);
@@ -748,6 +1327,8 @@
     const start = params.get("c");
     if (start) openConversation(start);
     else newConversation();
+    if (params.get("panel") === "settings") openSettings();
+    if (params.get("panel") === "setup") openSetup(params.get("step") || undefined);
   }).catch((e) => {
     showEmpty(true);
     ui.syncStatus.textContent = e.message;

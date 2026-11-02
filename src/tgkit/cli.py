@@ -33,6 +33,11 @@ More:
   tgkit media "chat"              files and photos in a chat
   tgkit who                       look up the names of people
   tgkit setup                     first-time setup, or change settings
+  tgkit logout                    log out of Telegram here (to stop, or to use another account)
+  tgkit export search "words"     save results as a Word file (also: summary, tasks, conversation <id>,
+                                  file "chat" <message id>; --format docx|xlsx|csv|md, --to folder)
+  tgkit usage                     tokens used by Claude answers in the TG Kit window (--json)
+  tgkit claude-status             is Claude Code installed and logged in (--json)
   tgkit where                     where your data is kept
   tgkit guide                     the playbook for Claude Code: "run tgkit guide, then answer"
   tgkit                           (nothing else) opens a simple menu
@@ -365,6 +370,143 @@ def cmd_chats_log(args) -> int:
     return 0
 
 
+def _yes(answer: str) -> bool:
+    return answer.strip().lower() in ("y", "yes", "co", "có", "ok")
+
+
+def cmd_logout(args) -> int:
+    from . import account  # noqa: PLC0415
+
+    base = config.home()
+    name = account.who(base)
+    if not account.has_session(base) and not args.backup_data:
+        print("This computer is not logged in to Telegram, so there is nothing to log out.")
+        print("To log in (with any account): tgkit setup")
+        return 0
+    ask = wizard.asker(input)
+    print(f"Logged in to Telegram as {name}." if name else "This computer has a Telegram login.")
+    print("Logging out ends TG Kit's login here, on this computer only. Your Telegram app and your\n"
+          "messages on Telegram are not touched. Your api_id and api_hash stay saved: they work\n"
+          "with any account.")
+    if not args.yes and not _yes(ask("Log out now? Type yes, or press Enter to cancel: ")):
+        print("Nothing was changed.")
+        return 0
+    data = "backup" if args.backup_data else "keep"
+    if not (args.keep_data or args.backup_data or args.yes):
+        n = account.data_summary(base)["chats"]
+        if n:
+            print(f"\nTG Kit has a copy of {n} chat(s) from this account. What should happen to it?\n"
+                  "  1  Keep it (you can still search it; it gets new messages again only\n"
+                  "     when you log in to this same account)\n"
+                  "  2  Move it to a backup folder inside your data folder, so TG Kit starts\n"
+                  "     empty for another account. Nothing is deleted.")
+            data = "backup" if ask("Type 1 or 2 (Enter = 1): ").strip() == "2" else "keep"
+    res = account.logout(base, data)
+    print("\nLogged out." if res["telegram"] else "\nLogged out on this computer.")
+    if res["telegram_note"]:
+        print(f"{res['telegram_note']} The login file was removed anyway. To be sure, open Telegram >\n"
+              "Settings > Devices and end the TG Kit session there.")
+    if res["backup"]:
+        print(f"Your chats, tasks and app conversations were moved to:\n  {res['backup']}")
+    print("To log in again, with this or another account: tgkit setup")
+    return 0
+
+
+def cmd_claude_status(args) -> int:
+    from . import claude  # noqa: PLC0415
+
+    st = claude.status(home=config.home())
+    if args.json:
+        print(json.dumps(st, ensure_ascii=False, indent=2))
+        return 0
+    words = {"missing": "Claude Code is not installed on this computer.",
+             "not_logged_in": "Claude Code is installed but not logged in.",
+             "connected": "Claude Code is installed and logged in.",
+             "unknown": "Claude Code is installed. Its login could not be checked."}[st["state"]]
+    print(words)
+    if st["version"]:
+        print(f"  version {st['version']}")
+    if st["account"]:
+        plan = f" ({st['plan']} plan)" if st["plan"] else ""
+        print(f"  account {st['account']}{plan}")
+    print(f"  model for TG Kit answers: {st['model'] or 'Claude Code default'}"
+          + (f", effort {st['effort']}" if st["effort"] else ""))
+    for i, step in enumerate(st.get("fix") or [], 1):
+        print(f"  {i}. {step}")
+    return 0
+
+
+def _n(value) -> str:
+    return f"{int(value or 0):,}"
+
+
+def cmd_usage(args) -> int:
+    from . import usage  # noqa: PLC0415
+
+    base = config.home()
+    tot = usage.totals(base, args.conversation)
+    cfg = config.load(base) if config.config_path(base).exists() else {}
+    tot["limit"] = usage.limit_state(base, cfg)
+    if args.json:
+        print(json.dumps(tot, ensure_ascii=False, indent=2))
+        return 0
+    print(tot["what_uses_tokens"])
+    for key, label in (("today", "Today"), ("month", "This month"), ("conversation", "This conversation")):
+        t = tot.get(key)
+        if not t:
+            continue
+        cost = f", about ${t['cost_usd']:.2f} (Claude Code's estimate)" if "cost_usd" in t else ""
+        print(f"  {label}: {_n(t['tokens'])} tokens in {t['answers']} answer(s): {_n(t['input'])} in, "
+              f"{_n(t['output'])} out, {_n(t['cache_read'])} read from cache, "
+              f"{_n(t['cache_write'])} written to cache{cost}")
+    lim = tot["limit"]
+    if lim["limit"]:
+        print(f"  Daily limit you set: {_n(lim['limit'])} tokens"
+              + (" (reached)" if lim["reached"] else "")
+              + (", then TG Kit answers without Claude" if lim["hard"] else ", a warning only"))
+    return 0
+
+
+def cmd_export(args) -> int:
+    from . import export  # noqa: PLC0415
+
+    base = config.home()
+    what = (args.what or "").lower()
+    rest = list(args.rest or [])
+    if what == "file":
+        if len(rest) < 2:
+            raise UserError("Which file?", 'For example: tgkit export file "Team" 1234   (chat, then message id)')
+        dirs = Store(base).match(rest[0])
+        if len(dirs) != 1:
+            raise UserError(f"'{rest[0]}' matches {len(dirs)} chats.", "Type more of the chat name.")
+        path = export.save_attachment(base, dirs[0].name, rest[1], args.to)
+    else:
+        if what not in ("search", "summary", "tasks", "conversation"):
+            raise UserError(f"TG Kit cannot export '{what}'.",
+                            'Try: tgkit export search "words", tgkit export summary, tgkit export tasks, '
+                            "tgkit export conversation <id>")
+        kw = {"chat": args.chat, "since": args.since, "lang": args.lang}
+        if what == "search":
+            kw["query"] = " ".join(rest)
+        elif what == "summary" and rest and not args.chat:
+            kw["chat"] = rest[0]
+        elif what == "tasks":
+            kw["which"] = rest[0] if rest else "open"
+        elif what == "conversation":
+            if not rest:
+                raise UserError("Which conversation?", "See the ids with: tgkit chats-log")
+            kw["conversation"] = rest[0]
+        doc = export.build(base, what, **kw)
+        path = export.save(base, doc, args.format, args.to)
+    if args.json:
+        print(json.dumps({"path": str(path), "name": path.name, "folder": str(path.parent)}, ensure_ascii=False))
+        return 0
+    print(f"Saved: {path}")
+    if not args.no_reveal and sys.stdout.isatty():
+        export.reveal(path)
+    return 0
+
+
 def cmd_menu(args) -> int:
     base = config.home()
     if not Store(base).chat_dirs() and not config.logged_in(base):
@@ -459,6 +601,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cards", action="store_true", help="include the result cards")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_chats_log)
+
+    p = sub.add_parser("logout", aliases=["log-out", "switch-account"])
+    p.add_argument("--yes", action="store_true", help="do not ask (keeps the chats unless --backup-data)")
+    p.add_argument("--keep-data", action="store_true", help="keep the copied chats")
+    p.add_argument("--backup-data", action="store_true", help="move the chats to a backup folder")
+    p.set_defaults(func=cmd_logout)
+
+    p = sub.add_parser("claude-status", aliases=["claude"])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_claude_status)
+
+    p = sub.add_parser("usage", aliases=["tokens"])
+    p.add_argument("--conversation", help="also the total of one conversation (its id)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_usage)
+
+    p = sub.add_parser("export", aliases=["save"])
+    p.add_argument("what", nargs="?", default="", help="search, summary, tasks, conversation or file")
+    p.add_argument("rest", nargs="*")
+    p.add_argument("--chat")
+    p.add_argument("--since")
+    p.add_argument("--format", default="docx", help="docx (default), xlsx, csv or md")
+    p.add_argument("--to", help="the folder to save in (default: the one set in the app, or Documents/TG Kit)")
+    p.add_argument("--lang", default="en", help="en or vi: the language of the headings")
+    p.add_argument("--no-reveal", action="store_true", help="do not open the folder afterwards")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_export)
     return ap
 
 
@@ -496,7 +665,7 @@ TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")
 def _writes(func, args) -> bool:
     if func is cmd_tasks:
         return (args.action or "").lower() in TASK_WRITES
-    return func in (cmd_setup, cmd_add, cmd_sync, cmd_who, cmd_menu, cmd_app)
+    return func in (cmd_setup, cmd_add, cmd_sync, cmd_who, cmd_menu, cmd_app, cmd_logout, cmd_export)
 
 
 def main(argv=None) -> int:
@@ -522,7 +691,7 @@ def main(argv=None) -> int:
         if os.environ.get(READONLY_ENV) and _writes(func, args):
             raise UserError(
                 "TG Kit is read-only here: it was started by Claude in the TG Kit window, "
-                "so it does not change tasks, sync, add chats or set up.",
+                "so it does not change tasks, sync, add chats, set up, log out or save files.",
                 "Use the buttons in the TG Kit window for that.",
             )
         return func(args) or 0

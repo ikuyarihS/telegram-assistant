@@ -17,7 +17,10 @@ def home(tmp_path, monkeypatch):
     base = tmp_path / "data"
     fixture_data.build(base)
     monkeypatch.setenv("TGKIT_HOME", str(base))
-    for k in ("TG_API_ID", "TG_API_HASH", "TGKIT_API_ID", "TGKIT_API_HASH", "TGKIT_DEBUG"):
+    # Saved files go to a test folder, and no Explorer / browser window ever opens.
+    monkeypatch.setenv("TGKIT_EXPORT_DIR", str(tmp_path / "exports"))
+    monkeypatch.setenv("TGKIT_NO_REVEAL", "1")
+    for k in ("TG_API_ID", "TG_API_HASH", "TGKIT_API_ID", "TGKIT_API_HASH", "TGKIT_DEBUG", "TGKIT_CLAUDE_MODEL"):
         monkeypatch.delenv(k, raising=False)
     return base
 

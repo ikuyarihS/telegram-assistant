@@ -21,8 +21,11 @@ it first: "run tgkit guide, then answer".
   may type. If TG Kit is not set up (an error says "tgkit setup"), tell the
   user to open TG Kit from its desktop icon, or type `tgkit setup` in a
   terminal window, and come back when it is done.
-- Add `--json` to `search`, `summary`, `tasks` and `chats-log`, and read the
-  JSON.
+- Never run `tgkit logout` yourself. To log out or use another Telegram
+  account, the user opens Settings in the TG Kit window (or types
+  `tgkit logout` in a terminal) and then connects again.
+- Add `--json` to `search`, `summary`, `tasks`, `chats-log`, `usage`,
+  `claude-status` and `export`, and read the JSON.
 - Freshness: every chat in the summary has `synced_at` and `stale`. If a chat
   is stale, or the user asks about today, run `tgkit sync` first (it only
   fetches new messages and never changes old ones), then answer.
@@ -60,6 +63,11 @@ it first: "run tgkit guide, then answer".
 | "which chats do you have" | `tgkit chats` |
 | "get the latest messages" | `tgkit sync` |
 | "what did I ask in the TG Kit app", "continue what I asked there" | `tgkit chats-log --json` |
+| "save / send me that as a file" | `tgkit export search "X" --json` (also `summary`, `tasks`, `conversation <id>`) |
+| "the tasks as an Excel sheet" | `tgkit export tasks --format xlsx --json` |
+| "save the file X sent in chat Y" | `tgkit export file "Y" <message id> --json` |
+| "how many tokens did the TG Kit app use" | `tgkit usage --json` |
+| "is Claude connected in the TG Kit app" | `tgkit claude-status --json` |
 
 Chat names can be typed partly and without accents: `--chat "ke toan"`
 matches "Phòng Kế toán". Search also ignores accents when the words are typed
@@ -70,8 +78,10 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
 
 - `search --json`: `{"query", "total", "results": [...]}`; each result has
   `chat`, `folder`, `id`, `date`, `sender`, `text`, `file`, `reply_to` (the
-  id of the message it answers). `total` counts every hit; `results` holds
-  the newest 30 unless `--limit` says otherwise (`--limit 0` = all).
+  id of the message it answers) and `link` (a t.me link that opens the
+  message in Telegram, or null for chats Telegram has no message links for).
+  `total` counts every hit; `results` holds the newest 30 unless `--limit`
+  says otherwise (`--limit 0` = all).
 - `summary --json`: `{"window": {"since", "label"}, "total_messages",
   "chats": [...], "quiet_chats": [...], "note"}`. Each chat has `title`,
   `messages`, `first`, `last`, `synced_at`, `stale`, `people` (name and
@@ -87,6 +97,16 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
   newly found ones.
 - `chats-log --json`: `{"conversations": [...]}`, newest first; each has
   `id`, `title`, `created`, `updated` and `turns` (see below).
+- `export ... --json`: `{"path", "name", "folder"}` of the file it saved
+  (Word `.docx` unless `--format xlsx|csv|md`; never overwrites a file).
+- `usage --json`: tokens used by Claude answers in the TG Kit window:
+  `today`, `month`, `days`, `all` (each `answers`, `tokens`, `input`,
+  `output`, `cache_read`, `cache_write`, and `cost_usd` only when Claude Code
+  reported it, as its own estimate) and the daily `limit` the user set.
+  Search, summary, tasks and sync use no tokens.
+- `claude-status --json`: `state` (`connected`, `not_logged_in`, `missing`,
+  `unknown`), `version`, `account`, `plan`, the `model` and `effort` chosen
+  for the app, and `fix` (steps in plain words).
 - `chats`, `show` and `media` print plain text: chat names with their message
   count and last update; messages as `[date] sender: text`; files with their
   path on disk.
@@ -99,6 +119,10 @@ meeting prep note, a status update. Run the `--json` form of `summary`,
 chat, sender and date, and check the `stale` flag first: when a chat is stale,
 say so or run `tgkit sync` before using it. A decision in the summary is only
 "possible": read its `in_reply_to` message before writing that someone agreed.
+Add the result's `link` when you quote a message, so the reader can open it in
+Telegram. When the user wants the result as a file to share, write it as a
+Word document (`.docx`), never Markdown: `tgkit export` makes one from a
+search, a summary or the task list, and tells you where it saved it.
 
 ## The TG Kit app (what the user asked there)
 

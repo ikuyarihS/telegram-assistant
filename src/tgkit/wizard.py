@@ -165,8 +165,10 @@ def run_setup(ask=None, say=print, secret=None) -> int:
 
     say("\nStep 2 of 4: connect TG Kit to Telegram")
     if config.has_credentials(base, cfg):
-        again = ask("Your Telegram codes are already saved. Press Enter to keep them, "
-                    "or type new to enter new ones: ").strip().lower()
+        say("Your api_id and api_hash are saved. They belong to TG Kit, not to one account: they\n"
+            "work with any Telegram account. To use another account, keep them and choose\n"
+            "switch in the next step.")
+        again = ask("Press Enter to keep them, or type new to enter new ones: ").strip().lower()
         if again == "new":
             cfg["api_id"], cfg["api_hash"] = ask_credentials(ask, say)
             cfg.pop("me", None)
@@ -177,6 +179,25 @@ def run_setup(ask=None, say=print, secret=None) -> int:
     say("Saved.")
 
     say("\nStep 3 of 4: log in to Telegram")
+    if config.logged_in(base):
+        from . import account  # noqa: PLC0415
+
+        name = account.who(base) or "your account"
+        choice = ask(f"You are logged in as {name}. Press Enter to keep this account,\n"
+                     "or type switch to log out and log in with another one: ").strip().lower()
+        if choice in ("switch", "s", "doi", "đổi"):
+            data = "keep"
+            n = account.data_summary(base)["chats"]
+            if n:
+                say(f"TG Kit has a copy of {n} chat(s) from {name}.\n"
+                    "  1  Keep it (still searchable; it updates only when you log in to that account again)\n"
+                    "  2  Move it to a backup folder inside your data folder (nothing is deleted)")
+                data = "backup" if ask("Type 1 or 2 (Enter = 1): ").strip() == "2" else "keep"
+            res = account.logout(base, data)
+            say(f"Logged out of {name}." + (f" Your chats were moved to {res['backup']}" if res["backup"] else ""))
+            if res["telegram_note"]:
+                say(res["telegram_note"] + " The login file was removed anyway.")
+            cfg = config.load(base)
     ctx = net.Ctx(base, Store(base), cfg)
 
     def ask_phone():
@@ -223,6 +244,7 @@ TG Kit - your Telegram helper
   5  Add more chats
   6  Show my chats
   7  Setup (first time, or change settings)
+  8  Log out / switch Telegram account
   0  Quit
 """
 
@@ -255,6 +277,8 @@ def run_menu(main, ask=None, say=print) -> int:
                 main(["chats"])
             elif choice == "7":
                 main(["setup"])
+            elif choice == "8":
+                main(["logout"])
             else:
                 say("Please type one of the numbers shown.")
                 continue

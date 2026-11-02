@@ -8,6 +8,21 @@ import json
 import os
 import sys
 
+# Quick commands the app runs to check Claude (no prompt, not logged as a run).
+if "--help" in sys.argv:
+    print(os.environ.get("FAKE_CLAUDE_HELP", "Usage: claude [options]\n  -p, --print  Print response and exit"))
+    sys.exit(0)
+if "--version" in sys.argv:
+    print("9.9.9 (Claude Code)")
+    sys.exit(0)
+if sys.argv[1:3] == ["auth", "status"]:
+    auth = os.environ.get("FAKE_CLAUDE_AUTH")
+    if auth is None:
+        print("error: unknown command 'auth'", file=sys.stderr)
+        sys.exit(1)
+    print(auth)
+    sys.exit(0 if '"loggedIn": true' in auth else 1)
+
 prompt = sys.stdin.read()
 log = os.environ.get("FAKE_CLAUDE_LOG")
 if log:
@@ -34,7 +49,8 @@ def delta(text):
 
 
 shell = os.environ.get("FAKE_CLAUDE_SHELL", "Bash")
-out({"type": "system", "subtype": "init", "session_id": session, "tools": [shell]})
+model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else "claude-sonnet-test"
+out({"type": "system", "subtype": "init", "session_id": session, "tools": [shell], "model": model})
 delta("Đang ")
 delta("tìm...")
 run = os.environ.get("FAKE_CLAUDE_RUN")  # really run `tgkit <this>` with the env Claude got
@@ -57,4 +73,10 @@ out({"type": "user", "session_id": session, "message": {"content": [
     {"type": "tool_result", "tool_use_id": "toolu_1", "content": body, "is_error": failed}]}})
 final = os.environ.get("FAKE_CLAUDE_FINAL", "Có 1 tin nhắn nhắc đến biên bản họp.")
 delta(final)
-out({"type": "result", "subtype": "success", "is_error": False, "result": final, "session_id": session})
+result_ev = {"type": "result", "subtype": "success", "is_error": False, "result": final, "session_id": session,
+             "usage": {"input_tokens": 120, "output_tokens": 45, "cache_read_input_tokens": 3000,
+                       "cache_creation_input_tokens": 200},
+             "modelUsage": {model: {"inputTokens": 120}}}
+if os.environ.get("FAKE_CLAUDE_COST"):
+    result_ev["total_cost_usd"] = float(os.environ["FAKE_CLAUDE_COST"])
+out(result_ev)
