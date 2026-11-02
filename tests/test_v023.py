@@ -122,6 +122,19 @@ def test_logout_backup_moves_and_never_deletes(home):
     assert Store(home).chat_dirs() == []
 
 
+def test_logout_backup_keeps_token_use_and_the_daily_stop(home):
+    config.save(home, {**config.load(home), "usage_daily_limit": 1000, "usage_hard_stop": True,
+                       "claude_model": "haiku"})
+    usage.record(home, {"input": 5000, "output": 10})
+    assert usage.limit_state(home, config.load(home))["reached"]
+    res = account.logout(home, "backup", server=lambda b, c: False)
+    assert not (Path(res["backup"]) / usage.FILE).exists()
+    assert usage.totals(home)["today"]["tokens"] == 5010
+    cfg = config.load(home)
+    st = usage.limit_state(home, cfg)
+    assert st["reached"] and st["hard"] and cfg["claude_model"] == "haiku"
+
+
 def test_logout_waits_for_a_running_sync(home):
     (home / "tgkit.session").write_bytes(b"x")
     with SyncLock(home):

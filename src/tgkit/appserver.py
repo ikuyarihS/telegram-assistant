@@ -537,7 +537,8 @@ def make_handler(app: App):
                     return self._json(app.settings())
                 if path == "/api/claude-status":
                     q = parse_qs(url.query)
-                    return self._json(app.claude_status(bool((q.get("refresh") or [""])[0])))
+                    flag = (q.get("refresh") or [""])[0].strip().lower()
+                    return self._json(app.claude_status(flag in ("1", "true", "yes")))
                 if path == "/api/usage":
                     q = parse_qs(url.query)
                     return self._json(app.usage((q.get("conversation") or [None])[0]))

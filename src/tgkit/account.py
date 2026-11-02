@@ -22,9 +22,11 @@ from . import config
 from .errors import UserError
 from .store import Store, SyncLock, atomic_write
 
-# What belongs to one Telegram account; moved together by "backup".
+# What belongs to one Telegram account; moved together by "backup". usage.jsonl
+# is not here: token use belongs to the Claude login on this computer, and the
+# daily limit must keep counting across a Telegram account switch.
 ACCOUNT_DATA = ("chats", "tasks.json", "senders.json", "sync-state.json", "summary.json",
-                "app/conversations", "usage.jsonl")
+                "app/conversations")
 SESSION_FILES = ("tgkit.session", "tgkit.session-journal")
 
 
