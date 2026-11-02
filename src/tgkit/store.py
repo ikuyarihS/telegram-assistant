@@ -103,17 +103,22 @@ class SyncLock:
     `sync.lock` is opened (never moved or deleted, so every process locks the
     same file) and locked with the operating system's file lock, held until
     release. The system drops the lock of a process that dies, so there is no
-    stale-lock takeover. The file holds the holder's pid and start time, for
-    people only.
+    stale-lock takeover. The file holds the holder's pid, start time, what it
+    is doing and a heartbeat (`beat`): the window reads them (`lock_status`) to
+    tell a working sync from a hung one and offer Stop and retry. Nothing ever
+    takes the lock over; Stop ends only a task of the window itself.
     """
 
     name = LOCK_NAME
     wait = 0.0  # seconds to wait for a busy lock; a sync refuses at once
 
-    def __init__(self, home: Path):
+    def __init__(self, home: Path, what: str = "sync"):
         self.path = Path(home) / self.name
         self.held = False
+        self.what = what
         self._fd: int | None = None
+        self._info: dict = {}
+        self._last_beat = 0.0
 
     def _busy(self) -> UserError:
         return UserError(
@@ -130,17 +135,34 @@ class SyncLock:
                 os.close(fd)
                 raise self._busy()
             time.sleep(0.05)
-        body = json.dumps({"pid": os.getpid(),
-                           "started": datetime.now(timezone.utc).replace(microsecond=0).isoformat()})
-        try:
-            os.ftruncate(fd, 0)
-            os.lseek(fd, 0, os.SEEK_SET)
-            os.write(fd, body.encode("utf-8"))
-        except OSError:
-            pass  # the text is for people; the lock is what counts
+        now = _utc_now()
         self._fd = fd
         self.held = True
+        self._info = {"pid": os.getpid(), "started": now, "beat": now, "what": self.what}
+        self._write()
         return self
+
+    def _write(self) -> None:
+        if self._fd is None:
+            return
+        body = json.dumps(self._info, ensure_ascii=False).encode("utf-8")
+        try:
+            os.lseek(self._fd, 0, os.SEEK_SET)
+            os.write(self._fd, body)
+            os.ftruncate(self._fd, len(body))
+        except OSError:
+            pass  # the text is for people; the lock is what counts
+        self._last_beat = time.monotonic()
+
+    def beat(self, what: str | None = None, force: bool = False) -> None:
+        """Say the holder is still working (at most once a second unless forced)."""
+        if not self.held:
+            return
+        if what is not None and what != self._info.get("what"):
+            self._info["what"], force = what, True
+        if force or time.monotonic() - self._last_beat >= 1.0:
+            self._info["beat"] = _utc_now()
+            self._write()
 
     def release(self) -> None:
         """Free only the lock this object holds; the file stays for the next sync."""
@@ -164,6 +186,90 @@ class SyncLock:
     def __exit__(self, *exc):
         self.release()
         return False
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+# A holder with no heartbeat for this long is shown as stuck (a sync beats for every
+# chat, every 100 messages and every file). A login waits for a person typing a
+# code, so it is never stuck before its own limit (setupflow.LOGIN_TIMEOUT).
+STUCK_AFTER = 180
+LOGIN_STUCK_AFTER = 15 * 60
+
+
+def pid_alive(pid) -> bool:
+    """Is a process with this id running? Never sends it anything."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        import ctypes  # noqa: PLC0415
+
+        kernel = ctypes.windll.kernel32
+        handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return ctypes.GetLastError() == 5  # access denied: it exists
+        try:
+            code = ctypes.c_ulong()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def lock_status(home: Path, name: str = LOCK_NAME) -> dict:
+    """Who holds a lock, and whether it looks hung: held with no heartbeat for
+    STUCK_AFTER seconds, or held under a pid that is no longer running. Reading
+    never changes the lock or the file."""
+    path = Path(home) / name
+    info: dict = {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace") or "{}")
+        info = data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        info = {}
+    held = False
+    if path.exists():
+        try:
+            fd = os.open(path, os.O_RDWR)
+        except OSError:
+            fd = None
+        if fd is not None:
+            try:
+                if _try_lock(fd):
+                    _unlock(fd)
+                else:
+                    held = True
+            finally:
+                os.close(fd)
+    out = {"held": held, "pid": info.get("pid"), "what": info.get("what"),
+           "started": info.get("started"), "beat": info.get("beat"),
+           "alive": None, "idle": None, "stuck": False, "mine": False}
+    if not held:
+        return out
+    out["alive"] = pid_alive(info.get("pid"))
+    out["mine"] = info.get("pid") == os.getpid()
+    beat = parse_date(info.get("beat") or info.get("started"))
+    if beat is not None:
+        out["idle"] = max(0, int((datetime.now(timezone.utc) - beat).total_seconds()))
+    limit = LOGIN_STUCK_AFTER if info.get("what") == "login" else STUCK_AFTER
+    out["stuck"] = (not out["alive"]) or (out["idle"] is not None and out["idle"] > limit)
+    return out
 
 
 TASKS_LOCK_NAME = "tasks.lock"

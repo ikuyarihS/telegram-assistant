@@ -8,7 +8,10 @@ open a terminal:
   code(code)               -> logged in, or "password" (two-step verification)
   password(pw)             -> logged in
   dialogs()                -> the user's Telegram chats, with "added" flags
-  add(ids, limit)          -> net.add_chats: the guarded add, under the sync lock
+  add(ids, limit)          -> starts net.add_chats (the guarded add, under the sync
+                              lock) in the background; add_state() has one row per
+                              ticked chat: waiting, copying N, done or a plain error
+  stop()                   -> cancels the copy (or a login) and frees its locks
 
 The Telethon client of a login lives on one asyncio loop in a background
 thread, so the code typed in the next request reaches the same client. The
@@ -21,6 +24,7 @@ import asyncio
 import contextlib
 import io
 import os
+import socket
 import sqlite3
 import threading
 import time
@@ -31,10 +35,13 @@ from .errors import UserError
 from .store import SessionLock, Store, SyncLock
 
 LOGIN_TIMEOUT = 15 * 60  # an unfinished login is dropped after this many seconds
+LIST_WAIT = 10  # seconds listing chats waits for a short holder of the sync lock
 
 
 BUSY = ("TG Kit is still busy with Telegram (getting new messages or copying chats).",
         "Wait a moment and try again.")
+COPYING = ("TG Kit is still copying the chats you ticked.",
+           "Wait until it is done, or press Stop and retry.")
 UNKNOWN = ("Something went wrong while talking to Telegram.",
            "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
            "and send it to whoever gave you TG Kit.")
@@ -59,8 +66,11 @@ def _friendly(exc: BaseException, home=None) -> UserError:
                 "PasswordHashInvalidError": "Type your two-step password again.",
                 "ApiIdInvalidError": "Copy api_id and api_hash again from my.telegram.org."}.get(name, hint)
         return UserError(msg, hint)
-    if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError, OSError)):
+    if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError, socket.gaierror)):
         return UserError("Could not reach Telegram.", "Check your internet connection and try again.")
+    if isinstance(exc, OSError):  # a file of the data folder, not the network
+        return UserError("TG Kit could not read or write a file in its data folder.",
+                         "Close any program that has a file of TG Kit open, then try again.")
     return UserError(*UNKNOWN)
 
 
@@ -76,6 +86,8 @@ class TelegramSetup:
         self._session = None
         self._since = 0.0
         self.step = None  # None, "code" or "password" while a login is under way
+        self._job = None  # the copy of ticked chats running in the background (add)
+        self._job_lock = threading.Lock()
 
     # ------------------------------------------------------------- helpers
 
@@ -175,7 +187,9 @@ class TelegramSetup:
 
             async def make():  # made on the login loop, where it will run
                 return net.make_client(self.home, cfg)  # refuses in plain words without codes
-            self._lock = SyncLock(self.home).acquire()  # no sync uses the login file meanwhile
+            if self.adding:
+                raise UserError(*COPYING)
+            self._lock = SyncLock(self.home, "login").acquire()  # no sync uses the login file meanwhile
             try:
                 self._session = SessionLock(self.home).acquire()  # nor any other client
                 self._client = self._call(make())
@@ -256,45 +270,170 @@ class TelegramSetup:
     def dialogs(self) -> dict:
         from . import net  # noqa: PLC0415
 
+        if self.adding:
+            raise UserError(*COPYING)
         ctx = net.Ctx(self.home, Store(self.home), self._cfg())
 
         async def fetch():
-            async with net.connected(ctx) as client:
-                # Who the login file belongs to now: another account than the chats
-                # shown (a login made elsewhere) switches to that account's chats.
-                account.adopt(self.home, await net.session_me(client))
-                found = await net.list_dialogs(client)
-                existing = {d.name for d in ctx.store.chat_dirs()}
-                keys = net.followed_keys(ctx.store)
-                return [{"id": str(d["id"]), "name": d["name"], "kind": d["kind"],
-                         "added": (net.folder_for(d["entity"], d["name"]) in existing
-                                   or net.chat_key(net.entity_meta(d["entity"])) in keys)} for d in found]
+            # The sync lock first, then the client (R14): adopt may move chats. A short
+            # holder (the account check when the window opens) is waited for.
+            lock = SyncLock(self.home, "listing chats")
+            lock.wait = LIST_WAIT
+            with lock:
+                async with net.connected(ctx) as client:
+                    # Who the login file belongs to now: another account than the chats
+                    # shown (a login made elsewhere) switches to that account's chats.
+                    res = account.adopt(self.home, await net.session_me(client), locked=True)
+                    found = await net.list_dialogs(client)
+                    existing = {d.name for d in ctx.store.chat_dirs()}
+                    keys = net.followed_keys(ctx.store)
+                    rows = [{"id": str(d["id"]), "name": d["name"], "kind": d["kind"],
+                             "added": (net.folder_for(d["entity"], d["name"]) in existing
+                                       or net.chat_key(net.entity_meta(d["entity"])) in keys)} for d in found]
+                    return rows, res
         try:
-            return {"dialogs": net.run(fetch())}
+            rows, res = net.run(fetch())
+        except UserError as exc:
+            if "already running" in exc.message:
+                raise UserError(*BUSY) from None
+            raise
         except Exception as exc:  # noqa: BLE001
             raise _friendly(exc, self.home) from None
+        return {"dialogs": rows, **_switch_fields(res)}
 
-    def add(self, ids, limit) -> dict:
-        from . import net  # noqa: PLC0415
+    # ------------------------------------------------------------- copying ticked chats
 
-        wanted = {str(i) for i in (ids or [])}
+    @property
+    def adding(self) -> bool:
+        job = self._job
+        return bool(job and job["running"])
+
+    def add(self, ids, limit, keep: bool = False) -> dict:
+        """Start copying the ticked chats in the background; add_state() follows it.
+        keep=True (a Retry of one chat) keeps the rows of the chats copied before."""
+        wanted: list[str] = []
+        for i in ids or []:
+            if str(i) not in wanted:
+                wanted.append(str(i))
         if not wanted:
             raise UserError("Pick at least one chat.", "Tick the chats TG Kit should follow.")
         try:
             limit = None if limit in (0, "0", "all", None) else max(1, int(limit))
         except (TypeError, ValueError):
             limit = 1000
+        with self._job_lock:
+            if self.adding:
+                raise UserError(*COPYING)
+            if self.step:
+                raise UserError("A login is under way.", "Finish it or close the setup, then add chats.")
+            old = [r for r in (self._job["rows"] if self._job and keep else []) if r["id"] not in wanted]
+            names = {r["id"]: r["name"] for r in (self._job["rows"] if self._job else [])}
+            rows = old + [{"id": i, "name": names.get(i, ""), "state": "waiting", "count": 0,
+                           "message": None, "hint": None} for i in wanted]
+            job = {"running": True, "rows": rows, "wanted": wanted, "error": None, "switch": {},
+                   "loop": None, "task": None, "thread": None}
+            self._job = job
+        th = threading.Thread(target=self._run_job, args=(job, limit), daemon=True, name="tgkit-add")
+        job["thread"] = th
+        th.start()
+        return self.add_state()
+
+    def _row(self, job: dict, ident: str) -> dict | None:
+        return next((r for r in job["rows"] if r["id"] == ident), None)
+
+    def _run_job(self, job: dict, limit) -> None:
+        from . import net  # noqa: PLC0415
+
         ctx = net.Ctx(self.home, Store(self.home), self._cfg())
-        before = len(ctx.store.chat_dirs())
+        wanted = set(job["wanted"])
 
         def pick(dialogs, _query):
+            listed = {str(d["id"]): d for d in dialogs}
+            with self._job_lock:
+                for ident in job["wanted"]:
+                    row, d = self._row(job, ident), listed.get(ident)
+                    if d is None:
+                        row.update(state="error", message="Telegram did not list this chat.",
+                                   hint="Open Add chats again to see your chats as they are now.")
+                    elif d.get("added"):
+                        row.update(name=d["name"], state="done", already=True)
+                    else:
+                        row["name"] = d["name"]
             return [d for d in dialogs if str(d["id"]) in wanted and not d.get("added")]
-        out = io.StringIO()
+
+        def progress(ev):
+            with self._job_lock:
+                if ev["type"] == "switched":
+                    job["switch"] = ev
+                elif ev["type"] == "plan":
+                    for c in ev["chats"]:
+                        row = self._row(job, c["id"])
+                        if row is not None and not row["name"]:
+                            row["name"] = c["name"]
+                elif ev["type"] == "chat":
+                    row = self._row(job, ev["id"])
+                    if row is not None:
+                        row.update(state=ev["state"], count=ev.get("count", row["count"]),
+                                   message=ev.get("message"), hint=ev.get("hint"),
+                                   partial=bool(ev.get("partial")))
+
+        def unfinished(state, message, hint):
+            with self._job_lock:
+                for row in job["rows"]:
+                    if row["id"] in wanted and row["state"] in ("waiting", "copying"):
+                        row.update(state=state, message=message, hint=hint)
+
+        loop = asyncio.new_event_loop()
         try:
-            with contextlib.redirect_stdout(out):
-                net.run(net.add_chats(ctx, None, limit, pick))
+            task = loop.create_task(net.add_chats(ctx, None, limit, pick, progress))
+            job["loop"], job["task"] = loop, task
+            with contextlib.redirect_stdout(io.StringIO()):
+                loop.run_until_complete(task)
+            unfinished("error", "This chat was not copied.", "Press Retry for this chat.")
+        except asyncio.CancelledError:
+            unfinished("stopped", "Stopped before this chat was copied.", "Press Retry for this chat.")
         except Exception as exc:  # noqa: BLE001
-            raise _friendly(exc, self.home) from None
-        added = len(Store(self.home).chat_dirs()) - before
-        lines = [x.strip() for x in out.getvalue().splitlines() if x.strip()]
-        return {"added": added, "lines": lines}
+            err = exc if isinstance(exc, UserError) and "already running" not in exc.message else (
+                UserError(*BUSY) if isinstance(exc, UserError) else _friendly(exc, self.home))
+            job["error"] = {"message": err.message, "hint": err.hint}
+            unfinished("error", err.message, err.hint)
+        finally:
+            with contextlib.suppress(Exception):
+                loop.close()
+            job["running"] = False
+
+    def add_state(self) -> dict:
+        job = self._job
+        if not job:
+            return {"running": False, "rows": [], "added": 0, "failed": 0, "error": None, "switched": False}
+        with self._job_lock:
+            rows = [dict(r) for r in job["rows"]]
+            out = {"running": job["running"], "rows": rows,
+                   "added": sum(1 for r in rows if r["state"] == "done" and not r.get("already")),
+                   "failed": sum(1 for r in rows if r["state"] in ("error", "stopped")),
+                   "error": job["error"]}
+            out.update(_switch_fields(job["switch"]))
+        return out
+
+    def stop(self, wait: float = 15.0) -> bool:
+        """Cancel the copy of ticked chats (or end a login): its locks are freed.
+        True when nothing of this window holds the sync lock any more."""
+        job = self._job
+        if job and job["running"]:
+            loop, task = job.get("loop"), job.get("task")
+            if loop is not None and task is not None:
+                with contextlib.suppress(RuntimeError):
+                    loop.call_soon_threadsafe(task.cancel)
+            th = job.get("thread")
+            if th is not None:
+                th.join(wait)
+        if self.step:
+            self.cancel()
+        return not self.adding and not self.step
+
+
+def _switch_fields(res: dict | None) -> dict:
+    """What a switch really moved, for the window (see account.switch_notes)."""
+    res = res or {}
+    return {"switched": bool(res.get("switched")), "parked": res.get("parked"),
+            "comes_back": bool(res.get("comes_back")), "restored": bool(res.get("restored"))}

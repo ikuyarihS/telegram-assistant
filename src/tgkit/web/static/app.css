@@ -910,6 +910,36 @@ textarea::placeholder { color: var(--muted); }
   border-radius: var(--r-sm);
 }
 
+/* the first copy of the ticked chats: one row per chat, its state, a Retry when it failed */
+.add-prog { display: grid; gap: 8px; }
+.add-prog[hidden] { display: none; }
+.add-prog-head { margin: 0; font-size: 14px; font-weight: 600; }
+.add-prog-list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.prog-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 8px 10px; font-size: 13px; }
+.prog-row + .prog-row { border-top: 1px solid var(--line); }
+.prog-name { flex: 1 1 160px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.prog-state { flex: 2 1 200px; color: var(--muted); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+.prog-row.done .prog-state { color: var(--ok); }
+.prog-state.bad { color: var(--danger); }
+.prog-row .link-btn { font-size: 13px; }
+.add-prog .btn { justify-self: start; }
+.add-prog .btn[hidden] { display: none; }
+
+/* a sync lock held with no progress: plain words, and Stop and retry for the window's own task */
+.lock-note { padding: 8px 10px; font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: var(--r-sm); }
+.lock-note[hidden] { display: none; }
+.lock-note p { margin: 0 0 6px; overflow-wrap: anywhere; }
+.lock-note .btn[hidden] { display: none; }
+
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 860px) {

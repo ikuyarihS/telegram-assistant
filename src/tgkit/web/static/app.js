@@ -162,6 +162,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suKeep: (p) => `Keep them in ${p}`, suOther: "Use another folder",
       suFolderPath: "Full path of the folder",
       suFolderHelp: "For example D:\\TG Kit. TG Kit makes the folder if it is not there yet.",
+      progWaiting: "Waiting", progCopying: (n) => `Copying: ${n} ${plural(n, "message", "messages")} so far`,
+      progDone: (n) => `Done: ${n} ${plural(n, "message", "messages")}`, progAlready: "Already in TG Kit",
+      progStopped: "Stopped", progRetry: "Retry", progList: "Copying the ticked chats",
+      suAddedSome: (n, f) => `Added ${n} ${plural(n, "chat", "chats")}. ${f} could not be copied: see the list, and press Retry there.`,
+      suNoneCopied: (f) => `${f} ${plural(f, "chat", "chats")} could not be copied: see the list, and press Retry there.`,
+      stopRetry: "Stop and retry", stopping: "Stopping...",
+      lockStuck: (m) => `Getting new messages has made no progress for ${m} minutes.`,
+      lockGone: "The program that was getting new messages ended without finishing.",
+      lockBusy: "Another TG Kit window or terminal is getting new messages for this data folder.",
+      switchedTo: (n) => `This computer is logged in to ${n}: TG Kit now shows that account's chats.`,
     },
     vi: {
       newChat: "Cuộc trò chuyện mới", filter: "Lọc cuộc trò chuyện và nhóm", conversations: "Cuộc trò chuyện",
@@ -273,6 +283,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suKeep: (p) => `Giữ ở ${p}`, suOther: "Dùng thư mục khác",
       suFolderPath: "Đường dẫn đầy đủ của thư mục",
       suFolderHelp: "Ví dụ D:\\TG Kit. TG Kit tự tạo thư mục nếu chưa có.",
+      progWaiting: "Đang chờ", progCopying: (n) => `Đang sao chép: đã có ${n} tin`,
+      progDone: (n) => `Xong: ${n} tin`, progAlready: "Đã có trong TG Kit",
+      progStopped: "Đã dừng", progRetry: "Thử lại", progList: "Đang sao chép các nhóm đã chọn",
+      suAddedSome: (n, f) => `Đã thêm ${n} nhóm. ${f} nhóm chưa sao chép được: xem danh sách và bấm Thử lại ở đó.`,
+      suNoneCopied: (f) => `${f} nhóm chưa sao chép được: xem danh sách và bấm Thử lại ở đó.`,
+      stopRetry: "Dừng và thử lại", stopping: "Đang dừng...",
+      lockStuck: (m) => `Việc lấy tin mới đã không tiến triển trong ${m} phút.`,
+      lockGone: "Chương trình đang lấy tin mới đã tắt khi chưa xong.",
+      lockBusy: "Một cửa sổ TG Kit hoặc cửa sổ lệnh khác đang lấy tin mới cho thư mục dữ liệu này.",
+      switchedTo: (n) => `Máy này đang đăng nhập ${n}: TG Kit giờ hiện các nhóm của tài khoản đó.`,
     },
   };
   const EXAMPLES = {
@@ -313,7 +333,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     suPickAll: $("suPickAll"), suPickAllText: $("suPickAllText"), suCount: $("suCount"), suBigNote: $("suBigNote"),
     copyDiag: $("copyDiag"), openLogs: $("openLogs"),
     suFolder: $("suFolder"), suKeepText: $("suKeepText"), suFolderPathField: $("suFolderPathField"),
-    suFolderPathIn: $("suFolderPathIn"),
+    suFolderPathIn: $("suFolderPathIn"), suProg: $("suProg"), suProgList: $("suProgList"), suStop: $("suStop"),
+    lockNote: $("lockNote"), lockText: $("lockText"), lockStop: $("lockStop"),
   };
 
   const app = {
@@ -1057,6 +1078,44 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
 
   // ------------------------------------------------------------ sync & setup
 
+  // Another account's chats are never shown: after any switch the lists, the open
+  // conversation and the search results start again from the logged-in account's data.
+  function onAccountSwitch() {
+    newConversation();
+    refresh().catch(() => {});
+  }
+
+  // A sync lock held with no progress (or by a program that ended) is shown with
+  // Stop and retry when it is this window's own task; otherwise in plain words.
+  function showLock(lock) {
+    if (!lock || !lock.held) { ui.lockNote.hidden = true; return; }
+    const text = !lock.alive ? t("lockGone") : lock.stuck ? t("lockStuck", Math.max(1, Math.round((lock.idle || 0) / 60))) : t("lockBusy");
+    ui.lockText.textContent = text;
+    ui.lockStop.hidden = !(lock.stuck && lock.can_stop);
+    ui.lockStop.disabled = false;
+    ui.lockNote.hidden = !(lock.stuck || !lock.can_stop);
+  }
+
+  let lockTimer = null;
+  function watchLock(on) {
+    clearInterval(lockTimer);
+    lockTimer = on ? setInterval(() => { api("/api/lock").then(showLock).catch(() => {}); }, 15000) : null;
+  }
+
+  ui.lockStop.addEventListener("click", async () => {
+    ui.lockStop.disabled = true;
+    ui.lockText.textContent = t("stopping");
+    try {
+      await api("/api/sync/stop", {});
+      ui.lockNote.hidden = true;
+      while (app.syncing) await new Promise((res) => setTimeout(res, 300));
+      sync();
+    } catch (e) {
+      ui.lockText.textContent = e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message;
+      ui.lockStop.hidden = true;
+    }
+  });
+
   async function sync() {
     if (app.syncing) return;
     app.syncing = true;
@@ -1064,10 +1123,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.syncProgress.hidden = false;
     ui.syncProgress.classList.add("indeterminate");
     ui.syncStatus.textContent = t("syncing");
+    ui.lockNote.hidden = true;
+    watchLock(true);
     let result = null;
+    let switched = false;
     try {
       await stream("/api/sync", {}, (ev) => {
-        if (ev.type === "progress") {
+        if (ev.type === "switched") {
+          switched = true;
+          onAccountSwitch();
+        } else if (ev.type === "progress") {
           if (ev.chats) {
             ui.syncProgress.classList.remove("indeterminate");
             ui.syncBar.style.width = `${Math.max(6, Math.round((100 * ev.done) / ev.chats))}%`;
@@ -1081,19 +1146,24 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       result = { type: "error", message: e.message };
     } finally {
       app.syncing = false;
+      watchLock(false);
       ui.syncBtn.disabled = false;
       ui.syncProgress.hidden = true;
       ui.syncBar.style.width = "6%";
     }
     ui.syncStatus.replaceChildren();
+    if (result && result.lock) showLock(result.lock);
     if (!result || result.type === "error") {
       ui.syncStatus.textContent = (result && result.message) || t("syncFail");
+    } else if (result.lock && result.lock.held) {
+      ui.syncStatus.textContent = t("syncBusy");
     } else if (result.needs === "setup") {
       ui.syncStatus.append(`${t("notConnected")}. `, el("button", { class: "link-btn", type: "button", onclick: openSetup }, t("connect")));
     } else {
       ui.syncStatus.textContent = result.code === 0 ? t("syncDone", result.added) : `${t("syncDone", result.added)} ${t("syncFail")}`;
     }
-    refresh().catch(() => {});
+    if (switched) onAccountSwitch();
+    else refresh().catch(() => {});
   }
 
   // The fallback: `tgkit setup` in a terminal window.
@@ -1164,7 +1234,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       if (r.parked) notes.push(r.comes_back ? t("suSwitched") : t("suParkedAt", r.parked));
       if (r.restored) notes.push(t("suRestored"));
       ui.suWho.textContent = [t("suWho", (r.me && r.me.name) || ""), ...notes].join(" ");
-      refresh().catch(() => {});
+      if (r.switched) onAccountSwitch(r);
+      else refresh().catch(() => {});
       suShow("chats");
     }
   }
@@ -1252,15 +1323,23 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
         el("span", { class: "pick-kind" }, d.added ? t("suAlready") : kindLabel(d.kind))))));
   }
 
-  async function loadDialogs() {
+  async function loadDialogs(opts) {
     ui.suList.replaceChildren(el("li", { class: "pick-empty" }, t("suLoading")));
     suDialogs = [];
     suShown = [];
     syncPickBar();
+    if (!(opts && opts.keepNote)) ui.suProg.hidden = true;  // a fresh pick starts without old rows
     try {
       const r = await api("/api/setup/dialogs");
       suDialogs = r.dialogs || [];
       renderDialogs();
+      if (r.switched) {  // listing showed another account: show only its chats now
+        onAccountSwitch(r);
+        const notes = [];
+        if (r.parked) notes.push(r.comes_back ? t("suSwitched") : t("suParkedAt", r.parked));
+        if (r.restored) notes.push(t("suRestored"));
+        if (notes.length) ui.suWho.textContent = notes.join(" ");
+      }
     } catch (e) {
       ui.suList.replaceChildren(el("li", { class: "pick-empty" },
         el("button", { class: "link-btn", type: "button", onclick: loadDialogs }, t("suRetry"))));
@@ -1289,24 +1368,100 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.suPwIn.value = "";
     suAfterLogin(r);
   });
-  ui.suChats.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const ids = suDialogs.filter((d) => d.picked && !d.added).map((d) => d.id);
-    if (!ids.length) { suNote(t("suPickOne"), true); return; }
+  // The first copy of the ticked chats runs on the server; one row per chat shows
+  // waiting / copying N / done / a plain error with a Retry for that chat alone.
+  function suLimit() {
     const limit = (document.querySelector('input[name="suLimit"]:checked') || {}).value || "1000";
-    const buttons = ui.suChats.querySelectorAll("button");
-    buttons.forEach((b) => { b.disabled = true; });
-    suNote(t("suAdding"));
+    return limit === "all" ? "all" : Number(limit);
+  }
+
+  function progText(r) {
+    if (r.state === "copying") return t("progCopying", r.count || 0);
+    if (r.state === "done") return r.already ? t("progAlready") : t("progDone", r.count || 0);
+    if (r.state === "stopped") return t("progStopped");
+    if (r.state === "error") return [r.message, r.hint].filter(Boolean).join(" ");
+    return t("progWaiting");
+  }
+
+  function renderProgress(p) {
+    const rows = p.rows || [];
+    ui.suProg.hidden = !rows.length;
+    const names = Object.fromEntries(suDialogs.map((d) => [d.id, d.name]));
+    ui.suProgList.replaceChildren(...rows.map((r) => {
+      const failed = r.state === "error" || r.state === "stopped";
+      return el("li", { class: `prog-row ${r.state}` },
+        el("span", { class: "prog-name" }, r.name || names[r.id] || r.id),
+        el("span", { class: failed ? "prog-state bad" : "prog-state" }, progText(r)),
+        failed && !p.running ? el("button", { class: "link-btn", type: "button", onclick: () => suStartAdd([r.id], true) }, t("progRetry")) : null);
+    }));
+    ui.suStop.hidden = !(p.running && p.lock && p.lock.stuck && p.lock.can_stop);
+  }
+
+  let suPolling = false;
+  let suRetryAfterStop = false;
+  async function suFollowAdd() {
+    if (suPolling) return;
+    suPolling = true;
+    let p = null;
+    let switchShown = false;
     try {
-      const r = await api("/api/setup/add", { ids, limit: limit === "all" ? "all" : Number(limit) });
-      suAddedAny = suAddedAny || r.added > 0;
-      suNote(r.added ? t("suAdded", r.added) : [t("suNoneAdded"), ...(r.lines || [])].join(" "), !r.added);
-      refresh().catch(() => {});
-      loadDialogs();
+      for (;;) {
+        p = await api("/api/setup/add-progress");
+        renderProgress(p);
+        if (p.switched && !switchShown) { switchShown = true; onAccountSwitch(); }
+        if (!p.running) break;
+        await new Promise((res) => setTimeout(res, 700));
+      }
     } catch (err) {
       suError(err);
     } finally {
-      buttons.forEach((b) => { b.disabled = false; });
+      suPolling = false;
+      ui.suChats.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+    }
+    if (!p) return;
+    if (suRetryAfterStop) {  // Stop and retry: copy again the chats the stop cut short
+      suRetryAfterStop = false;
+      const again = (p.rows || []).filter((r) => r.state === "stopped" || r.state === "error").map((r) => r.id);
+      if (again.length) { suStartAdd(again, true); return; }
+    }
+    suAddedAny = suAddedAny || p.added > 0;
+    if (p.error && !p.added) suNote([p.error.message, p.error.hint].filter(Boolean).join(" "), true);
+    else if (p.failed) suNote(p.added ? t("suAddedSome", p.added, p.failed) : t("suNoneCopied", p.failed), true);
+    else suNote(p.added ? t("suAdded", p.added) : t("suNoneAdded"), !p.added);
+    refresh().catch(() => {});
+    loadDialogs({ keepNote: true });
+  }
+
+  async function suStartAdd(ids, keep) {
+    ui.suChats.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    ui.suStop.disabled = false;
+    suNote(t("suAdding"));
+    try {
+      renderProgress(await api("/api/setup/add", { ids, limit: suLimit(), keep: !!keep }));
+      ui.suProg.scrollIntoView({ block: "nearest" });
+    } catch (err) {
+      suError(err);
+      ui.suChats.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+      return;
+    }
+    suFollowAdd();
+  }
+
+  ui.suChats.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const ids = suDialogs.filter((d) => d.picked && !d.added).map((d) => d.id);
+    if (!ids.length) { suNote(t("suPickOne"), true); return; }
+    suStartAdd(ids, false);
+  });
+  ui.suStop.addEventListener("click", async () => {
+    ui.suStop.disabled = true;
+    suNote(t("stopping"));
+    suRetryAfterStop = true;
+    try {
+      await api("/api/sync/stop", {});
+    } catch (err) {
+      suRetryAfterStop = false;
+      suError(err);
     }
   });
   ui.suFolder.addEventListener("change", (e) => { if (e.target.name === "suHome") suFolderChoice(); });
@@ -1542,6 +1697,13 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     else newConversation();
     if (params.get("panel") === "settings") openSettings();
     if (params.get("panel") === "setup") openSetup(params.get("step") || undefined);
+    // Who is this computer logged in to? Another account than the chats shown
+    // switches to that account's chats now, not at the first sync (R15).
+    api("/api/account/check", {}).then((r) => {
+      if (!r.switched) return;
+      onAccountSwitch();
+      if (!app.syncing) ui.syncStatus.textContent = t("switchedTo", (r.me && r.me.name) || "");
+    }).catch(() => {});
   }).catch((e) => {
     showEmpty(true);
     ui.syncStatus.textContent = e.message;

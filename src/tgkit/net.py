@@ -275,12 +275,19 @@ async def sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool = False, dry_run: b
     nothing, so it needs no lock."""
     if dry_run:
         return await _sync_chats(ctx, dirs, quiet, dry_run)
-    with SyncLock(ctx.store.home):
-        return await _sync_chats(ctx, dirs, quiet, dry_run)
+    with SyncLock(ctx.store.home, "sync") as lock:
+        return await _sync_chats(ctx, dirs, quiet, dry_run, lock)
 
 
-async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) -> int:
+SWITCHED_LINE = "Switched accounts:"  # the window reads this line (appserver.App.sync)
+
+
+async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lock=None) -> int:
     store = ctx.store
+
+    def beat(what=None):  # the heartbeat the window reads to tell working from hung
+        if lock is not None:
+            lock.beat(what)
     # Every watermark is read BEFORE connecting: a damaged file aborts with a
     # clear message, not after a login round-trip.
     baseline = {d: newest_id(d) for d in dirs}
@@ -292,19 +299,30 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) ->
     checked: dict = {}
     async with connected(ctx) as client:
         # The chats shown belong to one account: never copy another account's
-        # messages into them (a login made elsewhere, the old "me" kept).
+        # messages into them (a login made elsewhere, the old "me" kept). The sync
+        # switches to the logged-in account's chats (under its own sync lock) and
+        # gets theirs instead; the other account's chats are moved aside, kept.
         owner, me = account.owner(ctx.base), await session_me(client)
-        if not dry_run and owner and me and str(owner.get("id")) != str(me["id"]):
-            raise UserError(
-                "This computer is now logged in to another Telegram account.",
-                "Open Settings and press Add chats once: TG Kit then shows that account's chats.",
-            )
+        if owner and me and str(owner.get("id")) != str(me["id"]):
+            if dry_run:
+                print("This computer is logged in to another Telegram account; a real sync "
+                      "switches to that account's chats first.")
+                return 0
+            res = account.adopt(ctx.base, me, locked=True)
+            ctx.cfg = config.load(ctx.base)
+            print(f"{SWITCHED_LINE} this computer is logged in to {me.get('name') or 'another Telegram account'}, "
+                  "so TG Kit now shows that account's chats.", flush=True)
+            for note in account.switch_notes(res):
+                print(note, flush=True)
+            dirs = store.chat_dirs()
+            baseline = {d: newest_id(d) for d in dirs}
         # Private chats resolve by numeric id ONLY after the dialog cache is
         # filled; without it a cold session skips nearly everything and still
         # prints "0 new", a false clean.
         await client.get_dialogs()
         for d in dirs:
             title = store.title(d)
+            beat(f"sync: {title}")
             target = target_for(d)
             if target is None:
                 print(f"Skipped {title}: no usable address in channel.json", file=sys.stderr)
@@ -330,6 +348,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) ->
             failure: BaseException | None = None
             try:
                 async for msg in client.iter_messages(entity, min_id=after):
+                    beat()
                     media = media_summary(msg)
                     row = message_row(msg, media)
                     remember_sender(names, msg)
@@ -452,7 +471,7 @@ def followed_keys(store) -> set:
     return {chat_key(store.meta(d)) for d in store.chat_dirs() if store.meta(d).get("id") is not None}
 
 
-async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None) -> dict:
+async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_count=None) -> dict:
     """Fetch a chat that has no folder yet. Refuses if its folder exists at all.
 
     The original seeding path opened messages.jsonl in "w" mode and once
@@ -490,6 +509,8 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None) -> d
                 files += await _download(client, msg, media, row, staging / "media", base,
                                          ctx.max_media, flood)
             rows.append(row)
+            if on_count is not None:
+                on_count(len(rows))
             if len(rows) % 200 == 0:
                 print(f"  {len(rows)} messages so far", flush=True)
     except Exception as exc:  # noqa: BLE001
@@ -541,42 +562,92 @@ async def list_dialogs(client, limit: int = 300) -> list[dict]:
     return out
 
 
-async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick) -> int:
-    """`pick(dialogs, query)` returns the dialogs the user chose (each has an "added" flag)."""
-    async with connected(ctx) as client:
-        # Logged in to another account than the chats shown: switch first (never mix).
-        account.adopt(ctx.base, await session_me(client))
-        ctx.cfg = config.load(ctx.base)
-        if query and (query.startswith("@") or "t.me/" in query or re.fullmatch(r"-?\d+", query)):
-            await client.get_dialogs()
-            try:
-                entity = await client.get_entity(as_target(query))
-            except Exception:  # noqa: BLE001
-                raise UserError(f"Telegram has no chat '{query}' that you can read.",
-                                "Check the spelling, or run tgkit add to pick from a list.") from None
-            chosen = [{"name": display_name(entity) or query, "entity": entity}]
-        else:
-            dialogs = await list_dialogs(client)
-            existing = {d.name for d in ctx.store.chat_dirs()}
-            keys = followed_keys(ctx.store)
-            for dlg in dialogs:
-                dlg["added"] = (folder_for(dlg["entity"], dlg["name"]) in existing
-                                or chat_key(entity_meta(dlg["entity"])) in keys)
-            chosen = pick(dialogs, query)
-        added = 0
-        # The same lock as sync: add_chat checks its folders, then renames into
-        # chats/ and rewrites sync-state.json, which a running sync also rewrites.
-        with SyncLock(ctx.store.home):
-            for dlg in chosen:
+def _dlg_key(dlg: dict) -> str:
+    return str(dlg["id"] if dlg.get("id") is not None else getattr(dlg["entity"], "id", dlg["name"]))
+
+
+async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick, progress=None) -> int:
+    """`pick(dialogs, query)` returns the dialogs the user chose (each has an "added" flag).
+
+    `progress(event)` hears every step, for the window's per-chat rows:
+    {"type": "switched", ...}, {"type": "plan", "chats": [{id, name}]} and
+    {"type": "chat", "id", "state": copying|done|error, "count", "message", "hint"}.
+    One chat failing never stops the others; each failure is reported on its own.
+
+    Locks (R14): the sync lock first, then the client's session lock. Picking runs
+    outside both, so a person choosing chats in a terminal blocks no sync."""
+    report = progress or (lambda ev: None)
+    chosen = None
+    with SyncLock(ctx.store.home, "add: listing chats"):
+        async with connected(ctx) as client:
+            # Logged in to another account than the chats shown: switch first (never mix).
+            res = account.adopt(ctx.base, await session_me(client), locked=True)
+            if res.get("switched"):
+                report({"type": "switched", **res})
+            ctx.cfg = config.load(ctx.base)
+            if query and (query.startswith("@") or "t.me/" in query or re.fullmatch(r"-?\d+", query)):
+                await client.get_dialogs()
                 try:
-                    await add_chat(client, ctx, dlg["entity"], dlg["name"], limit)
+                    entity = await client.get_entity(as_target(query))
+                except Exception:  # noqa: BLE001
+                    raise UserError(f"Telegram has no chat '{query}' that you can read.",
+                                    "Check the spelling, or run tgkit add to pick from a list.") from None
+                chosen = [{"name": display_name(entity) or query, "entity": entity}]
+            else:
+                dialogs = await list_dialogs(client)
+                existing = {d.name for d in ctx.store.chat_dirs()}
+                keys = followed_keys(ctx.store)
+                for dlg in dialogs:
+                    dlg["added"] = (folder_for(dlg["entity"], dlg["name"]) in existing
+                                    or chat_key(entity_meta(dlg["entity"])) in keys)
+    if chosen is None:
+        chosen = pick(dialogs, query)
+    if not chosen:
+        return 0
+    report({"type": "plan", "chats": [{"id": _dlg_key(d), "name": d["name"]} for d in chosen]})
+    added = 0
+    # The same lock as sync: add_chat checks its folders, then renames into
+    # chats/ and rewrites sync-state.json, which a running sync also rewrites.
+    with SyncLock(ctx.store.home, "add") as lock:
+        async with connected(ctx) as client:
+            for dlg in chosen:
+                key = _dlg_key(dlg)
+                lock.beat(f"add: {dlg['name']}")
+                report({"type": "chat", "id": key, "state": "copying", "count": 0})
+
+                def counted(n, key=key):
+                    lock.beat()
+                    report({"type": "chat", "id": key, "state": "copying", "count": n})
+                try:
+                    got = await add_chat(client, ctx, dlg["entity"], dlg["name"], limit, counted)
                     added += 1
+                    report({"type": "chat", "id": key, "state": "done", "count": got["messages"],
+                            "partial": got["partial"]})
                 except UserError as exc:
                     print(exc.render())
+                    report({"type": "chat", "id": key, "state": "error", "message": exc.message, "hint": exc.hint})
+                except Exception as exc:  # noqa: BLE001  (one chat failing never stops the others)
+                    applog.caught("add: a chat failed", exc, ctx.base)
+                    err = UserError(f"Could not copy '{dlg['name']}'.",
+                                    "Check your internet connection, then press Retry for this chat.")
+                    print(err.render())
+                    report({"type": "chat", "id": key, "state": "error", "message": err.message, "hint": err.hint})
+        if added:
+            write_summary(ctx.store)
     if added:
-        write_summary(ctx.store)
         print(f"Added {added} chat(s). Try: tgkit summary")
     return 0
+
+
+async def adopt_session(ctx: Ctx) -> dict:
+    """Who the login file belongs to now. Another account than the chats shown
+    switches to that account's chats (R15). The window runs this when it opens.
+    Sync lock first, then the client (R14)."""
+    with SyncLock(ctx.store.home, "account check"):
+        async with connected(ctx) as client:
+            me = await session_me(client)
+            res = account.adopt(ctx.base, me, locked=True)
+    return {**res, "me": me}
 
 
 # -------------------------------------------------------- search, names, login

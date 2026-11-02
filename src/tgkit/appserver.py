@@ -30,7 +30,8 @@ from . import claude as claudemod
 from .claude import ClaudeRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
-from .store import Store, _ident, _username, is_dead_link
+from .net import SWITCHED_LINE
+from .store import Store, _ident, _username, is_dead_link, lock_status
 
 STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
@@ -61,6 +62,7 @@ _OPEN_FORMS = (
     (re.compile(r"tg://resolve\?domain=([A-Za-z0-9_]{4,64})(?:&post=(\d{1,12}))?"), "username"),
 )
 TELEGRAM_CODES_URL = "https://my.telegram.org/apps"
+CHECK_TIMEOUT = 20  # seconds the account check at window start may take (offline: skipped)
 
 
 def _known_chat(store: Store, key: str, value: str, post: str | None) -> dict | None:
@@ -114,6 +116,8 @@ class App:
         self.token = token or secrets.token_urlsafe(24)
         self.convs = Conversations(self.home)
         self._sync_busy = threading.Lock()
+        self._check_busy = threading.Lock()  # the account check when the window opens
+        self._proc = None  # the window's own `tgkit sync`, while it runs
         self._settings_lock = threading.Lock()
         self._status = None
         self.tg = setupflow.TelegramSetup(self.home)  # setup inside the window
@@ -135,7 +139,71 @@ class App:
             "chats": engine.chat_list(store),
             "conversations": self.convs.index(),
             "syncing": self._sync_busy.locked(),
+            "adding": self.tg.adding,
+            "account": (account.owner(self.home) or {}).get("name"),
         }
+
+    # ------------------------------------------------------------- the account and the sync lock
+
+    def account_check(self) -> dict:
+        """When the window opens: ask Telegram who the login file belongs to and, for
+        another account than the chats shown, switch to that account's chats (R15).
+        Skipped (nothing changes) when offline, not logged in or busy."""
+        none = {"checked": False, "switched": False}
+        if not account.has_session(self.home) or not config.has_credentials(self.home, self._cfg()):
+            return none
+        if self.tg.step or self.tg.adding or not self._check_busy.acquire(blocking=False):
+            return none
+        try:
+            if self._sync_busy.locked():
+                return none
+            import asyncio  # noqa: PLC0415
+
+            from . import net  # noqa: PLC0415
+
+            ctx = net.Ctx(self.home, self.store(), self._cfg())
+            res = net.run(asyncio.wait_for(net.adopt_session(ctx), CHECK_TIMEOUT))
+        except UserError as exc:
+            return {**none, "reason": exc.message}
+        except Exception as exc:  # noqa: BLE001
+            applog.caught("window start: account check", exc, self.home)
+            return none
+        finally:
+            self._check_busy.release()
+        return {"checked": True, "me": res.get("me"), **setupflow._switch_fields(res),
+                "notes": account.switch_notes(res)}
+
+    def lock_info(self) -> dict:
+        """Who holds the sync lock and whether it looks hung; can_stop when the holder
+        is this window's own task (its sync, its copy of ticked chats, its login)."""
+        st = lock_status(self.home)
+        proc = self._proc
+        own_child = proc is not None and proc.poll() is None and st.get("pid") == proc.pid
+        return {**st, "can_stop": bool(st["held"] and (own_child or st["mine"]))}
+
+    def stop_lock(self) -> dict:
+        """Stop and retry: end this window's own hung task so the system frees its
+        lock. Never another program, never a file deleted (an interrupted write
+        leaves the old file or the new one, R1)."""
+        st = self.lock_info()
+        if not st["held"]:
+            return {"ok": True, "lock": st}
+        if not st["can_stop"]:
+            raise UserError("Another TG Kit window or terminal is using this data folder.",
+                            "Close it, then press Get new messages again. TG Kit never stops another program.")
+        proc = self._proc
+        if proc is not None and proc.poll() is None and st.get("pid") == proc.pid:
+            proc.kill()  # the window's own `tgkit sync`: the system frees its lock
+        else:
+            self.tg.stop()
+        deadline = time.monotonic() + 15
+        while lock_status(self.home)["held"] and time.monotonic() < deadline:
+            time.sleep(0.1)
+        st = self.lock_info()
+        if st["held"]:
+            raise UserError("TG Kit could not stop the hung task.",
+                            "Close TG Kit and open it again: that always frees it. Nothing was deleted.")
+        return {"ok": True, "lock": st}
 
     # ------------------------------------------------------------- ask
 
@@ -233,10 +301,15 @@ class App:
             yield {"type": "error", "message": "A Telegram login is under way in the setup window.",
                    "hint": "Finish it or close the setup, then press Get new messages again."}
             return
+        if self.tg.adding:
+            yield {"type": "error", "message": "TG Kit is still copying the chats you ticked.",
+                   "hint": "Wait until it is done, or press Stop and retry."}
+            return
         if not self._sync_busy.acquire(blocking=False):
             yield {"type": "error", "message": "A sync is already running.", "hint": ""}
             return
         try:
+            self._after_check()
             total = len(self.store().chat_dirs())
             yield {"type": "start", "chats": total}
             env = dict(os.environ, TGKIT_HOME=str(self.home), PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
@@ -247,13 +320,18 @@ class App:
             except OSError as exc:
                 yield {"type": "error", "message": f"Could not start the sync ({exc}).", "hint": ""}
                 return
-            done, added, text = 0, 0, []
+            self._proc = proc
+            done, added, text, switched = 0, 0, [], False
             try:
                 for raw in proc.stdout:
                     line = raw.decode("utf-8", "replace").rstrip()
                     if not line:
                         continue
                     text.append(line)
+                    if line.startswith(SWITCHED_LINE):
+                        switched = True
+                        total = len(self.store().chat_dirs())  # now the logged-in account's chats
+                        yield {"type": "switched", "line": line}
                     m = _SYNC_LINE.match(line)
                     if m or line.startswith("Skipped "):
                         done += 1
@@ -264,10 +342,14 @@ class App:
                 if proc.poll() is None:
                     proc.kill()
                 proc.wait()
+                self._proc = None
             joined = "\n".join(text)
-            yield {"type": "done", "code": proc.returncode, "added": added,
-                   "needs": "setup" if "tgkit setup" in joined else None,
-                   "last": text[-1] if text else ""}
+            ev = {"type": "done", "code": proc.returncode, "added": added, "switched": switched,
+                  "needs": "setup" if "tgkit setup" in joined else None,
+                  "last": text[-1] if text else ""}
+            if proc.returncode and "already running" in joined:
+                ev["lock"] = self.lock_info()  # who holds it, and whether it looks hung
+            yield ev
         finally:
             self._sync_busy.release()
 
@@ -382,6 +464,8 @@ class App:
     def logout(self, body: dict) -> dict:
         if self._sync_busy.locked():
             raise UserError("New messages are being fetched right now.", "Wait until it is done, then log out.")
+        if self.tg.adding:
+            raise UserError("TG Kit is still copying the chats you ticked.", "Wait until it is done, then log out.")
         res = account.logout(self.home, str(body.get("data") or "keep"))
         return {"ok": True, **res}
 
@@ -515,15 +599,22 @@ class App:
     # ------------------------------------------------------------- setup
 
     # Setup talks to Telegram only when no sync does: plain words, no wait.
+    def _after_check(self) -> None:
+        """The account check at window start holds the sync lock a moment: wait for it."""
+        if self._check_busy.acquire(timeout=CHECK_TIMEOUT + 5):
+            self._check_busy.release()
+
     def setup_dialogs(self) -> dict:
         if self._sync_busy.locked():
             raise UserError("TG Kit is still getting new messages.", "Wait until it is done, then open Add chats again.")
+        self._after_check()
         return self.tg.dialogs()
 
     def setup_add(self, body: dict) -> dict:
         if self._sync_busy.locked():
             raise UserError("TG Kit is still getting new messages.", "Wait until it is done, then press Add again.")
-        return self.tg.add(body.get("ids"), body.get("limit", 1000))
+        self._after_check()
+        return self.tg.add(body.get("ids"), body.get("limit", 1000), keep=bool(body.get("keep")))
 
     def setup_folder(self, body: dict) -> dict:
         """The first setup step: keep the data folder TG Kit uses now, or pick another.
@@ -533,6 +624,9 @@ class App:
                             "Keep it, or ask the person who set up this computer.")
         if self.tg.step:
             raise UserError("A login is under way.", "Finish it or close the setup, then change the folder.")
+        if self.tg.adding:
+            raise UserError("TG Kit is still copying the chats you ticked.",
+                            "Wait until it is done, then change the folder.")
         if self._sync_busy.locked():
             raise UserError("New messages are being fetched right now.", "Wait until it is done, then change the folder.")
         if str(body.get("choice") or "keep") == "keep":
@@ -562,6 +656,7 @@ class App:
             return self.tg.codes(body.get("api_id"), body.get("api_hash"))
         if self._sync_busy.locked():
             raise UserError("New messages are being fetched right now.", "Wait until it is done, then log in.")
+        self._after_check()
         if step == "phone":
             return self.tg.phone(body.get("phone"))
         if step == "code":
@@ -688,6 +783,15 @@ def make_handler(app: App):
                     return self._json(app.tg.state())
                 if path == "/api/setup/dialogs":
                     return self._json(app.setup_dialogs())
+                if path == "/api/setup/add-progress":
+                    st, lang = app.tg.add_state(), self._lang()
+                    for row in st["rows"]:  # each chat's error in the window's language
+                        row["message"], row["hint"] = localize(row.get("message"), lang), localize(row.get("hint"), lang)
+                    if st.get("error"):
+                        st["error"] = {k: localize(v, lang) for k, v in st["error"].items()}
+                    return self._json({**st, "lock": app.lock_info()})
+                if path == "/api/lock":
+                    return self._json(app.lock_info())
                 if path == "/api/diagnostics":
                     return self._json(app.diagnostics())
                 m = re.fullmatch(r"/api/conversations/([\w-]+)", path)
@@ -736,6 +840,10 @@ def make_handler(app: App):
                     return self._json(app.setup_step(m.group(1), body))
                 if path == "/api/setup/add":
                     return self._json(app.setup_add(body))
+                if path == "/api/sync/stop":  # Stop and retry: whatever of this window holds the sync lock
+                    return self._json(app.stop_lock())
+                if path == "/api/account/check":
+                    return self._json(app.account_check())
                 if path == "/api/setup/open-site":
                     return self._json(app.open_telegram_site())
                 if path == "/api/open-data":

@@ -93,10 +93,22 @@ def _move_set(src: Path, dst: Path) -> list[str]:
     if clash:
         raise UserError(f"TG Kit could not switch accounts: {dst / clash[0]} is already there.",
                         "Move it away, then try again.")
-    for i in items:
-        target = dst / i
-        target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(src / i, target)
+    moved: list[str] = []
+    try:
+        for i in items:
+            target = dst / i
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(src / i, target)
+            moved.append(i)
+    except OSError as exc:
+        # A file in use (Windows) or a full disk: put back what already moved, so
+        # one account's data is never split across two places, and say so plainly.
+        for i in reversed(moved):
+            with contextlib.suppress(OSError):
+                os.replace(dst / i, src / i)
+        raise UserError(f"TG Kit could not move {src / (items[len(moved)])} "
+                        f"({exc.strerror or type(exc).__name__}). Nothing was deleted.",
+                        "Close any program that has a file of TG Kit open, then try again.") from None
     return items
 
 
@@ -212,6 +224,13 @@ def logout(base: Path, data: str = "keep", server=None) -> dict:
             except Exception as exc:  # noqa: BLE001  (offline, revoked, ...: the local log out still happens)
                 result["telegram_note"] = f"Telegram could not be reached ({type(exc).__name__})."
         result["removed"] = _remove_session(base)
+        if data == "keep":
+            # The kept chats still belong to the account logged out: write it down
+            # before "me" is forgotten (a folder from 0.2.3 has no account.json), so
+            # a login to another account moves them aside instead of showing them as its own.
+            was = owner(base)
+            if was and not (base / OWNER_FILE).exists():
+                atomic_write(base / OWNER_FILE, json.dumps(was, ensure_ascii=False))
         if config.config_path(base).exists():
             config.put(base, me=None)  # under the config lock: a settings change meanwhile stays
         if data == "backup":

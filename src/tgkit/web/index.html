@@ -47,6 +47,10 @@
       </button>
       <div class="progress" id="syncProgress" hidden><div class="progress-bar" id="syncBar"></div></div>
       <p class="sync-status" id="syncStatus" aria-live="polite"></p>
+      <div class="lock-note" id="lockNote" role="status" hidden>
+        <p id="lockText"></p>
+        <button class="btn" id="lockStop" type="button" data-i18n="stopRetry">Stop and retry</button>
+      </div>
       <fieldset class="mode-pick">
         <legend data-i18n="answersBy">Answers</legend>
         <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude when available</span></label>
@@ -329,6 +333,11 @@
         <label><input type="radio" name="suLimit" value="1000" checked> <span data-i18n="suRecent">The last 1000 messages of each chat (quick)</span></label>
         <label><input type="radio" name="suLimit" value="all"> <span data-i18n="suAll">Everything (can take a while for big groups)</span></label>
       </fieldset>
+      <section class="add-prog" id="suProg" aria-labelledby="suProgHead" hidden>
+        <h3 class="add-prog-head" id="suProgHead" data-i18n="progList">Copying the ticked chats</h3>
+        <ul class="add-prog-list" id="suProgList" aria-live="polite"></ul>
+        <button class="btn" id="suStop" type="button" data-i18n="stopRetry" hidden>Stop and retry</button>
+      </section>
       <div class="set-actions">
         <button class="btn btn-primary" id="suAdd" type="submit" data-i18n="suAdd">Add the ticked chats</button>
         <button class="btn" id="suDone" type="button" data-i18n="suFinish">Done</button>

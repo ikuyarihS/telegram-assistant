@@ -150,7 +150,8 @@ def test_big_pick_note_threshold_and_page_wiring():
                 "suKindChannels:", "suKindPeople:", "suShowKind:"):
         assert key in en and key in vi, key
     # Select all only ticks boxes; the copy starts from the Add button alone.
-    assert 'api("/api/setup/add"' in js and js.count("/api/setup/add") == 1
+    assert js.count('api("/api/setup/add",') == 1  # one call site: suStartAdd (Add, or Retry of one chat)
+    assert js.count("suStartAdd(") == 4  # its definition, the Add button, a row's Retry, Stop and retry
 
 
 # ------------------------------------------------------------------ 0.2.4: one Telegram client, a log, account switch
@@ -279,16 +280,23 @@ def test_switch_with_nothing_to_move_claims_no_move(tmp_path):
     assert account.switch_notes(res) == ["The chats this account had here before are back."]
 
 
-def test_sync_refuses_another_accounts_login_without_touching_chats(home, monkeypatch):
-    from tgkit import net
+def test_sync_switches_to_another_accounts_login_without_touching_chats(home, monkeypatch, capsys):
+    """0.2.4 NOTE 1: a sync with another account's login switches (A's chats aside,
+    byte for byte) instead of refusing, and never writes A's chats under B."""
+    from tgkit import account, net
     from tgkit.store import Store
-    monkeypatch.setattr(net, "make_client", lambda base, cfg: SessionClient(base, me_id=202))
+
+    class Client(SessionClient):
+        async def get_dialogs(self):
+            return []
+    monkeypatch.setattr(net, "make_client", lambda base, cfg: Client(base, me_id=202))
     store = Store(home)
     before = {d.name: (d / "messages.jsonl").read_bytes() for d in store.chat_dirs()}
-    with pytest.raises(Exception) as info:
-        net.run(net.sync_chats(net.Ctx(home, store, {}), store.chat_dirs(), quiet=True))
-    assert "another Telegram account" in str(info.value)
-    assert {d.name: (d / "messages.jsonl").read_bytes() for d in store.chat_dirs()} == before
+    assert net.run(net.sync_chats(net.Ctx(home, store, {}), store.chat_dirs(), quiet=True)) == 0
+    assert net.SWITCHED_LINE in capsys.readouterr().out
+    assert store.chat_dirs() == [] and account.owner(home)["id"] == 202
+    parked = home / "accounts" / "101" / "chats"
+    assert {n: (parked / n / "messages.jsonl").read_bytes() for n in before} == before
 
 
 def test_a_login_that_fails_after_sign_in_frees_the_locks_and_saves_me(home, monkeypatch):

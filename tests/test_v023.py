@@ -7,6 +7,7 @@ import io
 import json
 import sys
 import threading
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
@@ -868,11 +869,19 @@ def test_setup_pick_chats(home, server, monkeypatch):
         return [dict(d) for d in found]
     chosen = {}
 
-    async def fake_add(ctx, query, limit, pick):
+    async def fake_add(ctx, query, limit, pick, progress=None):
         dialogs = [dict(d, added=(d["id"] == 1001)) for d in found]
         chosen["names"] = [d["name"] for d in pick(dialogs, query)]
         chosen["limit"] = limit
         return 0
+
+    def add(body):  # the copy runs in the background (0.2.4): wait for its end
+        code, text = call(base, "/api/setup/add", body)
+        for _ in range(200):
+            if not json.loads(call(base, "/api/setup/add-progress")[1])["running"]:
+                break
+            time.sleep(0.05)
+        return code, text
     monkeypatch.setattr(net, "make_client", lambda base, cfg: Client())
     monkeypatch.setattr(net, "list_dialogs", fake_list)
     monkeypatch.setattr(net, "add_chats", fake_add)
@@ -882,9 +891,9 @@ def test_setup_pick_chats(home, server, monkeypatch):
     assert code == 200 and ds["Kế toán"]["added"] is False and ds["Du an Alpha"]["added"] is True
     assert "entity" not in ds["Kế toán"]
     assert refused(*call(base, "/api/setup/add", {"ids": []}))
-    code, body = call(base, "/api/setup/add", {"ids": ["1001", "2002"], "limit": 1000})
+    code, body = add({"ids": ["1001", "2002"], "limit": 1000})
     assert code == 200 and chosen == {"names": ["Kế toán"], "limit": 1000}  # an added chat is never re-added
-    call(base, "/api/setup/add", {"ids": ["2002"], "limit": "all"})
+    add({"ids": ["2002"], "limit": "all"})
     assert chosen["limit"] is None
 
 

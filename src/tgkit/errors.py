@@ -49,6 +49,29 @@ VI = {
     "Wait a moment and try again.": "Chờ một lát rồi thử lại.",
     "Something went wrong while talking to Telegram.": "Có lỗi khi làm việc với Telegram.",
     "Something went wrong in TG Kit.": "TG Kit gặp lỗi.",
+    # 0.2.4: copying ticked chats, a hung sync, account switch
+    "TG Kit is still copying the chats you ticked.": "TG Kit vẫn đang sao chép các nhóm bạn đã chọn.",
+    "Wait until it is done, or press Stop and retry.": "Chờ xong, hoặc bấm Dừng và thử lại.",
+    "Finish it or close the setup, then add chats.": "Làm xong hoặc đóng phần cài đặt, rồi thêm nhóm.",
+    "Telegram did not list this chat.": "Telegram không còn liệt kê nhóm này.",
+    "Open Add chats again to see your chats as they are now.":
+        "Mở Thêm nhóm lại để xem danh sách nhóm hiện tại.",
+    "This chat was not copied.": "Nhóm này chưa được sao chép.",
+    "Press Retry for this chat.": "Bấm Thử lại cho nhóm này.",
+    "Stopped before this chat was copied.": "Đã dừng trước khi sao chép nhóm này.",
+    "Check your internet connection, then press Retry for this chat.":
+        "Kiểm tra kết nối mạng, rồi bấm Thử lại cho nhóm này.",
+    "Another TG Kit window or terminal is using this data folder.":
+        "Một cửa sổ TG Kit hoặc cửa sổ lệnh khác đang dùng thư mục dữ liệu này.",
+    "Close it, then press Get new messages again. TG Kit never stops another program.":
+        "Đóng nó, rồi bấm Lấy tin mới lần nữa. TG Kit không bao giờ dừng chương trình khác.",
+    "TG Kit could not stop the hung task.": "TG Kit chưa dừng được việc đang bị treo.",
+    "Close TG Kit and open it again: that always frees it. Nothing was deleted.":
+        "Đóng TG Kit rồi mở lại: việc đó luôn giải phóng nó. Không có gì bị xóa.",
+    "TG Kit could not read or write a file in its data folder.":
+        "TG Kit không đọc hoặc ghi được một tệp trong thư mục dữ liệu.",
+    "Close any program that has a file of TG Kit open, then try again.":
+        "Đóng chương trình đang mở tệp của TG Kit, rồi thử lại.",
     "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
     "and send it to whoever gave you TG Kit.":
         "Thử lại sau giây lát. Nếu vẫn lỗi, bấm Chép thông tin chẩn đoán trong Cài đặt "
@@ -225,6 +248,9 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
     (r"TG Kit could not switch accounts: (.+) is already there\.",
      "TG Kit chưa chuyển tài khoản được: {0} đã có sẵn."),
     (r"Could not start the sync \((.*)\)\.", "Không bắt đầu lấy tin được ({0})."),
+    (r"Could not copy '(.*)'\.", "Không sao chép được '{0}'."),
+    (r"TG Kit could not move (.+) \((.*)\)\. Nothing was deleted\.",
+     "TG Kit chưa chuyển được {0} ({1}). Không có gì bị xóa."),
     (r"Today's Claude limit that you set is reached \((.+) of (.+) tokens\)\. Answered without Claude\.",
      "Đã đạt giới hạn Claude hôm nay bạn đặt ({0} trên {1} token). Đã trả lời không dùng Claude."),
     (r"You are over the daily Claude limit you set \((.+) of (.+) tokens\)\. Claude still answers; "

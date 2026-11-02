@@ -123,6 +123,18 @@ or age let two syncs hold the lock at once (a check, then a move, raced by a
 second sync), and let a sync running past the age limit lose its lock. A dry
 run writes nothing and takes no lock.
 
+The lock file holds the holder's pid, start, what it does and a heartbeat
+(`SyncLock.beat`: every chat, every message fetched, at most once a second).
+`store.lock_status` reads it without touching the lock: a lock held with no
+heartbeat for `STUCK_AFTER` (180) seconds, or under a pid that is no longer
+running, is stuck (a login waits for a person: 15 minutes). The window shows
+it, and for its own task (its `tgkit sync` child, its copy of ticked chats,
+its login) offers Stop and retry: the child is ended or the task cancelled,
+the system frees the lock, and the action runs again. It never ends another
+program and never deletes a file; an interrupted write leaves the old file or
+the new one (R1), an interrupted add leaves a `.adding-*` folder that the next
+add moves aside.
+
 ### R12 - The app never writes a chat
 
 The TG Kit window (`appserver.py`) reads through `engine`, the same code the
@@ -156,9 +168,12 @@ window listed or added chats while another client had it open, and SQLite said
 `OperationalError: database is locked`. Every client is now made under
 `store.SessionLock` (`session.lock`, same operating-system lock as R11):
 `net.connected`, `net.login`, `net.logout` and the login in the window. A
-second client waits up to 30 seconds, then refuses in plain words. Writers take
-`SyncLock` first, then `SessionLock`. A login in the window frees both locks
-on every way out, failures included: a lock left held blocks every later sync.
+second client waits up to 30 seconds, then refuses in plain words. Everything
+that takes both takes `SyncLock` first, then `SessionLock`: `sync_chats`,
+`add_chats` (twice: listing, then copying; the user picks in between with no
+lock held), `adopt_session`, the window's `dialogs` and its login. A login in
+the window frees both locks on every way out, failures included: a lock left
+held blocks every later sync.
 
 ### R15 - The chats shown belong to one Telegram account
 
@@ -167,8 +182,22 @@ or `tgkit setup`), and whenever setup or add asks Telegram who the login
 file belongs to, `account.adopt` saves who it is. For another account it moves
 the shown account's data (`account.ACCOUNT_DATA`) to `accounts/<its id>/` and
 brings back `accounts/<new id>/` if there is one. It never overwrites and never
-deletes. A sync never copies another account's messages into the chats shown:
-it refuses until setup or add has switched.
+deletes; a move that fails halfway puts back what moved and says so. A sync
+never copies another account's messages into the chats shown: it switches
+first (under its own sync lock), then gets the new account's chats. The window
+asks Telegram who is logged in when it opens (`net.adopt_session`, 20 seconds
+at most, skipped offline) and switches the same way, so it never shows the
+config account's chats for a login made elsewhere. Log out with "keep chats"
+writes `account.json` from config `me` first (a folder from 0.2.3 has none), so
+the next login to another account moves those chats aside. After any switch
+the window starts a new conversation and reloads every list.
+
+### R16 - The first copy of ticked chats reports every chat
+
+In the window, Add runs `net.add_chats` in the background (`setupflow.add`);
+`/api/setup/add-progress` has one row per ticked chat: waiting, copying N,
+done, or a plain error with Retry for that chat alone. One chat failing never
+stops the others, and the window keeps every failed chat's error on screen.
 
 Every caught error that is not a `UserError` goes to
 `<data>/app/logs/tgkit.log` (rotated) with its traceback, never message text,
