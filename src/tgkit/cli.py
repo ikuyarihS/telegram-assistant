@@ -34,6 +34,7 @@ More:
   tgkit who                       look up the names of people
   tgkit setup                     first-time setup, or change settings
   tgkit where                     where your data is kept
+  tgkit guide                     the playbook for Claude Code: "run tgkit guide, then answer"
   tgkit                           (nothing else) opens a simple menu
 
 Add --json to search, summary or tasks for data that Claude can read.
@@ -83,6 +84,15 @@ def _info(args, text: str) -> None:
 
 def cmd_help(args) -> int:
     print(HELP)
+    return 0
+
+
+def cmd_guide(args) -> int:
+    """The Claude Code playbook. Reads no config and asks nothing: works before setup."""
+    from .playbook import text  # noqa: PLC0415
+
+    sys.stdout.write(text())
+    sys.stdout.flush()
     return 0
 
 
@@ -373,6 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd")
 
     sub.add_parser("help").set_defaults(func=cmd_help)
+    sub.add_parser("guide", aliases=["playbook"]).set_defaults(func=cmd_guide)
     sub.add_parser("where", aliases=["info"]).set_defaults(func=cmd_where)
     sub.add_parser("setup", aliases=["login", "init"]).set_defaults(func=cmd_setup)
     sub.add_parser("menu").set_defaults(func=cmd_menu)

@@ -66,7 +66,7 @@ if [ -z "${TGKIT_NO_SYSTEM_CHANGES:-}" ]; then
     { claude plugin marketplace add "$KIT" && claude plugin install tgkit@tgkit; } >/dev/null 2>&1 \
       || say "Could not add it to Claude automatically. In Claude Code type:  /plugin marketplace add $KIT   and then:  /plugin install tgkit@tgkit"
   else
-    say "(Claude Code is not installed: skipped. See README, part \"Use it with Claude\".)"
+    say "(Claude Code is not installed: skipped. See README, part \"Use with Claude Code\".)"
   fi
 fi
 

@@ -2,6 +2,8 @@
 
 import json
 import os
+import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -98,11 +100,11 @@ def test_powershell_session_steps_and_no_dashes(home, monkeypatch):
 
 
 def test_claude_session_cannot_change_tasks(home, tg, monkeypatch):
-    """Gate NOTE 1: "tgkit tasks --json*" let "tasks --json undo 1" through; now the
-    allow-list is exact and the tgkit Claude starts refuses every change."""
-    from tgkit.claude import ALLOWED
-    assert not any("--json*" in a for a in ALLOWED)
-    assert "Bash(tgkit tasks --json)" in ALLOWED and "PowerShell(tgkit tasks --json)" in ALLOWED
+    """Gate NOTE 1: "tgkit tasks --json*" let "tasks --json undo 1" through; now every
+    changing word is denied wherever it stands and the tgkit Claude starts refuses it."""
+    for cmd in WRITES:
+        for shell in ("Bash", "PowerShell"):
+            assert not permitted(cmd, shell), (shell, cmd)
     assert tg("tasks")[0] == 0 and tg("tasks", "done", "1")[0] == 0
     before = (home / "tasks.json").read_bytes()
     src = str(Path(__file__).resolve().parent.parent / "src")
@@ -121,6 +123,62 @@ def test_claude_session_cannot_change_tasks(home, tg, monkeypatch):
     assert (home / "tasks.json").read_bytes() == before
     code, out, err = tg("tasks", "--json")
     assert code == 0 and json.loads(out)["tasks"]
+
+
+def permitted(cmd: str, shell: str = "Bash") -> bool:
+    """Claude Code's rule check: `*` stands for any run of characters, a deny rule wins."""
+    from tgkit.claude import ALLOWED, DENIED
+
+    def hit(rules):
+        for rule in rules:
+            if rule.startswith(shell + "(") and rule.endswith(")"):
+                pat = rule[len(shell) + 1:-1]
+                if re.fullmatch(".*".join(re.escape(p) for p in pat.split("*")), cmd, re.S):
+                    return True
+        return False
+    return hit(ALLOWED) and not hit(DENIED)
+
+
+FILTERED_READS = ["tgkit tasks", "tgkit tasks --json", "tgkit tasks --json --since 7d",
+                  "tgkit tasks --chat alpha --json", "tgkit tasks mine --json --since 7d",
+                  'tgkit tasks all --chat "du an" --json', "tgkit tasks open --since 30d --json",
+                  "tgkit tasks --since 7d --chat alpha --json"]
+WRITES = ["tgkit tasks done 3", "tgkit tasks --json done 1", "tgkit tasks --chat alpha drop 2",
+          'tgkit tasks note 3 "sent"', 'tgkit tasks add "x" --due Friday', "tgkit tasks --json undo 1",
+          "tgkit tasks --since 7d reopen 1", "tgkit tasks --json add x", "tgkit tasks --json note",
+          "tgkit sync", "tgkit setup", "tgkit add"]
+
+
+def test_filtered_task_reads_run_and_writes_are_denied(home, tg, monkeypatch):
+    """Gate 0.2.1 note: "tasks --json --since 7d" and "tasks --chat x --json" were denied."""
+    for shell in ("Bash", "PowerShell"):
+        for cmd in FILTERED_READS:
+            assert permitted(cmd, shell), (shell, cmd)
+        for cmd in WRITES:
+            assert not permitted(cmd, shell), (shell, cmd)
+    monkeypatch.setenv("TGKIT_READONLY", "1")
+    for cmd in FILTERED_READS:
+        code, out, err = tg(*shlex.split(cmd)[1:])
+        assert code == 0, (cmd, err)
+        if "--json" in cmd:
+            assert isinstance(json.loads(out)["tasks"], list)
+    tg("tasks", "--json")
+    seen = (home / "tasks.json").read_bytes()
+    for cmd in WRITES[:9]:
+        code, out, err = tg(*shlex.split(cmd)[1:])
+        assert code == 1 and "read-only" in err, cmd
+    assert (home / "tasks.json").read_bytes() == seen  # no write form changed a task
+
+
+def test_claude_session_runs_a_filtered_task_read(home, monkeypatch):
+    """The fake Claude really runs `tgkit tasks --chat ... --since ... --json` read-only."""
+    src = str(Path(__file__).resolve().parent.parent / "src")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([src, os.environ.get("PYTHONPATH", "")]))
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", "tasks --chat alpha --since 30d --json")
+    evs = list(runner().stream("việc tuần này", home, None, []))
+    done = [e for e in evs if e["type"] == "step_done"][0]
+    assert done["ok"] is True, done
+    assert isinstance([e for e in evs if e["type"] == "tool_json"][0]["data"]["tasks"], list)
 
 
 def test_tgkit_claude_off_switch(monkeypatch):

@@ -18,6 +18,7 @@ chats cannot always be fetched again.
 | `intent.py` | the app's offline intent parser (words to a query) | no |
 | `conversations.py` | the app's saved conversations, read by `tgkit chats-log` | only `app/conversations/*.json` |
 | `claude.py` | the app's Claude mode: a headless `claude -p` limited to tgkit read commands | only `app/claude/tgkit-guide.md` |
+| `playbook.md`, `playbook.py` | the one Claude Code playbook: `tgkit guide` prints it, `skills/telegram/SKILL.md` is its frontmatter plus this text, the app's guide is this text plus `claude.APP_RULES`. Edit `playbook.md`, copy it under the SKILL.md frontmatter; `tests/test_guide.py` fails when they differ | no |
 | `appserver.py`, `app.py`, `web/` | the TG Kit window: a local server on 127.0.0.1 and its HTML/CSS/JS | no chat data; sync runs `tgkit sync` |
 
 ## 1. The rules that produced this design
@@ -130,10 +131,13 @@ R11 apply unchanged. Its only writes are `tasks.json` (the task buttons, via
 `TaskList`) and its own files under `app/`. Its API listens on 127.0.0.1 and
 needs the random token written into the page; chat text is put on the page
 with `textContent`, never parsed as HTML. Claude mode may run only tgkit read
-commands (`claude.ALLOWED`); anything else is denied without a prompt. A
-wildcard pattern is not enough on its own (`tasks --json*` once let `tasks
---json done 1` through), so the session also gets `TGKIT_READONLY=1` and
-`cli.main` refuses every changing command in that mode.
+commands (`claude.ALLOWED`); anything else is denied without a prompt. Every
+`tgkit tasks` form is allowed, and each changing word (`done`, `undo`,
+`reopen`, `drop`, `note`, `add`) is denied first, between options or last
+(`claude.DENIED`; a deny rule wins). A wildcard pattern is not enough on its
+own (`tasks --json*` once let `tasks --json done 1` through), so the session
+also gets `TGKIT_READONLY=1` and `cli.main` refuses every changing command in
+that mode.
 
 ### R13 - One change of tasks.json at a time
 

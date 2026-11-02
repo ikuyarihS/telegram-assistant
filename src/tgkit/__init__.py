@@ -4,4 +4,4 @@ Everything reads a local copy of the chats you picked. Only `sync`, `add`,
 `who`, `setup` and `search --online` talk to Telegram.
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"

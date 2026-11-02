@@ -117,7 +117,7 @@ if (-not $NoSystemChanges) {
             Say "Could not add it to Claude automatically. In Claude Code type:  /plugin marketplace add $Kit   and then:  /plugin install tgkit@tgkit"
         }
     } else {
-        Say '(Claude Code is not installed: skipped. See README, part "Use it with Claude".)'
+        Say '(Claude Code is not installed: skipped. See README, part "Use with Claude Code".)'
     }
 }
 

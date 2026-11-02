@@ -24,42 +24,44 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
+from . import playbook
 from .store import atomic_write
 
 # Claude Code's shell tool is Bash, or PowerShell on a PC set up that way. Every
 # rule is written for both, so neither shell can run more than the other.
 SHELLS = ("Bash", "PowerShell")
-# "tgkit tasks --json" is exact: a wildcard after it would also allow
-# "tgkit tasks --json done 1", which argparse runs as "done". The session also
-# gets TGKIT_READONLY=1, so the tgkit CLI itself refuses every changing command.
-READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks --json", "tgkit tasks open *",
-                 "tgkit tasks mine *", "tgkit tasks all *", "tgkit chats*", "tgkit show *",
-                 "tgkit media *"]
-DENIED_COMMANDS = ["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit tasks done*",
-                   "tgkit tasks undo*", "tgkit tasks reopen*", "tgkit tasks drop*",
-                   "tgkit tasks note*", "tgkit tasks add*"]
+# Every tasks form is allowed ("tgkit tasks --chat x --since 7d --json"), and a
+# changing word is denied wherever it stands: first ("tasks done 1"), between
+# options ("tasks --json done 1", which argparse runs as "done") or last. Deny
+# rules win over allow rules. The session also gets TGKIT_READONLY=1, so the
+# tgkit CLI itself refuses every changing command however it is written.
+TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")  # the same as cli.TASK_WRITES
+READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit tasks *",
+                 "tgkit chats*", "tgkit show *", "tgkit media *", "tgkit guide"]
+DENIED_COMMANDS = (["tgkit setup*", "tgkit add*", "tgkit sync*"]
+                   + [p for w in TASK_WRITES
+                      for p in (f"tgkit tasks {w}*", f"tgkit tasks * {w}", f"tgkit tasks * {w} *")])
 READONLY_ENV = "TGKIT_READONLY"  # the same name as cli.READONLY_ENV
 ALLOWED = [f"{shell}({c})" for shell in SHELLS for c in READ_COMMANDS]
 DENIED = (["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task"]
           + [f"{shell}({c})" for shell in SHELLS for c in DENIED_COMMANDS])
 
-GUIDE = """You answer questions about the user's own Telegram chats inside the TG Kit app.
+# The app's session reads the same playbook as every other Claude Code session
+# (playbook.md, also `tgkit guide` and the plugin skill), plus the rules of the app.
+APP_RULES = """
+## In the TG Kit app (this session)
 
-Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell, whichever
-you have), always with --json where it exists:
-  tgkit search "words" --json [--chat "part of a chat name"] [--since 7d]
-  tgkit summary ["chat"] [--since 7d|30d|today] --json
-  tgkit tasks --json   |   tgkit tasks mine --json   |   tgkit tasks all --json
-  tgkit chats          |   tgkit show "chat" --thread <message id>
-Never run setup, add, sync, or change a task (done, drop, note, add): the app has buttons for
-those. Never read, list or print files. Chat names can be typed partly and without accents.
+You answer inside the TG Kit window. Here these rules come before the ones above:
 
-Answer in the language the user wrote in (Vietnamese or English), short and plain, for a
-non-technical person; never show commands. Quote messages with the chat, the sender and the
-date. A summary's decisions are only POSSIBLE decisions: read in_reply_to before saying someone
-agreed. If a chat has "stale": true, say its copy may be old and suggest the Sync button. The
-local copy holds only the chats the user picked. Do not use em dashes or en dashes.
+- Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell,
+  whichever you have). Never read, list or print files.
+- This session is read-only. Never run sync, setup, add, `search --online`, or a task change
+  (done, undo, reopen, drop, note, add), even when the user asks: tell them to use the window's
+  buttons (Get new messages, Mark done). The tgkit you run refuses them anyway.
+- If a chat has "stale": true, say its copy may be old and suggest the Get new messages button.
+- Answer short and plain; never show commands.
 """
+GUIDE = playbook.text() + APP_RULES
 
 FALLBACK_HINTS = (
     ("unknown option", "compat"),

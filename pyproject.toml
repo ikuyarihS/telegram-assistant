@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tgkit"
-version = "0.2.1"
+version = "0.2.2"
 description = "Search, summarize and track tasks from your own Telegram chats. Local copy, works offline."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ tgkit-app = "tgkit.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-tgkit = ["web/*.html", "web/static/*"]
+tgkit = ["web/*.html", "web/static/*", "playbook.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

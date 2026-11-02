@@ -132,7 +132,7 @@ left to never use Claude.
 
 The window follows the light or dark theme of your computer. Your questions
 are kept in your data folder; Claude Code can read them with
-`tgkit chats-log --json` (see [Use it with Claude](#use-it-with-claude)). If
+`tgkit chats-log --json` (see [Use with Claude Code](#use-with-claude-code)). If
 the window part could not be installed, TG Kit opens the same screen in your
 web browser.
 
@@ -171,6 +171,7 @@ If you prefer typing commands, these need no extra options:
 | Search Telegram itself (older messages too) | `tgkit search "contract" --online` |
 | Follow more chats | `tgkit add` |
 | Where is my data | `tgkit where` |
+| The instructions for Claude Code | `tgkit guide` |
 | All commands | `tgkit help` |
 
 Tips:
@@ -185,10 +186,11 @@ Tips:
 
 ---
 
-## Use it with Claude
+## Use with Claude Code
 
-If you use Claude Code, the installer adds TG Kit to Claude for you. Then
-just ask, in English or Vietnamese, for example:
+**With the TG Kit plugin it just works.** If you use Claude Code, the
+installer adds TG Kit to Claude for you. Then just ask, in English or
+Vietnamese, for example:
 
 - "What did the team decide this week in Telegram?"
 - "Tóm tắt nhóm Kế toán tuần này"
@@ -210,6 +212,17 @@ in Claude Code, replacing the path with your TG Kit folder:
 
 There are also short commands in Claude: `/tg-search`, `/tg-summary`,
 `/tg-tasks` and `/tg-sync`.
+
+**Without the plugin** (another computer, a new Claude Code window, any
+Claude Code session), start your message with this line and then your
+question:
+
+```
+run tgkit guide, then answer: what did the team decide this week?
+```
+
+`tgkit guide` prints the TG Kit instructions for Claude (the same ones the
+plugin gives it), so Claude knows how to read your chats before it answers.
 
 Claude Code can also see what you asked in the TG Kit window: ask it, for
 example, "continue the search I did in the TG Kit app". It reads your saved
