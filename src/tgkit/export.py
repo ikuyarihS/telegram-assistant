@@ -27,7 +27,7 @@ from xml.sax.saxutils import escape
 from . import config, digest, engine
 from . import tasks as taskmod
 from .errors import UserError
-from .store import Store, local_time
+from .store import Store, is_dead_link, local_time
 
 FORMATS = ("docx", "xlsx", "csv", "md")
 KINDS = ("conversation", "search", "summary", "tasks", "card")
@@ -48,7 +48,6 @@ _L = {
         "which_open": "Open tasks", "which_mine": "Open tasks for you", "which_all": "All tasks",
         "updated_col": "Updated", "count": "Messages", "link": "Link", "open_tg": "Open in Telegram",
         "open_chat_tg": "Open the chat in Telegram", "find_tg": "Open Telegram and find {}",
-        "note_message": "message", "note_chat": "opens the chat", "note_none": "no link",
     },
     "vi": {
         "search": "Tìm kiếm", "summary": "Tóm tắt", "tasks": "Việc cần làm", "conversation": "Cuộc trò chuyện",
@@ -65,12 +64,13 @@ _L = {
         "which_open": "Việc đang mở", "which_mine": "Việc của bạn", "which_all": "Tất cả việc",
         "updated_col": "Cập nhật", "count": "Số tin", "link": "Liên kết", "open_tg": "Mở trên Telegram",
         "open_chat_tg": "Mở cuộc trò chuyện trên Telegram", "find_tg": "Mở Telegram và tìm {}",
-        "note_message": "tin nhắn", "note_chat": "mở cuộc trò chuyện", "note_none": "không có liên kết",
     },
 }
 
 
 _LINK_HEADS = {L["link"] for L in _L.values()}
+# the link_note column of a CSV: fixed values, so a sheet can filter on them
+LINK_NOTES = {"message": "message", "chat": "opens the chat", "none": "no link"}
 
 
 def _labels(lang: str) -> dict:
@@ -98,24 +98,28 @@ def _link(url, L: dict, kind: str | None = None, name: str | None = None) -> dic
     """A table cell that opens the message in Telegram (a hyperlink in Word and Excel).
     A private chat or a basic group has no message links: with a username its cell
     opens the chat; without one there is no link, the cell says to find the chat.
-    "note" is the link_note column of a CSV."""
-    if not url:
-        return {"text": L["find_tg"].format(name) if name else "", "url": None, "note": L["note_none"]}
+    "note" is the link_note column of a CSV (the same words in every language)."""
+    if not url or is_dead_link(url):
+        return {"text": L["find_tg"].format(name) if name else "", "url": None, "note": LINK_NOTES["none"]}
     if kind is None:
         kind = "message" if str(url).startswith("https://t.me/") else "chat"
     if kind == "chat":
-        return {"text": L["open_chat_tg"], "url": url, "note": L["note_chat"]}
-    return {"text": L["open_tg"], "url": url, "note": L["note_message"]}
+        return {"text": L["open_chat_tg"], "url": url, "note": LINK_NOTES["chat"]}
+    return {"text": L["open_tg"], "url": url, "note": LINK_NOTES["message"]}
 
 
 def _row_link(store: Store | None, folder, msg_id, L: dict, have=None, kind=None, name=None):
-    """The link cell of one row: the link the row has, else the best one for its chat."""
+    """The link cell of one row. A chat still in TG Kit: its link as it is now (a
+    saved card can hold a link an earlier build made); else the row's own link,
+    never a form Telegram Desktop cannot open."""
     d = store.chats / str(folder) if store is not None and folder else None
-    if not have and d is not None and msg_id is not None:
+    if d is not None and (d / "channel.json").exists():
         info = store.link_info(d, msg_id)
         have, kind = info["link"], info["link_kind"]
-    if not have and not name and d is not None:
-        name = store.title(d)
+        if not have and not name:
+            name = store.title(d)
+    elif is_dead_link(have):
+        have, kind = None, "none"
     return _link(have, L, kind, name)
 
 

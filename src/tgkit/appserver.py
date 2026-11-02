@@ -30,7 +30,7 @@ from . import claude as claudemod
 from .claude import ClaudeRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
-from .store import Store, _ident, _username
+from .store import Store, _ident, _username, is_dead_link
 
 STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
@@ -60,8 +60,6 @@ _OPEN_FORMS = (
     (re.compile(r"tg://privatepost\?channel=(\d{1,20})(?:&post=(\d{1,12}))?"), "channel_id"),
     (re.compile(r"tg://resolve\?domain=([A-Za-z0-9_]{4,64})(?:&post=(\d{1,12}))?"), "username"),
 )
-# Never opened: Telegram Desktop has no handler for these (store.py, links to Telegram).
-_REFUSED_FORMS = ("tg://user", "tg://openmessage")
 TELEGRAM_CODES_URL = "https://my.telegram.org/apps"
 
 
@@ -421,7 +419,7 @@ class App:
         else the browser. Only the link forms of store.telegram_link, and only for a
         chat that is in TG Kit; the link opened is rebuilt from that chat's own data."""
         url = str(body.get("url") or "")
-        if url.lower().startswith(_REFUSED_FORMS):
+        if is_dead_link(url):  # never opened: Telegram Desktop has no handler for these
             raise UserError("Telegram Desktop cannot open this kind of link.",
                             "Open Telegram and find the chat by its name.")
         for pattern, key in _OPEN_FORMS:

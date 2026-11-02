@@ -320,6 +320,13 @@ USERNAME_RE = re.compile(r"[A-Za-z0-9_]{4,64}")
 # kind of a link: "message" opens that message, "chat" opens only the chat,
 # "none" there is no link (a private chat or a basic group without a username).
 LINK_KINDS = ("message", "chat", "none")
+# Link forms Telegram Desktop cannot open. Earlier 0.2.3 builds saved them in
+# conversation cards; every reader drops them (export, window, /api/open-link).
+DEAD_LINK_FORMS = ("tg://user", "tg://openmessage")
+
+
+def is_dead_link(url) -> bool:
+    return bool(url) and str(url).strip().lower().startswith(DEAD_LINK_FORMS)
 
 
 def _username(meta: dict) -> str | None:

@@ -625,9 +625,36 @@ def test_window_renders_a_link_or_a_find_hint_on_every_summary_row():
                  "const line = (it) => msgLine(it, ch);"):
         assert part in body, part
     assert "tgLink(itemLink(it, ch.folder, ch.title))" in js
-    assert 'if (link && !link.url && link.kind === "none") return findHint(link.name);' in js
+    assert 'if (link && (DEAD_LINK.test(link.url || "") || (!link.url && link.kind === "none"))) return findHint(link.name);' in js
     assert "Open Telegram and find ${n}" in js and "Mở Telegram và tìm ${n}" in js
-    assert "tg://user" not in js and "openmessage" not in js
+    assert "tg://user" not in js  # the window never builds a dead form; it only recognizes saved ones
+    assert js.count("openmessage") == 1 and "const DEAD_LINK = /^\\s*tg:\\/\\/(user|openmessage)\\b/i;" in js
+
+
+def test_saved_cards_with_dead_links_export_the_find_hint(home):
+    """A conversation saved by an earlier 0.2.3 build keeps tg://user and tg://openmessage
+    links in its cards; exporting it rebuilds each row's link from the chat (or gives the
+    find hint) and never writes the dead forms."""
+    from tgkit.conversations import Conversations  # noqa: PLC0415
+
+    add_private_chats(home)
+    old = [{"chat": "Chi Riêng", "folder": "Chi_rieng", "id": 91, "text": "a", "link": "tg://user?id=6006", "link_kind": "chat"},
+           {"chat": "Bình Riêng", "folder": "Binh_rieng", "id": 90, "text": "b", "link": "tg://user?id=5005", "link_kind": "chat"},
+           {"chat": "Gone", "folder": "Gone_chat", "id": 1, "text": "c", "link": "tg://openmessage?chat_id=9&message_id=1",
+            "link_kind": "chat"}]
+    convs = Conversations(home)
+    conv = convs.new("q")
+    convs.add_turn(conv, "assistant", text="", cards=[{"type": "hits", "query": "q", "total": 3, "items": old}])
+    doc = export.build(home, "conversation", conversation=conv["id"])
+    md = export.to_md(doc).decode("utf-8")
+    card = export.card_doc({"type": "hits", "query": "q", "items": old}, "vi", Store(home))
+    csv_text = export.to_csv(card).decode("utf-8-sig")
+    for text in (md, csv_text):
+        _no_desktop_dead_links(text)
+    assert "Open Telegram and find Chi Riêng" in md and "Open Telegram and find Gone" in md
+    assert "(tg://resolve?domain=binh_test)" in md
+    rows = list(csv.reader(io.StringIO(csv_text)))
+    assert rows[0][-1] == "link_note" and [r[-1] for r in rows[1:]] == ["no link", "opens the chat", "no link"]
 
 
 def test_open_link_api_only_opens_links_of_chats_in_tg_kit(home, server):

@@ -584,6 +584,9 @@
     return { url, kind: chat.link_kind };
   }
 
+  // Link forms Telegram Desktop cannot open; cards saved by an earlier 0.2.3 build hold them.
+  const DEAD_LINK = /^\s*tg:\/\/(user|openmessage)\b/i;
+
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -611,7 +614,7 @@
   }
 
   function tgLink(link) {
-    if (link && !link.url && link.kind === "none") return findHint(link.name);
+    if (link && (DEAD_LINK.test(link.url || "") || (!link.url && link.kind === "none"))) return findHint(link.name);
     if (!link || !link.url) return null;
     const chatOnly = link.kind === "chat";
     return el("a", {
@@ -626,11 +629,16 @@
     }, chatOnly ? t("openChatTg") : t("openTg"));
   }
 
-  // The link a row carries (the same one its export has), else the one of its chat.
+  // The link of a row: for a chat still in TG Kit, its link as it is now (the same one
+  // the export gives; a saved card can hold a link an earlier build made); else the
+  // row's own link, never a form Telegram Desktop cannot open.
   function itemLink(item, folder, chatName) {
-    if (item.link) return { url: item.link, kind: item.link_kind || "message" };
-    if (item.link_kind === "none") return { url: null, kind: "none", name: item.chat || chatName };
-    return linkFor(item.folder || folder, item.id);
+    const name = item.chat || chatName;
+    const fresh = linkFor(item.folder || folder, item.id);
+    if (fresh) return fresh.url ? fresh : { ...fresh, name: fresh.name || name };
+    if (item.link && !DEAD_LINK.test(item.link)) return { url: item.link, kind: item.link_kind || "message" };
+    if (item.link || item.link_kind === "none") return { url: null, kind: "none", name };
+    return null;
   }
 
   function usageText(u, model) {
