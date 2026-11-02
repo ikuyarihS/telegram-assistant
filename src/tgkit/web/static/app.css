@@ -695,6 +695,12 @@ textarea::placeholder { color: var(--muted); }
 
 .tg-link { font-size: 12px; font-weight: 500; }
 .row-actions .tg-link { font-size: 13px; align-self: center; }
+/* a chat with no Telegram link: where to find it, and a button that copies its name */
+.tg-find { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 12px; color: var(--muted); }
+.tg-find .link-btn { font-size: 12px; padding: 2px; }
+.row-actions .tg-find { font-size: 13px; align-self: center; }
+.sum-url { overflow-wrap: anywhere; }
+.copy-buffer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 
 .usage-line { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 

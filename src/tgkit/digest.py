@@ -139,6 +139,10 @@ def chat_digest(store: Store, d: Path, since: datetime | None, state: dict) -> d
                 "date": r.get("date"),
                 "sender": store.sender_name(r.get("sender_id")),
             })
+    # every row carries its Telegram link, the same one the window and the exports show
+    for item in [t["root"] for t in out["threads"]] + [
+            i for key in ("questions", "decisions", "tasks", "links", "files") for i in out[key]]:
+        item.update(store.link_info(d, item.get("id")))
     return out
 
 

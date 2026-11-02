@@ -30,7 +30,7 @@ from . import claude as claudemod
 from .claude import ClaudeRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
-from .store import DESKTOP_CANNOT_JUMP, Store, _ident, _username
+from .store import Store, _ident, _username
 
 STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
@@ -59,9 +59,9 @@ _OPEN_FORMS = (
     (re.compile(r"https://t\.me/([A-Za-z0-9_]{4,64})/(\d{1,12})"), "channel_user"),
     (re.compile(r"tg://privatepost\?channel=(\d{1,20})(?:&post=(\d{1,12}))?"), "channel_id"),
     (re.compile(r"tg://resolve\?domain=([A-Za-z0-9_]{4,64})(?:&post=(\d{1,12}))?"), "username"),
-    (re.compile(r"tg://user\?id=(\d{1,20})"), "user_id"),
-    (re.compile(r"tg://openmessage\?chat_id=(\d{1,20})(?:&message_id=(\d{1,12}))?"), "chat_id"),
 )
+# Never opened: Telegram Desktop has no handler for these (store.py, links to Telegram).
+_REFUSED_FORMS = ("tg://user", "tg://openmessage")
 TELEGRAM_CODES_URL = "https://my.telegram.org/apps"
 
 
@@ -72,9 +72,7 @@ def _known_chat(store: Store, key: str, value: str, post: str | None) -> dict | 
         kind, ident, user = meta.get("type"), _ident(meta), (_username(meta) or "").lower()
         ok = ((key == "channel_id" and kind == "Channel" and ident == value)
               or (key == "channel_user" and kind == "Channel" and user == value.lower())
-              or (key == "username" and user == value.lower() and (kind == "Channel" or not post))
-              or (key == "user_id" and kind == "User" and ident == value)
-              or (key == "chat_id" and kind == "Chat" and ident == value))
+              or (key == "username" and user == value.lower() and (kind == "Channel" or not post)))
         if ok:
             return {**meta, "_title": store.title(d)}
     return None
@@ -423,6 +421,9 @@ class App:
         else the browser. Only the link forms of store.telegram_link, and only for a
         chat that is in TG Kit; the link opened is rebuilt from that chat's own data."""
         url = str(body.get("url") or "")
+        if url.lower().startswith(_REFUSED_FORMS):
+            raise UserError("Telegram Desktop cannot open this kind of link.",
+                            "Open Telegram and find the chat by its name.")
         for pattern, key in _OPEN_FORMS:
             m = pattern.fullmatch(url)
             if m:
@@ -441,17 +442,9 @@ class App:
             opens = "message"
         elif user:  # a username opens the chat in every Telegram app, Desktop included
             target, web, opens = f"tg://resolve?domain={user}", f"https://t.me/{user}", "chat"
-        elif key == "channel_id":
+        else:  # a channel without a username, the chat itself
             target, opens = f"tg://privatepost?channel={ident}", "chat"
-        elif key == "user_id":
-            target, opens = f"tg://user?id={ident}", "chat"
-        else:
-            target = f"tg://openmessage?chat_id={ident}" + (f"&message_id={post}" if post else "")
-            opens = "chat"
         note = None
-        if target.startswith(DESKTOP_CANNOT_JUMP):
-            note = localize(f"Telegram is opening. Telegram Desktop cannot jump to this chat by itself: "
-                            f"pick '{meta['_title']}' in its chat list.", lang)
         if os.name == "nt" and not _has_tg_handler() and not os.environ.get("TGKIT_NO_REVEAL"):
             if not web:
                 raise UserError("Telegram Desktop is not on this computer.",

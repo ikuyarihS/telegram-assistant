@@ -104,6 +104,8 @@ VI = {
     "Open the folder from Settings.": "Mở thư mục từ Cài đặt.",
     "That is not a link to a chat in TG Kit.": "Đây không phải liên kết tới một nhóm trong TG Kit.",
     "Open it from a result in this window.": "Mở nó từ một kết quả trong cửa sổ này.",
+    "Telegram Desktop cannot open this kind of link.": "Telegram Desktop không mở được loại liên kết này.",
+    "Open Telegram and find the chat by its name.": "Mở Telegram và tìm cuộc trò chuyện theo tên.",
     "Telegram Desktop is not on this computer.": "Máy này chưa có Telegram Desktop.",
     "Install it from desktop.telegram.org, then press the link again.":
         "Cài nó từ desktop.telegram.org rồi bấm lại liên kết.",
@@ -207,8 +209,6 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
      r"change it in Settings\.",
      "Bạn đã dùng quá giới hạn Claude mỗi ngày bạn đặt ({0} trên {1} token). Claude vẫn trả lời; "
      "đổi mức này trong Cài đặt."),
-    (r"Telegram is opening\. Telegram Desktop cannot jump to this chat by itself: pick '(.+)' in its chat list\.",
-     "Telegram đang mở. Telegram Desktop không tự mở được nhóm này: hãy chọn '{0}' trong danh sách chat."),
     (r"(.+) Answered without Claude\.", "{0} Đã trả lời không dùng Claude."),
     (r"(.+) is not on this computer\.", "{0} không có trên máy này."),
 )]

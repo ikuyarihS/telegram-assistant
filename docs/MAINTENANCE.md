@@ -179,6 +179,11 @@ second writer waits up to 15 seconds, then refuses in plain words.
   change and a login finishing at the same moment both stay.
 - `/api/open-link` opens only the link forms of `store.telegram_link`, and only
   for a chat that is in TG Kit; the link opened is rebuilt from that chat's data.
+  It refuses `tg://user` and `tg://openmessage`: Telegram Desktop has no handler
+  for them (tdesktop `core/local_url_handlers.cpp` knows only `resolve` and
+  `privatepost`), so TG Kit never makes them. A private chat or basic group
+  without a username gets no link; the window and the exports say "Open
+  Telegram and find <chat name>" (the window adds a Copy name button).
 
 ## 4. Security
 

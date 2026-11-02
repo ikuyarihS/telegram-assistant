@@ -81,7 +81,10 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
   id of the message it answers), `link` and `link_kind`. `link_kind`
   "message": the link (t.me) opens that message in Telegram; "chat": the chat
   is a private chat or a small group, Telegram has no links to its messages,
-  and the link (tg://) opens only the chat. Say which when you give a link.
+  and the link (tg://) opens only the chat; "none": no link at all (a private
+  chat or small group without a username), tell the user to open Telegram and
+  find the chat by its name. Say which when you give a link.
+  `summary --json` rows carry the same `link` and `link_kind`.
   `total` counts every hit; `results` holds the newest 30 unless `--limit`
   says otherwise (`--limit 0` = all).
 - `summary --json`: `{"window": {"since", "label"}, "total_messages",

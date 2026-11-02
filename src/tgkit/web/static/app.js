@@ -110,6 +110,8 @@
       suNoChats: "No chats found.", kindGroup: "group", kindChannel: "channel", kindUser: "person",
       openChatTg: "Open the chat in Telegram",
       openChatTip: "Telegram has no links to single messages of private chats and small groups, so this opens the chat.",
+      findTg: (n) => `Open Telegram and find ${n}`, copyName: "Copy name", nameCopied: (n) => `Copied: ${n}`,
+      findTgTip: "This chat has no Telegram link. Copy its name and paste it in Telegram's search.",
       suStep0: "Data folder",
       suFolderWhy: "TG Kit keeps a copy of the chats you pick on this computer. Choose where.",
       suKeep: (p) => `Keep them in ${p}`, suOther: "Use another folder",
@@ -210,6 +212,8 @@
       suNoChats: "Không tìm thấy nhóm nào.", kindGroup: "nhóm", kindChannel: "kênh", kindUser: "người",
       openChatTg: "Mở cuộc trò chuyện trên Telegram",
       openChatTip: "Telegram không có liên kết tới từng tin trong chat riêng và nhóm nhỏ, nên liên kết này mở cả cuộc trò chuyện.",
+      findTg: (n) => `Mở Telegram và tìm ${n}`, copyName: "Chép tên", nameCopied: (n) => `Đã chép: ${n}`,
+      findTgTip: "Cuộc trò chuyện này không có liên kết Telegram. Chép tên rồi dán vào ô tìm kiếm của Telegram.",
       suStep0: "Thư mục dữ liệu",
       suFolderWhy: "TG Kit giữ bản sao các nhóm bạn chọn trên máy này. Chọn nơi lưu.",
       suKeep: (p) => `Giữ ở ${p}`, suOther: "Dùng thư mục khác",
@@ -562,10 +566,12 @@
   }
 
   // The Telegram link of a message: the message itself in channels and supergroups;
-  // private chats and basic groups have no message links, so theirs opens the chat.
+  // private chats and basic groups have no message links, so theirs opens the chat
+  // when it has a username; without one there is no link: { url: null, kind: "none" }.
   function linkFor(folder, id) {
     const chat = app.chats.find((c) => c.folder === folder);
-    if (!chat || !chat.link_tpl) return null;
+    if (!chat) return null;
+    if (!chat.link_tpl) return { url: null, kind: "none", name: chat.title };
     let url = chat.link_tpl;
     if (url.includes("{id}")) {
       if (id === undefined || id === null || id === "") {
@@ -578,7 +584,34 @@
     return { url, kind: chat.link_kind };
   }
 
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      const area = el("textarea", { class: "copy-buffer", readonly: true });
+      area.value = text;
+      document.body.append(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      area.remove();
+      return ok;
+    }
+  }
+
+  // No link: say where to find the chat, with a button that copies its name.
+  function findHint(name) {
+    if (!name) return null;
+    const btn = el("button", { class: "link-btn", type: "button" }, t("copyName"));
+    btn.addEventListener("click", async () => {
+      if (await copyText(name)) toast(t("nameCopied", name));
+    });
+    return el("span", { class: "tg-find", title: t("findTgTip") },
+      el("span", { class: "tg-find-text" }, t("findTg", name)), btn);
+  }
+
   function tgLink(link) {
+    if (link && !link.url && link.kind === "none") return findHint(link.name);
     if (!link || !link.url) return null;
     const chatOnly = link.kind === "chat";
     return el("a", {
@@ -593,8 +626,11 @@
     }, chatOnly ? t("openChatTg") : t("openTg"));
   }
 
-  function itemLink(item) {
-    return item.link ? { url: item.link, kind: item.link_kind || "message" } : linkFor(item.folder, item.id);
+  // The link a row carries (the same one its export has), else the one of its chat.
+  function itemLink(item, folder, chatName) {
+    if (item.link) return { url: item.link, kind: item.link_kind || "message" };
+    if (item.link_kind === "none") return { url: null, kind: "none", name: item.chat || chatName };
+    return linkFor(item.folder || folder, item.id);
   }
 
   function usageText(u, model) {
@@ -678,10 +714,10 @@
     return el("p", { class: "quote" }, who, r.text !== null && r.text !== undefined ? `“${r.text}”` : t("notLocal"));
   }
 
-  function msgLine(it, folder) {
+  function msgLine(it, ch) {
     return [metaRow({ sender: it.sender, time: it.time }, [
       it.due ? el("span", { class: "due" }, `${t("due")}: ${it.due}`) : null,
-      tgLink(linkFor(folder, it.id))]),
+      tgLink(itemLink(it, ch.folder, ch.title))]),
     el("p", { class: "snippet" }, it.text || ""), quoteLine(it)];
   }
 
@@ -699,17 +735,18 @@
         if (!items || !items.length) return;
         body.append(el("div", { class: "sum-part" }, el("h3", {}, t(key)), hint ? el("p", { class: "hint-line" }, hint) : null, sumList(items, render)));
       };
+      const tg = (it) => tgLink(itemLink(it || {}, ch.folder, ch.title));
       part("threads", ch.threads, (th) => [
-        metaRow({ sender: (th.people || []).join(", ") }, el("span", {}, t("messagesN", th.messages))),
+        metaRow({ sender: (th.people || []).join(", ") }, [el("span", {}, t("messagesN", th.messages)), tg(th.root)]),
         el("p", { class: "snippet" }, (th.root && th.root.text) || ""),
       ]);
-      const line = (it) => msgLine(it, ch.folder);
+      const line = (it) => msgLine(it, ch);
       part("questions", ch.questions, line);
       part("decisions", ch.decisions, line, t("decisionsNote"));
       part("requests", ch.tasks, line);
-      part("links", ch.links, (l) => [metaRow({ sender: l.sender, time: l.time }),
-        /^https?:\/\//.test(l.url) ? el("a", { href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.url) : el("span", {}, l.url)]);
-      part("files", ch.files, (f) => [metaRow({ sender: f.sender, time: f.time }),
+      part("links", ch.links, (l) => [metaRow({ sender: l.sender, time: l.time }, tg(l)),
+        /^https?:\/\//.test(l.url) ? el("a", { class: "sum-url", href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.url) : el("span", { class: "sum-url" }, l.url)]);
+      part("files", ch.files, (f) => [metaRow({ sender: f.sender, time: f.time }, tg(f)),
         el("div", { class: "file-row" }, el("span", { class: "file-chip" }, f.name || ""),
           f.path && ch.folder && f.id ? saveFileButton(ch.folder, f.id) : null)]);
       return el("details", { class: "chat-sum", open: i === 0 },

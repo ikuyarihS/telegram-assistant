@@ -466,9 +466,29 @@ def test_message_links(home, tg_json):
     assert chats["Phòng_Kế_toán"]["link_base"] == "https://t.me/ketoan_test" and chats["Team_Beta"]["link_base"] is None
 
 
+@pytest.mark.parametrize("meta, msg, want", [
+    # supergroup / channel: the message itself
+    ({"type": "Channel", "id": 1001, "username": None, "megagroup": True}, "24", ("https://t.me/c/1001/24", "message")),
+    ({"type": "Channel", "id": 3003, "username": "ketoan_test"}, "70", ("https://t.me/ketoan_test/70", "message")),
+    ({"type": "Channel", "id": 1001, "username": None}, None, ("tg://privatepost?channel=1001", "chat")),
+    # private chat / basic group with a username: tg://resolve opens the chat
+    ({"type": "User", "id": 5005, "username": "binh_test"}, "90", ("tg://resolve?domain=binh_test", "chat")),
+    ({"type": "Chat", "id": 7007, "username": "nhom_test"}, "5", ("tg://resolve?domain=nhom_test", "chat")),
+    # private chat / basic group without a username: no link at all
+    ({"type": "User", "id": 6006, "username": None}, "91", (None, "none")),
+    ({"type": "Chat", "id": 2002, "username": None}, "50", (None, "none")),
+    ({"type": "Chat", "id": 2002, "username": None}, None, (None, "none")),
+])
+def test_link_policy_per_chat_type(meta, msg, want):
+    from tgkit.store import telegram_link  # noqa: PLC0415
+
+    assert telegram_link(meta, msg) == want
+
+
 def test_links_per_chat_type(home, tg_json):
-    """Supergroup or channel: the message. Private chat and basic group: the chat,
-    said plainly (Telegram has no message links for them)."""
+    """Supergroup or channel: the message. Private chat with a username: the chat.
+    Private chat or basic group without one: no link (Telegram Desktop has no handler
+    for tg://user or tg://openmessage)."""
     add_private_chats(home)
     store = Store(home)
 
@@ -477,19 +497,23 @@ def test_links_per_chat_type(home, tg_json):
     assert info("Du_an_Alpha", 24) == {"link": "https://t.me/c/1001/24", "link_kind": "message"}
     assert info("Phòng_Kế_toán", 70) == {"link": "https://t.me/ketoan_test/70", "link_kind": "message"}
     assert info("Binh_rieng", 90) == {"link": "tg://resolve?domain=binh_test", "link_kind": "chat"}
-    assert info("Chi_rieng", 91) == {"link": "tg://user?id=6006", "link_kind": "chat"}
-    assert info("Team_Beta", 50) == {"link": "tg://openmessage?chat_id=2002&message_id=50", "link_kind": "chat"}
-    # search hits: every row has a link and says what it opens
+    assert info("Chi_rieng", 91) == {"link": None, "link_kind": "none"}
+    assert info("Team_Beta", 50) == {"link": None, "link_kind": "none"}
+    # search hits: every row says what its link opens
     hits = {r["folder"]: r for r in tg_json("search", "biên bản")["results"]}
     assert hits["Du_an_Alpha"]["link_kind"] == "message"
     assert hits["Binh_rieng"]["link"] == "tg://resolve?domain=binh_test" and hits["Binh_rieng"]["link_kind"] == "chat"
-    assert hits["Chi_rieng"]["link"] == "tg://user?id=6006"
+    assert hits["Chi_rieng"]["link"] is None and hits["Chi_rieng"]["link_kind"] == "none"
     # the chat list carries one template per chat for tasks and summaries in the window
     tpl = {c["folder"]: (c["link_tpl"], c["link_kind"]) for c in engine.chat_list(store)}
     assert tpl["Du_an_Alpha"] == ("https://t.me/c/1001/{id}", "message")
-    assert tpl["Team_Beta"] == ("tg://openmessage?chat_id=2002&message_id={id}", "chat")
+    assert tpl["Team_Beta"] == (None, "none")
     assert tpl["Binh_rieng"] == ("tg://resolve?domain=binh_test", "chat")
-    assert tpl["Empty_Chat"] == ("tg://user?id=4004", "chat")
+    assert tpl["Empty_Chat"] == (None, "none")
+
+
+def _no_desktop_dead_links(text):
+    assert "tg://user" not in text and "tg://openmessage" not in text
 
 
 def test_exports_link_every_chat_type(home, tg):
@@ -499,24 +523,111 @@ def test_exports_link_every_chat_type(home, tg):
     md = Path(json.loads(out)["path"]).read_text(encoding="utf-8")
     assert "[Open in Telegram](https://t.me/c/1001/24)" in md
     assert "[Open the chat in Telegram](tg://resolve?domain=binh_test)" in md
-    assert "[Open the chat in Telegram](tg://user?id=6006)" in md
+    assert "| Open Telegram and find Chi Riêng |" in md
+    _no_desktop_dead_links(md)
     assert tg("tasks", "--since", "3650d")[0] == 0
     code, out, err = tg("export", "tasks", "all", "--format", "csv", "--json")
     assert code == 0, err
+    text = Path(json.loads(out)["path"]).read_text(encoding="utf-8-sig")
+    _no_desktop_dead_links(text)
+    rows = list(csv.reader(io.StringIO(text)))
+    assert rows[0][-2:] == ["Link", "link_note"]
+    links = {r[5]: (r[-2], r[-1]) for r in rows[1:]}  # chat -> (bare URL, what it opens)
+    assert links["Team Beta"] == ("", "no link")
+    assert links["Chi Riêng"] == ("", "no link")
+    assert links["Dự án Alpha: Kế hoạch"][0].startswith("https://t.me/c/1001/")
+    assert links["Dự án Alpha: Kế hoạch"][1] == "message"
+    code, out, err = tg("export", "search", "biên bản", "--format", "csv", "--json")
+    assert code == 0, err
     rows = list(csv.reader(io.StringIO(Path(json.loads(out)["path"]).read_text(encoding="utf-8-sig"))))
-    links = {r[5]: r[-1] for r in rows[1:]}  # chat -> link
-    assert links["Team Beta"].startswith("tg://openmessage?chat_id=2002&message_id=")
-    assert links["Chi Riêng"] == "tg://user?id=6006"
-    assert all(r[-1] for r in rows[1:])  # no task without a link
-    code, out, err = tg("export", "summary", "--since", "30d", "--format", "md", "--json", "--lang", "vi")
+    assert rows[0][-2:] == ["Link", "link_note"]
+    links = {r[1]: (r[-2], r[-1]) for r in rows[1:]}
+    assert links["Bình Riêng"] == ("tg://resolve?domain=binh_test", "opens the chat")
+    assert links["Chi Riêng"] == ("", "no link")
+    assert links["Dự án Alpha: Kế hoạch"][1] == "message"
+    code, out, err = tg("export", "summary", "--since", "3650d", "--format", "csv", "--json")
+    assert code == 0, err
+    rows = list(csv.reader(io.StringIO(Path(json.loads(out)["path"]).read_text(encoding="utf-8-sig"))))
+    assert rows[0][-2:] == ["Link", "link_note"]
+    assert {r[-1] for r in rows[1:]} <= {"message", "opens the chat", "no link"}
+    assert all((r[-1] == "no link") == (r[-2] == "") for r in rows[1:])
+    code, out, err = tg("export", "summary", "--since", "3650d", "--format", "md", "--json", "--lang", "vi")
     assert code == 0, err
     md = Path(json.loads(out)["path"]).read_text(encoding="utf-8")
-    assert "[Mở cuộc trò chuyện trên Telegram](tg://openmessage?chat_id=2002&message_id=" in md
+    assert "(Mở Telegram và tìm Team Beta)" in md
     assert "[Mở trên Telegram](https://t.me/c/1001/" in md
+    _no_desktop_dead_links(md)
     code, out, err = tg("export", "search", "biên bản", "--json")  # Word: a real hyperlink
     with zipfile.ZipFile(Path(json.loads(out)["path"])) as z:
         rels = z.read("word/_rels/document.xml.rels").decode("utf-8")
-    assert "tg://user?id=6006" in rels
+        body = z.read("word/document.xml").decode("utf-8")
+    assert "tg://resolve?domain=binh_test" in rels and "Open Telegram and find Chi Riêng" in body
+    _no_desktop_dead_links(rels)
+    code, out, err = tg("export", "search", "biên bản", "--format", "xlsx", "--json")
+    with zipfile.ZipFile(Path(json.loads(out)["path"])) as z:
+        sheet = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    assert "Open Telegram and find Chi Riêng" in sheet and "&apos;url&apos;" not in sheet and "'url'" not in sheet
+
+
+def test_window_summary_rows_have_the_export_links(home):
+    """B1-B3: every row of the summary in the window (busiest conversations, questions,
+    decisions, requests, links, files) carries the link its export row has."""
+    from tgkit import digest  # noqa: PLC0415
+
+    add_private_chats(home)
+    write_chat(home, "Nhom_co_ten", {"id": 7007, "type": "Chat", "title": "Nhóm có tên", "username": "nhom_test"},
+               [_row(95, 28, 102, "Ai gửi biên bản họp hôm qua vậy?")])
+    store = Store(home)
+    card = engine.summary_card(digest.build(store, store.chat_dirs(), "3650d"))
+    doc = export.summary_doc(store, since="3650d")
+    L = export._labels("en")
+    table = {}
+    for title, kind, _date, _who, text, cell in doc["table"][1]:
+        table[(title, kind, text)] = cell
+    bullets = {}
+    title = None
+    for b in doc["blocks"]:
+        if b.get("h") == 2:
+            title = b["text"]
+        for x in b.get("bullets") or []:
+            bullets.setdefault(title, []).append(x)
+    seen = {"threads": 0, "questions": 0, "decisions": 0, "tasks": 0, "links": 0, "files": 0}
+    kinds = set()
+    for ch in card["chats"]:
+        d = store.chats / ch["folder"]
+        for key, label, text_of in (("questions", "questions", "text"), ("decisions", "decisions", "text"),
+                                    ("tasks", "requests", "text"), ("links", "links", "url"), ("files", "files", "name")):
+            for it in ch[key]:
+                want = store.link_info(d, it["id"])
+                assert (it["link"], it["link_kind"]) == (want["link"], want["link_kind"]), (ch["title"], key, it)
+                cell = table[(ch["title"], L[label], it[text_of])]
+                assert cell["url"] == it["link"], (ch["title"], key)
+                if it["link"] is None:
+                    assert cell["text"] == f"Open Telegram and find {ch['title']}"
+                seen[key] += 1
+                kinds.add(it["link_kind"])
+        for th in ch["threads"]:
+            root = th["root"]
+            assert root["link"] == store.link_info(d, root["id"])["link"]
+            assert any(isinstance(x, dict) and x["link"]["url"] == root["link"]
+                       and x["text"].startswith(export._item_line(root, L)) for x in bullets[ch["title"]])
+            seen["threads"] += 1
+            kinds.add(root["link_kind"])
+    assert all(seen.values()), seen  # the fixture has rows of every section
+    assert kinds == {"message", "chat", "none"}, kinds
+
+
+def test_window_renders_a_link_or_a_find_hint_on_every_summary_row():
+    js = (Path(__file__).resolve().parents[1] / "src" / "tgkit" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    body = js.split("function summaryCard", 1)[1].split("function taskRow", 1)[0]
+    for part in ('tg(th.root)', 'part("links", ch.links, (l) => [metaRow({ sender: l.sender, time: l.time }, tg(l))',
+                 'part("files", ch.files, (f) => [metaRow({ sender: f.sender, time: f.time }, tg(f))',
+                 "const line = (it) => msgLine(it, ch);"):
+        assert part in body, part
+    assert "tgLink(itemLink(it, ch.folder, ch.title))" in js
+    assert 'if (link && !link.url && link.kind === "none") return findHint(link.name);' in js
+    assert "Open Telegram and find ${n}" in js and "Mở Telegram và tìm ${n}" in js
+    assert "tg://user" not in js and "openmessage" not in js
 
 
 def test_open_link_api_only_opens_links_of_chats_in_tg_kit(home, server):
@@ -534,12 +645,13 @@ def test_open_link_api_only_opens_links_of_chats_in_tg_kit(home, server):
     assert opened("tg://privatepost?channel=1001&post=24")["url"] == "tg://privatepost?channel=1001&post=24"
     r = opened("tg://resolve?domain=binh_test")
     assert r["opens"] == "chat" and r["url"] == "tg://resolve?domain=binh_test" and r["note"] is None
-    r = opened("tg://user?id=6006")
-    assert r["opens"] == "chat" and "Chi Riêng" in r["note"]  # Telegram Desktop cannot jump there: said plainly
-    r = opened("tg://openmessage?chat_id=2002&message_id=50")
-    assert r["opens"] == "chat" and r["url"] == "tg://openmessage?chat_id=2002&message_id=50"
-    assert "Team Beta" in opened("tg://openmessage?chat_id=2002", "vi")["note"]
-    assert "Telegram Desktop không tự mở" in opened("tg://user?id=6006", "vi")["note"]
+    # Telegram Desktop has no handler for these: refused, even for a chat in TG Kit
+    for dead in ("tg://user?id=6006", "tg://openmessage?chat_id=2002&message_id=50", "tg://openmessage?chat_id=2002"):
+        code, body = call(base, "/api/open-link", {"url": dead})
+        assert refused(code, body), dead
+        assert json.loads(body)["message"] == "Telegram Desktop cannot open this kind of link."
+    code, body = call_lang(base, "/api/open-link", {"url": "tg://user?id=6006"}, "vi")
+    assert json.loads(body)["message"] == "Telegram Desktop không mở được loại liên kết này."
     for bad in ("https://evil.example/x", "file:///C:/Windows", "https://t.me/c/1001/24 & calc", "tg://x",
                 "tg://user?id=999", "tg://user?id=2002", "tg://openmessage?chat_id=1001",
                 "tg://resolve?domain=somebody_else", "tg://resolve?domain=binh_test&post=5",

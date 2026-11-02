@@ -311,16 +311,15 @@ def describe_since(text: str | None, default: str | None = None) -> str:
 #   tg://privatepost?channel=<id>&post=<n>   every app, the exact message
 #                                            (channels and supergroups only)
 #   tg://resolve?domain=<username>           every app, the chat of that username
-#   tg://user?id=<id>                        Telegram's own link to a person (Bot API);
-#                                            Telegram Desktop has no handler for it
-#   tg://openmessage?chat_id=<id>&message_id=<n>
-#                                            Telegram for Android: the message of a
-#                                            basic group; Telegram Desktop has no handler
-# Private chats and basic groups have no message links in Telegram at all.
+# tg://user?id= and tg://openmessage have no handler in Telegram Desktop (they fall
+# to its unknown-link prompt), so TG Kit never makes them. Private chats and basic
+# groups have no message links in Telegram at all; one without a username has no
+# link TG Kit can give: the window and the exports say to find it in Telegram.
 
 USERNAME_RE = re.compile(r"[A-Za-z0-9_]{4,64}")
-# Link forms that Telegram Desktop cannot open by itself (see above).
-DESKTOP_CANNOT_JUMP = ("tg://user?", "tg://openmessage?")
+# kind of a link: "message" opens that message, "chat" opens only the chat,
+# "none" there is no link (a private chat or a basic group without a username).
+LINK_KINDS = ("message", "chat", "none")
 
 
 def _username(meta: dict) -> str | None:
@@ -333,11 +332,11 @@ def _ident(meta: dict) -> str | None:
     return ident if ident.isdigit() and len(ident) <= 20 else None
 
 
-def telegram_link(meta: dict, msg: str | None) -> tuple[str | None, str | None]:
+def telegram_link(meta: dict, msg: str | None) -> tuple[str | None, str]:
     """(link, kind) for a message of a chat. kind "message": the link opens that
-    message; "chat": it opens only the chat (Telegram has no message links for
-    private chats and basic groups). msg is the message number as text, "{id}"
-    for a template, or None for the chat itself."""
+    message (supergroups and channels); "chat": it opens only the chat (a private
+    chat or basic group with a username); "none": no link (one without a username).
+    msg is the message number as text, "{id}" for a template, or None for the chat."""
     kind, user, ident = meta.get("type"), _username(meta), _ident(meta)
     if kind == "Channel":
         if msg:
@@ -349,14 +348,9 @@ def telegram_link(meta: dict, msg: str | None) -> tuple[str | None, str | None]:
             return f"tg://resolve?domain={user}", "chat"
         elif ident:
             return f"tg://privatepost?channel={ident}", "chat"
-    elif kind == "User":
-        if user:
-            return f"tg://resolve?domain={user}", "chat"
-        if ident:
-            return f"tg://user?id={ident}", "chat"
-    elif kind == "Chat" and ident:
-        return f"tg://openmessage?chat_id={ident}" + (f"&message_id={msg}" if msg else ""), "chat"
-    return None, None
+    elif kind in ("User", "Chat") and user:
+        return f"tg://resolve?domain={user}", "chat"
+    return None, "none"
 
 
 # ------------------------------------------------------------------- store

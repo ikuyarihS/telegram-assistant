@@ -47,7 +47,8 @@ _L = {
         "open": "open", "done": "done", "dropped": "dropped", "nothing": "Nothing to show.",
         "which_open": "Open tasks", "which_mine": "Open tasks for you", "which_all": "All tasks",
         "updated_col": "Updated", "count": "Messages", "link": "Link", "open_tg": "Open in Telegram",
-        "open_chat_tg": "Open the chat in Telegram",
+        "open_chat_tg": "Open the chat in Telegram", "find_tg": "Open Telegram and find {}",
+        "note_message": "message", "note_chat": "opens the chat", "note_none": "no link",
     },
     "vi": {
         "search": "Tìm kiếm", "summary": "Tóm tắt", "tasks": "Việc cần làm", "conversation": "Cuộc trò chuyện",
@@ -63,9 +64,13 @@ _L = {
         "open": "đang mở", "done": "xong", "dropped": "bỏ", "nothing": "Không có gì để hiển thị.",
         "which_open": "Việc đang mở", "which_mine": "Việc của bạn", "which_all": "Tất cả việc",
         "updated_col": "Cập nhật", "count": "Số tin", "link": "Liên kết", "open_tg": "Mở trên Telegram",
-        "open_chat_tg": "Mở cuộc trò chuyện trên Telegram",
+        "open_chat_tg": "Mở cuộc trò chuyện trên Telegram", "find_tg": "Mở Telegram và tìm {}",
+        "note_message": "tin nhắn", "note_chat": "mở cuộc trò chuyện", "note_none": "không có liên kết",
     },
 }
+
+
+_LINK_HEADS = {L["link"] for L in _L.values()}
 
 
 def _labels(lang: str) -> dict:
@@ -89,28 +94,36 @@ def _doc(title: str, L: dict, meta: list[str] | None = None) -> dict:
     return {"title": title, "meta": [*(meta or []), f"{L['exported']} {_stamp()}"], "blocks": [], "table": None}
 
 
-def _link(url, L: dict, kind: str | None = None):
+def _link(url, L: dict, kind: str | None = None, name: str | None = None) -> dict:
     """A table cell that opens the message in Telegram (a hyperlink in Word and Excel).
-    A private chat or a basic group has no message links: its cell says it opens the chat."""
+    A private chat or a basic group has no message links: with a username its cell
+    opens the chat; without one there is no link, the cell says to find the chat.
+    "note" is the link_note column of a CSV."""
     if not url:
-        return ""
+        return {"text": L["find_tg"].format(name) if name else "", "url": None, "note": L["note_none"]}
     if kind is None:
         kind = "message" if str(url).startswith("https://t.me/") else "chat"
-    return {"text": L["open_chat_tg"] if kind == "chat" else L["open_tg"], "url": url}
+    if kind == "chat":
+        return {"text": L["open_chat_tg"], "url": url, "note": L["note_chat"]}
+    return {"text": L["open_tg"], "url": url, "note": L["note_message"]}
 
 
-def _row_link(store: Store | None, folder, msg_id, L: dict, have=None, kind=None):
+def _row_link(store: Store | None, folder, msg_id, L: dict, have=None, kind=None, name=None):
     """The link cell of one row: the link the row has, else the best one for its chat."""
-    if not have and store is not None and folder and msg_id is not None:
-        info = store.link_info(store.chats / str(folder), msg_id)
+    d = store.chats / str(folder) if store is not None and folder else None
+    if not have and d is not None and msg_id is not None:
+        info = store.link_info(d, msg_id)
         have, kind = info["link"], info["link_kind"]
-    return _link(have, L, kind)
+    if not have and not name and d is not None:
+        name = store.title(d)
+    return _link(have, L, kind, name)
 
 
 def _hits_table(items: list[dict], L: dict, store: Store | None = None):
     head = [L["date"], L["chat"], L["from"], L["message"], L["file"], L["link"]]
     rows = [[_lt(h.get("date")), h.get("chat") or "", h.get("sender") or "", h.get("text") or "",
-             h.get("file") or "", _row_link(store, h.get("folder"), h.get("id"), L, h.get("link"), h.get("link_kind"))]
+             h.get("file") or "", _row_link(store, h.get("folder"), h.get("id"), L, h.get("link"), h.get("link_kind"),
+                                            h.get("chat"))]
             for h in items]
     return head, rows
 
@@ -126,7 +139,7 @@ def _tasks_table(rows: list[dict], L: dict, store: Store | None = None):
     for t in rows:
         notes = "; ".join(f"{_lt(n.get('at'))}: {n.get('text')}" if isinstance(n, dict) else str(n)
                           for n in t.get("notes") or [])
-        link = _row_link(store, t.get("folder"), t.get("msg_id"), L, t.get("link"), t.get("link_kind"))
+        link = _row_link(store, t.get("folder"), t.get("msg_id"), L, t.get("link"), t.get("link_kind"), t.get("chat"))
         out.append([t.get("id"), t.get("text") or "", _task_status(t, L), t.get("due") or "",
                     L["yes"] if t.get("for_me") else "", t.get("chat") or "", t.get("sender") or "",
                     _lt(t.get("date")), notes, link])
@@ -150,8 +163,8 @@ def _summary_blocks(doc: dict, chats: list[dict], quiet: list[str], L: dict,
     """Blocks for each chat of a summary; returns the rows of its table too."""
     table = []
     for c in chats:
-        def cell(item, _folder=c.get("folder")):
-            return _row_link(store, _folder, item.get("id"), L, item.get("link"), item.get("link_kind"))
+        def cell(item, _folder=c.get("folder"), _name=c.get("title")):
+            return _row_link(store, _folder, item.get("id"), L, item.get("link"), item.get("link_kind"), _name)
         doc["blocks"].append({"h": 2, "text": c.get("title") or ""})
         span = " - ".join(x for x in (_lt(c.get("first")) or c.get("first") or "",
                                       _lt(c.get("last")) or c.get("last") or "") if x)
@@ -370,7 +383,8 @@ def _bullet(item, links: list) -> str:
     """A list line; a summary line ends with its link to Telegram."""
     if isinstance(item, dict):
         link = item.get("link")
-        tail = (_run(" (") + _hyperlink(link, links) + _run(")")) if isinstance(link, dict) and link.get("url") else ""
+        tail = (_run(" (") + _hyperlink(link, links) + _run(")")) if isinstance(link, dict) and link.get("url") else (
+            _run(f" ({_text(link)})") if isinstance(link, dict) and _text(link) else "")
         line = "• " + str(item.get("text") or "")
         return f'<w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr>{_run(line)}{tail}</w:p>'
     return _para(f"• {item}", "ListBullet")
@@ -511,7 +525,7 @@ def _cell(ref: str, value, style: int) -> str:
         url, text = str(value["url"]).replace('"', '""'), _text(value).replace('"', '""')
         formula = 'HYPERLINK("' + url + '","' + text + '")'
         return f'<c r="{ref}" s="3" t="str"><f>{_x(formula)}</f><v>{_x(_text(value))}</v></c>'
-    text = _x(value)[:32000]
+    text = _x(_text(value) if isinstance(value, dict) else value)[:32000]
     return f'<c r="{ref}" s="{style}" t="inlineStr"><is><t xml:space="preserve">{text}</t></is></c>'
 
 
@@ -590,9 +604,16 @@ def to_csv(doc: dict) -> bytes:
     head, rows = doc.get("table") or ([doc.get("title") or ""], [])
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(head)
+    # each link column holds the bare URL; the link_note column after it says what it opens
+    links = {i for i, h in enumerate(head) if h in _LINK_HEADS}
+    w.writerow([x for i, h in enumerate(head) for x in ((h, "link_note") if i in links else (h,))])
     for r in rows:
-        w.writerow([(v.get("url") or "") if isinstance(v, dict) else ("" if v is None else v) for v in r])
+        out = []
+        for i, v in enumerate(r):
+            out.append((v.get("url") or "") if isinstance(v, dict) else ("" if v is None else v))
+            if i in links:
+                out.append(v.get("note") or "" if isinstance(v, dict) else "")
+        w.writerow(out)
     return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
@@ -605,7 +626,7 @@ def _md_cell(v) -> str:
 def _md_bullet(item) -> str:
     if isinstance(item, dict):
         link = item.get("link")
-        tail = f" ({_md_cell(link)})" if isinstance(link, dict) and link.get("url") else ""
+        tail = f" ({_md_cell(link)})" if isinstance(link, dict) and _text(link) else ""
         return _md_cell(item.get("text") or "") + tail
     return _md_cell(item)
 
