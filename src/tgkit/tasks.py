@@ -2,16 +2,19 @@
 
 Kept in <data>/tasks.json. Finding tasks only READS messages.jsonl; it never
 writes to a chat folder. A task you mark done or drop stays in the file, so a
-later scan never brings it back.
+later scan never brings it back. Every write goes through TaskList.change()
+(tasks.lock, read again, change, atomic write), so a Done click and a scan
+running at the same time both keep their change.
 """
 
 import re
 import unicodedata
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .errors import UserError
-from .store import Store, fold, local_time, parse_date, parse_since, read_json, write_json
+from .store import Store, TasksLock, fold, local_time, parse_date, parse_since, read_json, write_json
 
 DEFAULT_WINDOW = "30d"
 
@@ -64,7 +67,11 @@ def detect(text: str) -> dict | None:
 
 class TaskList:
     def __init__(self, home: Path):
-        self.path = Path(home) / "tasks.json"
+        self.home = Path(home)
+        self.path = self.home / "tasks.json"
+        self.data = self._load()
+
+    def _load(self) -> dict:
         data = read_json(self.path, None)
         if data is None:
             data = {"version": 1, "next_id": 1, "tasks": []}
@@ -73,7 +80,7 @@ class TaskList:
                 f"The task list {self.path} is not in the expected shape. Nothing was changed.",
                 "Rename or fix tasks.json and try again.",
             )
-        self.data = data
+        return data
 
     @property
     def tasks(self) -> list[dict]:
@@ -81,6 +88,16 @@ class TaskList:
 
     def save(self) -> None:
         write_json(self.path, self.data)
+
+    @contextmanager
+    def change(self):
+        """Every change of tasks.json: take the tasks lock, read the file again (another
+        TG Kit may have changed it since this list was read), apply the change, write
+        it atomically, free the lock. If the change raises, nothing is written."""
+        with TasksLock(self.home):
+            self.data = self._load()
+            yield self
+            self.save()
 
     def _new_id(self) -> int:
         n = int(self.data.get("next_id") or 1)
@@ -104,11 +121,28 @@ class TaskList:
     # finding -------------------------------------------------------------
 
     def scan(self, store: Store, dirs: list[Path], since: datetime | None, me: dict | None) -> int:
+        """Find and add new tasks in memory (save with change()). Returns how many."""
+        return self.merge(self.find(store, dirs, since, me))
+
+    def merge(self, found: list[dict]) -> int:
+        """Add the found tasks this list does not hold yet, with new numbers."""
+        known = {t.get("key") for t in self.tasks}
+        added = 0
+        for task in found:
+            if task["key"] in known:
+                continue
+            self.tasks.append({"id": self._new_id(), **task})
+            known.add(task["key"])
+            added += 1
+        return added
+
+    def find(self, store: Store, dirs: list[Path], since: datetime | None, me: dict | None) -> list[dict]:
+        """Task-like messages not in this list yet, without numbers. Only reads."""
         known = {t.get("key") for t in self.tasks}
         me = me or {}
         my_id = me.get("id")
         my_user = (me.get("username") or "").lower()
-        added = 0
+        out = []
         for d in dirs:
             rs = store.rows(d)
             by_id = {r.get("id"): r for r in rs}
@@ -130,8 +164,7 @@ class TaskList:
                     or (my_id is not None and parent.get("sender_id") == my_id
                         and r.get("sender_id") != my_id)
                 )
-                self.tasks.append({
-                    "id": self._new_id(),
+                out.append({
                     "key": key,
                     "source": "message",
                     "chat": store.title(d),
@@ -147,8 +180,7 @@ class TaskList:
                     "notes": [],
                 })
                 known.add(key)
-                added += 1
-        return added
+        return out
 
     # changing ------------------------------------------------------------
 

@@ -4,7 +4,9 @@ The app runs `claude -p --output-format stream-json` with the question on
 stdin. The session may use only its shell tool (Bash, or PowerShell where Claude
 Code runs commands in PowerShell, as on many Windows PCs), and only for tgkit's
 read commands (search, summary, tasks lists, chats, show, media). Anything else
-is denied without a prompt. Its words stream into the chat; each tgkit command it runs
+is denied without a prompt, and the tgkit it runs is read-only (TGKIT_READONLY):
+it refuses to change a task, sync, add chats or set up, however the command is
+written. Its words stream into the chat; each tgkit command it runs
 shows as a step, and the JSON it got back becomes the same cards the offline
 mode draws. The session id is kept per conversation, so a follow-up resumes it.
 
@@ -27,11 +29,16 @@ from .store import atomic_write
 # Claude Code's shell tool is Bash, or PowerShell on a PC set up that way. Every
 # rule is written for both, so neither shell can run more than the other.
 SHELLS = ("Bash", "PowerShell")
-READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks --json*", "tgkit tasks open *",
+# "tgkit tasks --json" is exact: a wildcard after it would also allow
+# "tgkit tasks --json done 1", which argparse runs as "done". The session also
+# gets TGKIT_READONLY=1, so the tgkit CLI itself refuses every changing command.
+READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks --json", "tgkit tasks open *",
                  "tgkit tasks mine *", "tgkit tasks all *", "tgkit chats*", "tgkit show *",
                  "tgkit media *"]
 DENIED_COMMANDS = ["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit tasks done*",
-                   "tgkit tasks drop*", "tgkit tasks note*", "tgkit tasks add*"]
+                   "tgkit tasks undo*", "tgkit tasks reopen*", "tgkit tasks drop*",
+                   "tgkit tasks note*", "tgkit tasks add*"]
+READONLY_ENV = "TGKIT_READONLY"  # the same name as cli.READONLY_ENV
 ALLOWED = [f"{shell}({c})" for shell in SHELLS for c in READ_COMMANDS]
 DENIED = (["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task"]
           + [f"{shell}({c})" for shell in SHELLS for c in DENIED_COMMANDS])
@@ -146,6 +153,7 @@ class ClaudeRunner:
         atomic_write(guide, GUIDE)
         env = dict(os.environ)
         env["TGKIT_HOME"] = str(home)
+        env[READONLY_ENV] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
         extra = _tgkit_dirs()
         if extra:

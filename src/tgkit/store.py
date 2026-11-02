@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -99,20 +100,29 @@ class SyncLock:
     people only.
     """
 
+    name = LOCK_NAME
+    wait = 0.0  # seconds to wait for a busy lock; a sync refuses at once
+
     def __init__(self, home: Path):
-        self.path = Path(home) / LOCK_NAME
+        self.path = Path(home) / self.name
         self.held = False
         self._fd: int | None = None
+
+    def _busy(self) -> UserError:
+        return UserError(
+            "Another TG Kit sync is already running for this data folder.",
+            "Wait for it to finish, then try again.",
+        )
 
     def acquire(self) -> "SyncLock":
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
-        if not _try_lock(fd):
-            os.close(fd)
-            raise UserError(
-                "Another TG Kit sync is already running for this data folder.",
-                "Wait for it to finish, then try again.",
-            )
+        deadline = time.monotonic() + self.wait
+        while not _try_lock(fd):
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                raise self._busy()
+            time.sleep(0.05)
         body = json.dumps({"pid": os.getpid(),
                            "started": datetime.now(timezone.utc).replace(microsecond=0).isoformat()})
         try:
@@ -147,6 +157,26 @@ class SyncLock:
     def __exit__(self, *exc):
         self.release()
         return False
+
+
+TASKS_LOCK_NAME = "tasks.lock"
+
+
+class TasksLock(SyncLock):
+    """One change of tasks.json at a time: a Done click in the app and a `tgkit
+    tasks` scan in a terminal each read the file, change it and write it back; the
+    later write would drop the earlier change. Same operating-system lock as the
+    sync, on `tasks.lock`. Changes are short, so a second writer waits a little
+    instead of refusing."""
+
+    name = TASKS_LOCK_NAME
+    wait = 15.0
+
+    def _busy(self) -> UserError:
+        return UserError(
+            "The task list is busy: another TG Kit is changing it.",
+            "Try again in a moment.",
+        )
 
 
 def read_json(path: Path, default):

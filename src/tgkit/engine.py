@@ -121,9 +121,12 @@ def scan_tasks(base: Path, store: Store, chat: str | None = None, since: str | N
     dirs = store.match(chat) if chat else store.chat_dirs()
     found = 0
     if dirs:
-        found = tl.scan(store, dirs, taskmod.window_start(since), config.load(base).get("me"))
-        if found:
-            tl.save()
+        # Read the messages without the lock; add what is new under it, to the file
+        # as it is now (a Done click may have saved it meanwhile).
+        new = tl.find(store, dirs, taskmod.window_start(since), config.load(base).get("me"))
+        if new:
+            with tl.change():
+                found = tl.merge(new)
     return tl, found
 
 
@@ -131,8 +134,8 @@ def set_task(base: Path, ident, status: str) -> dict:
     if status not in ("open", "done", "dropped"):
         raise UserError(f"'{status}' is not a task state.", "Use open, done or dropped.")
     tl = taskmod.TaskList(base)
-    t = tl.set_status(str(ident), status)
-    tl.save()
+    with tl.change():
+        t = tl.set_status(str(ident), status)
     return t
 
 

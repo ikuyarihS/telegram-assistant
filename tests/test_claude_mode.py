@@ -1,6 +1,7 @@
 """Claude mode with a fake `claude` (tests/fake_claude.py): no network, no real Claude."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -94,6 +95,32 @@ def test_powershell_session_steps_and_no_dashes(home, monkeypatch):
     for s in (text, tokens):
         assert em not in s and en not in s
     assert text == "Có 1 tin - biên bản họp 1-2."
+
+
+def test_claude_session_cannot_change_tasks(home, tg, monkeypatch):
+    """Gate NOTE 1: "tgkit tasks --json*" let "tasks --json undo 1" through; now the
+    allow-list is exact and the tgkit Claude starts refuses every change."""
+    from tgkit.claude import ALLOWED
+    assert not any("--json*" in a for a in ALLOWED)
+    assert "Bash(tgkit tasks --json)" in ALLOWED and "PowerShell(tgkit tasks --json)" in ALLOWED
+    assert tg("tasks")[0] == 0 and tg("tasks", "done", "1")[0] == 0
+    before = (home / "tasks.json").read_bytes()
+    src = str(Path(__file__).resolve().parent.parent / "src")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([src, os.environ.get("PYTHONPATH", "")]))
+    monkeypatch.setenv("FAKE_CLAUDE_RUN", "tasks --json undo 1")
+    evs = list(runner().stream("mở lại việc 1", home, None, []))
+    done = [e for e in evs if e["type"] == "step_done"][0]
+    assert done["ok"] is False and "read-only" in done["note"], done
+    assert (home / "tasks.json").read_bytes() == before
+    monkeypatch.setenv("TGKIT_READONLY", "1")
+    for argv in (["tasks", "--json", "undo", "1"], ["tasks", "--json", "done", "2"],
+                 ["task", "--chat", "alpha", "reopen", "1"], ["tasks", "drop", "1"],
+                 ["tasks", "note", "1", "x"], ["tasks", "add", "x"], ["sync"], ["setup"], ["add"]):
+        code, out, err = tg(*argv)
+        assert code == 1 and "read-only" in err, argv
+    assert (home / "tasks.json").read_bytes() == before
+    code, out, err = tg("tasks", "--json")
+    assert code == 0 and json.loads(out)["tasks"]
 
 
 def test_tgkit_claude_off_switch(monkeypatch):

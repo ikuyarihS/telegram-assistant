@@ -236,26 +236,26 @@ def cmd_tasks(args) -> int:
         if not rest:
             raise UserError("Which task? Add its number.", f"For example: tgkit tasks {action} 3")
         status = {"done": "done", "undo": "open", "reopen": "open", "drop": "dropped"}[action]
-        # Check every number first: one bad number changes nothing and claims nothing.
-        for ident in rest:
-            tl.get(ident)
-        changed = [tl.set_status(ident, status) for ident in rest]
-        tl.save()
+        with tl.change():
+            # Check every number first: one bad number changes nothing and claims nothing.
+            for ident in rest:
+                tl.get(ident)
+            changed = [tl.set_status(ident, status) for ident in rest]
         for t in changed:
             print(f"Task {t['id']} is now {status}.")
         return 0
     if action == "note":
         if len(rest) < 2:
             raise UserError("Add the task number and the note.", 'For example: tgkit tasks note 3 "sent on Monday"')
-        t = tl.note(rest[0], " ".join(rest[1:]))
-        tl.save()
+        with tl.change():
+            t = tl.note(rest[0], " ".join(rest[1:]))
         print(f"Note added to task {t['id']}.")
         return 0
     if action == "add":
         if not rest:
             raise UserError("What is the task?", 'For example: tgkit tasks add "call the bank"')
-        t = tl.add(" ".join(rest), args.due)
-        tl.save()
+        with tl.change():
+            t = tl.add(" ".join(rest), args.due)
         print(f"Added task {t['id']}.")
         return 0
 
@@ -475,6 +475,18 @@ _FRIENDLY = {
 }
 
 
+# Set by claude.py for the headless Claude session: every command that changes
+# something is refused, whatever words or option order reach argparse.
+READONLY_ENV = "TGKIT_READONLY"
+TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")
+
+
+def _writes(func, args) -> bool:
+    if func is cmd_tasks:
+        return (args.action or "").lower() in TASK_WRITES
+    return func in (cmd_setup, cmd_add, cmd_sync, cmd_who, cmd_menu, cmd_app)
+
+
 def main(argv=None) -> int:
     _console()
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -495,6 +507,12 @@ def main(argv=None) -> int:
         args.chat = args.chat_opt
     func = getattr(args, "func", None) or cmd_menu
     try:
+        if os.environ.get(READONLY_ENV) and _writes(func, args):
+            raise UserError(
+                "TG Kit is read-only here: it was started by Claude in the TG Kit window, "
+                "so it does not change tasks, sync, add chats or set up.",
+                "Use the buttons in the TG Kit window for that.",
+            )
         return func(args) or 0
     except UserError as exc:
         print(exc.render(), file=sys.stderr)

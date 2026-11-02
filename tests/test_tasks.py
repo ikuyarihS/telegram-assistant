@@ -1,4 +1,5 @@
 import hashlib
+import json
 
 from tgkit.tasks import detect
 
@@ -61,6 +62,44 @@ def test_damaged_task_file_is_left_alone(home, tg):
     assert code == 1
     assert "tasks.json" in err and "Traceback" not in err
     assert (home / "tasks.json").read_text(encoding="utf-8") == "{broken"
+
+
+def test_done_click_during_a_scan_is_kept(home, tg, monkeypatch):
+    """Gate NOTE 4: a Done click saved while a scan runs must survive the scan's save."""
+    from tgkit import engine
+    from tgkit import tasks as taskmod
+    from tgkit.store import Store
+    assert tg("tasks")[0] == 0
+    path = home / "tasks.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    ids = {t["msg_id"]: t["id"] for t in data["tasks"]}
+    data["tasks"] = [t for t in data["tasks"] if t["msg_id"] != 53]  # so the scan finds one
+    path.write_text(json.dumps(data), encoding="utf-8")
+    real = taskmod.TaskList.find
+
+    def find_then_click(self, *a, **k):
+        out = real(self, *a, **k)
+        engine.set_task(home, ids[23], "done")  # the app's button, between read and save
+        return out
+    monkeypatch.setattr(taskmod.TaskList, "find", find_then_click)
+    tl, found = engine.scan_tasks(home, Store(home))
+    assert found == 1
+    saved = {t["msg_id"]: t for t in json.loads(path.read_text(encoding="utf-8"))["tasks"]}
+    assert saved[23]["status"] == "done", "the click was lost"
+    assert 53 in saved and len(saved) == 4
+    assert len({t["id"] for t in saved.values()}) == 4
+
+
+def test_busy_task_list_waits_then_refuses(home, tg, monkeypatch):
+    from tgkit.store import TasksLock
+    monkeypatch.setattr(TasksLock, "wait", 0.2)
+    assert tg("tasks")[0] == 0
+    before = (home / "tasks.json").read_bytes()
+    with TasksLock(home):
+        code, out, err = tg("tasks", "done", "1")
+    assert code == 1 and "busy" in err and "now done" not in out
+    assert (home / "tasks.json").read_bytes() == before
+    assert tg("tasks", "done", "1")[0] == 0
 
 
 def test_bad_task_number(home, tg):

@@ -28,10 +28,14 @@ DEFAULT_WINDOW = "7d"
 TEXT_MAX = 500
 
 
+_URL_TAIL = re.compile(r"[?!.,;:)\]}]*$")
+
+
 def is_question(text: str) -> bool:
     # A "?" inside a link (a query string) is not a question: drop links first,
+    # but keep the punctuation glued to a link's end ("see http://a.b/c?d=e?"),
     # then count only a "?" that ends a word or a sentence.
-    bare = _URL.sub(" ", text or "")
+    bare = _URL.sub(lambda m: " " + _URL_TAIL.search(m.group()).group(), text or "")
     if re.search(r"\?(?=[\s\"')\].,!?]|$)", bare):
         return True
     f = re.sub(r"[\s.!,]+$", "", fold(bare))

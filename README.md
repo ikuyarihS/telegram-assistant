@@ -121,8 +121,12 @@ new conversation, **Esc** stops an answer.
 **Who answers.** If Claude Code is installed and signed in on the computer,
 Claude answers ("Claude" at the top right): it decides what to search, runs
 TG Kit, and writes the answer; click "Ran 2 TG Kit commands" to see what it
-ran. Claude may only read your chats through TG Kit: it cannot change files,
-fetch messages or touch your tasks. Without Claude, TG Kit answers by itself
+ran. Claude may only run TG Kit's read commands (search, summary, task
+lists, chats); its other tools are switched off, so it cannot change files.
+The TG Kit that Claude starts is read-only: it refuses to mark, reopen, drop,
+note or add a task, to get new messages or to set up, however the command is
+written. Listing tasks still saves newly found ones, as the window itself
+does. Without Claude, TG Kit answers by itself
 with simple rules ("Offline"). You can choose **TG Kit only** at the bottom
 left to never use Claude.
 

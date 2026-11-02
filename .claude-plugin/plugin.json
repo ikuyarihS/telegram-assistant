@@ -1,6 +1,6 @@
 {
   "name": "tgkit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Search, summarize and track tasks from your own Telegram chats. Uses the local tgkit tool; works offline on a copy of the chats you picked.",
   "author": { "name": "TG Kit" },
   "keywords": ["telegram", "search", "summary", "tasks", "vietnamese"]

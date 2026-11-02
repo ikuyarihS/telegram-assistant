@@ -1,6 +1,8 @@
 """A stand-in for the `claude` CLI: prints stream-json like `claude -p --output-format
 stream-json` does. FAKE_CLAUDE_LOG gets one JSON line per run (argv and stdin);
-FAKE_CLAUDE_MODE=fail makes it fail like a Claude that is not signed in."""
+FAKE_CLAUDE_MODE=fail makes it fail like a Claude that is not signed in.
+FAKE_CLAUDE_RUN="<args>" really runs `python -m tgkit <args>` as the session's one
+tool call, with the environment the app gave Claude."""
 
 import json
 import os
@@ -35,16 +37,24 @@ shell = os.environ.get("FAKE_CLAUDE_SHELL", "Bash")
 out({"type": "system", "subtype": "init", "session_id": session, "tools": [shell]})
 delta("Đang ")
 delta("tìm...")
-cmd = 'tgkit search "biên bản" --json'
+run = os.environ.get("FAKE_CLAUDE_RUN")  # really run `tgkit <this>` with the env Claude got
+cmd = f"tgkit {run}" if run else 'tgkit search "biên bản" --json'
 out({"type": "assistant", "session_id": session, "message": {"content": [
     {"type": "tool_use", "id": "toolu_1", "name": shell, "input": {"command": cmd}}]}})
-result = {"query": "biên bản", "total": 1, "results": [{
-    "chat": "Dự án Alpha: Kế hoạch", "folder": "Du_an_Alpha", "id": 23, "date": "2026-10-30T08:00:00+00:00",
-    "sender": "Bình Trần", "text": "@an_test nhờ em gửi biên bản họp trước thứ 6 nhé", "file": None,
-    "reply_to": None}]}
+if run:
+    import shlex
+    import subprocess
+    done = subprocess.run([sys.executable, "-m", "tgkit", *shlex.split(run)], capture_output=True,
+                          text=True, encoding="utf-8")
+    body, failed = done.stdout + done.stderr, done.returncode != 0
+else:
+    result = {"query": "biên bản", "total": 1, "results": [{
+        "chat": "Dự án Alpha: Kế hoạch", "folder": "Du_an_Alpha", "id": 23, "date": "2026-10-30T08:00:00+00:00",
+        "sender": "Bình Trần", "text": "@an_test nhờ em gửi biên bản họp trước thứ 6 nhé", "file": None,
+        "reply_to": None}]}
+    body, failed = json.dumps(result, ensure_ascii=False), False
 out({"type": "user", "session_id": session, "message": {"content": [
-    {"type": "tool_result", "tool_use_id": "toolu_1", "content": json.dumps(result, ensure_ascii=False),
-     "is_error": False}]}})
+    {"type": "tool_result", "tool_use_id": "toolu_1", "content": body, "is_error": failed}]}})
 final = os.environ.get("FAKE_CLAUDE_FINAL", "Có 1 tin nhắn nhắc đến biên bản họp.")
 delta(final)
 out({"type": "result", "subtype": "success", "is_error": False, "result": final, "session_id": session})

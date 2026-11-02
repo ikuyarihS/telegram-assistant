@@ -36,6 +36,14 @@ def test_question_mark_inside_a_link_is_not_a_question():
     assert is_question("Ai biết không ?")
 
 
+def test_question_mark_glued_to_a_link_end_is_a_question():
+    """Gate NOTE 3: the "?" after a link is the sender's, the one inside is the link's."""
+    assert is_question("see http://a.b/c?d=e?")
+    assert is_question("Đã xem https://example.com/a?b=1?")
+    assert not is_question("see http://a.b/c?d=e")
+    assert not is_question("see http://a.b/c?d=e.")
+
+
 def test_summary_questions_skip_links(home, tg_json):
     dg = tg_json("summary", "alpha", "--since", "30d")
     ids_ = [q["id"] for q in dg["chats"][0]["questions"]]

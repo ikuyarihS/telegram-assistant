@@ -130,7 +130,20 @@ R11 apply unchanged. Its only writes are `tasks.json` (the task buttons, via
 `TaskList`) and its own files under `app/`. Its API listens on 127.0.0.1 and
 needs the random token written into the page; chat text is put on the page
 with `textContent`, never parsed as HTML. Claude mode may run only tgkit read
-commands (`claude.ALLOWED`); anything else is denied without a prompt.
+commands (`claude.ALLOWED`); anything else is denied without a prompt. A
+wildcard pattern is not enough on its own (`tasks --json*` once let `tasks
+--json done 1` through), so the session also gets `TGKIT_READONLY=1` and
+`cli.main` refuses every changing command in that mode.
+
+### R13 - One change of tasks.json at a time
+
+Every write of `tasks.json` goes through `TaskList.change()`: it takes
+`store.TasksLock` (the same operating-system lock as R11, on `tasks.lock`),
+reads the file again, applies the change and writes it with `atomic_write`.
+A scan reads the messages outside the lock and only merges what is new under
+it. Without this a Done click in the window and a `tgkit tasks` scan in a
+terminal each wrote back their own copy, and the later one lost the click. A
+second writer waits up to 15 seconds, then refuses in plain words.
 
 ## 2. How to change this code
 
