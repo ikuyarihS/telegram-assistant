@@ -1,9 +1,10 @@
 """Claude mode for the app: a headless Claude Code session that answers with tgkit.
 
 The app runs `claude -p --output-format stream-json` with the question on
-stdin. The session may use ONE tool, Bash, and only for tgkit's read commands
-(search, summary, tasks lists, chats, show, media). Anything else is denied
-without a prompt. Its words stream into the chat; each tgkit command it runs
+stdin. The session may use only its shell tool (Bash, or PowerShell where Claude
+Code runs commands in PowerShell, as on many Windows PCs), and only for tgkit's
+read commands (search, summary, tasks lists, chats, show, media). Anything else
+is denied without a prompt. Its words stream into the chat; each tgkit command it runs
 shows as a step, and the JSON it got back becomes the same cards the offline
 mode draws. The session id is kept per conversation, so a follow-up resumes it.
 
@@ -23,24 +24,22 @@ from typing import Iterator
 
 from .store import atomic_write
 
-ALLOWED = [
-    "Bash(tgkit search *)",
-    "Bash(tgkit summary *)",
-    "Bash(tgkit tasks --json*)",
-    "Bash(tgkit tasks open *)",
-    "Bash(tgkit tasks mine *)",
-    "Bash(tgkit tasks all *)",
-    "Bash(tgkit chats*)",
-    "Bash(tgkit show *)",
-    "Bash(tgkit media *)",
-]
-DENIED = ["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task",
-          "Bash(tgkit setup*)", "Bash(tgkit add*)", "Bash(tgkit sync*)", "Bash(tgkit tasks done*)",
-          "Bash(tgkit tasks drop*)", "Bash(tgkit tasks note*)", "Bash(tgkit tasks add*)"]
+# Claude Code's shell tool is Bash, or PowerShell on a PC set up that way. Every
+# rule is written for both, so neither shell can run more than the other.
+SHELLS = ("Bash", "PowerShell")
+READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks --json*", "tgkit tasks open *",
+                 "tgkit tasks mine *", "tgkit tasks all *", "tgkit chats*", "tgkit show *",
+                 "tgkit media *"]
+DENIED_COMMANDS = ["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit tasks done*",
+                   "tgkit tasks drop*", "tgkit tasks note*", "tgkit tasks add*"]
+ALLOWED = [f"{shell}({c})" for shell in SHELLS for c in READ_COMMANDS]
+DENIED = (["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task"]
+          + [f"{shell}({c})" for shell in SHELLS for c in DENIED_COMMANDS])
 
 GUIDE = """You answer questions about the user's own Telegram chats inside the TG Kit app.
 
-Your only tool is the `tgkit` command, run through Bash, always with --json where it exists:
+Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell, whichever
+you have), always with --json where it exists:
   tgkit search "words" --json [--chat "part of a chat name"] [--since 7d]
   tgkit summary ["chat"] [--since 7d|30d|today] --json
   tgkit tasks --json   |   tgkit tasks mine --json   |   tgkit tasks all --json
@@ -60,6 +59,16 @@ FALLBACK_HINTS = (
     ("not logged in", "login"), ("please run /login", "login"), ("invalid api key", "login"),
     ("authentication", "login"), ("oauth", "login"),
 )
+
+
+_DASHES = {0x2014: "-", 0x2013: "-"}  # em dash, en dash (code points: no dash in the source)
+
+
+def plain(text: str) -> str:
+    """The model sometimes writes em or en dashes although the guide asks it not to;
+    the app shows a plain hyphen instead (same mapping for the streamed words and
+    the final answer, so they match)."""
+    return (text or "").translate(_DASHES)
 
 
 def find_claude() -> list[str] | None:
@@ -95,7 +104,7 @@ class ClaudeRunner:
     def args(self, home: Path, session: str | None, guide_file: Path | None) -> list[str]:
         a = list(self.cmd) + ["-p", "--output-format", "stream-json", "--verbose"]
         if not self.compat:
-            a += ["--include-partial-messages", "--tools", "Bash", "--permission-mode", "dontAsk",
+            a += ["--include-partial-messages", "--tools", ",".join(SHELLS), "--permission-mode", "dontAsk",
                   "--safe-mode", "--strict-mcp-config"]
             if guide_file is not None:
                 a += ["--append-system-prompt-file", str(guide_file)]
@@ -185,7 +194,7 @@ class ClaudeRunner:
                     delta = ev.get("delta") or {}
                     if ev.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
                         streamed = True
-                        yield {"type": "token", "text": delta.get("text", "")}
+                        yield {"type": "token", "text": plain(delta.get("text", ""))}
                 elif kind == "assistant":
                     for block in (msg.get("message") or {}).get("content") or []:
                         if block.get("type") == "tool_use":
@@ -193,7 +202,7 @@ class ClaudeRunner:
                             tools[block.get("id")] = cmd
                             yield {"type": "step", "id": block.get("id"), "command": cmd}
                         elif block.get("type") == "text" and not streamed:
-                            yield {"type": "token", "text": block.get("text", "")}
+                            yield {"type": "token", "text": plain(block.get("text", ""))}
                 elif kind == "user":
                     for block in (msg.get("message") or {}).get("content") or []:
                         if not isinstance(block, dict) or block.get("type") != "tool_result":
@@ -220,7 +229,7 @@ class ClaudeRunner:
             t.join(timeout=2)
 
         if final and not final.get("is_error") and proc.returncode == 0:
-            yield {"type": "final", "text": final.get("result") or "", "session": new_session}
+            yield {"type": "final", "text": plain(final.get("result") or ""), "session": new_session}
             return
         detail = " ".join(err_tail) or (final or {}).get("result") or f"exit code {proc.returncode}"
         low = detail.lower()

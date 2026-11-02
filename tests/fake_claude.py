@@ -31,12 +31,13 @@ def delta(text):
          "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}}})
 
 
-out({"type": "system", "subtype": "init", "session_id": session, "tools": ["Bash"]})
+shell = os.environ.get("FAKE_CLAUDE_SHELL", "Bash")
+out({"type": "system", "subtype": "init", "session_id": session, "tools": [shell]})
 delta("Đang ")
 delta("tìm...")
 cmd = 'tgkit search "biên bản" --json'
 out({"type": "assistant", "session_id": session, "message": {"content": [
-    {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": cmd}}]}})
+    {"type": "tool_use", "id": "toolu_1", "name": shell, "input": {"command": cmd}}]}})
 result = {"query": "biên bản", "total": 1, "results": [{
     "chat": "Dự án Alpha: Kế hoạch", "folder": "Du_an_Alpha", "id": 23, "date": "2026-10-30T08:00:00+00:00",
     "sender": "Bình Trần", "text": "@an_test nhờ em gửi biên bản họp trước thứ 6 nhé", "file": None,
@@ -44,6 +45,6 @@ result = {"query": "biên bản", "total": 1, "results": [{
 out({"type": "user", "session_id": session, "message": {"content": [
     {"type": "tool_result", "tool_use_id": "toolu_1", "content": json.dumps(result, ensure_ascii=False),
      "is_error": False}]}})
-final = "Có 1 tin nhắn nhắc đến biên bản họp."
+final = os.environ.get("FAKE_CLAUDE_FINAL", "Có 1 tin nhắn nhắc đến biên bản họp.")
 delta(final)
 out({"type": "result", "subtype": "success", "is_error": False, "result": final, "session_id": session})

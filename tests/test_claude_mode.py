@@ -29,9 +29,17 @@ def test_runner_streams_tokens_steps_and_json(home, tmp_path, monkeypatch):
     argv = run["argv"]
     assert "-p" in argv and "stream-json" in argv and "--resume" not in argv
     allowed = argv[argv.index("--allowedTools") + 1: argv.index("--disallowedTools")]
-    assert allowed and all(a.startswith("Bash(tgkit ") for a in allowed)
+    assert allowed and all(a.startswith(("Bash(tgkit ", "PowerShell(tgkit ")) for a in allowed)
     assert not any("sync" in a or "setup" in a or " add" in a for a in allowed)
-    assert "Write" in argv[argv.index("--disallowedTools"):]
+    denied = argv[argv.index("--disallowedTools") + 1:]
+    assert "Write" in denied
+    tools = argv[argv.index("--tools") + 1].split(",")
+    assert set(tools) == {"Bash", "PowerShell"}
+    for shell in tools:  # every shell gets the same allow and deny rules
+        assert {a.split("(", 1)[1] for a in allowed if a.startswith(shell + "(")} == \
+            {a.split("(", 1)[1] for a in allowed if a.startswith("Bash(")}
+        for cmd in ("setup", "add", "sync", "tasks done", "tasks drop", "tasks note", "tasks add"):
+            assert f"{shell}(tgkit {cmd}*)" in denied
     assert "tìm biên bản" in run["stdin"] and "Team Beta" in run["stdin"]
 
 
@@ -71,6 +79,21 @@ def test_offline_choice_skips_claude(home, tmp_path, monkeypatch):
     app = App(home, claude=runner(), token="t")
     evs = list(app.ask({"text": "summary", "mode": "offline"}))
     assert evs[-1]["mode"] == "offline" and not log.exists()
+
+
+def test_powershell_session_steps_and_no_dashes(home, monkeypatch):
+    """Gate B-1, B-4: a Claude whose shell is PowerShell still runs tgkit; dashes go."""
+    monkeypatch.setenv("FAKE_CLAUDE_SHELL", "PowerShell")
+    em, en = chr(0x2014), chr(0x2013)
+    monkeypatch.setenv("FAKE_CLAUDE_FINAL", f"Có 1 tin {em} biên bản họp 1{en}2.")
+    evs = list(runner().stream("tìm biên bản", home, None, []))
+    assert [e for e in evs if e["type"] == "step"][0]["command"].startswith("tgkit search")
+    assert [e for e in evs if e["type"] == "tool_json"]
+    text = [e for e in evs if e["type"] == "final"][0]["text"]
+    tokens = "".join(e["text"] for e in evs if e["type"] == "token")
+    for s in (text, tokens):
+        assert em not in s and en not in s
+    assert text == "Có 1 tin - biên bản họp 1-2."
 
 
 def test_tgkit_claude_off_switch(monkeypatch):

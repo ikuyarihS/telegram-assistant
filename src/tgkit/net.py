@@ -536,12 +536,15 @@ async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick) -> int
                                 or chat_key(entity_meta(dlg["entity"])) in keys)
             chosen = pick(dialogs, query)
         added = 0
-        for dlg in chosen:
-            try:
-                await add_chat(client, ctx, dlg["entity"], dlg["name"], limit)
-                added += 1
-            except UserError as exc:
-                print(exc.render())
+        # The same lock as sync: add_chat checks its folders, then renames into
+        # chats/ and rewrites sync-state.json, which a running sync also rewrites.
+        with SyncLock(ctx.store.home):
+            for dlg in chosen:
+                try:
+                    await add_chat(client, ctx, dlg["entity"], dlg["name"], limit)
+                    added += 1
+                except UserError as exc:
+                    print(exc.render())
     if added:
         write_summary(ctx.store)
         print(f"Added {added} chat(s). Try: tgkit summary")

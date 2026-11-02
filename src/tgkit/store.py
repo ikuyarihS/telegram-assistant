@@ -48,103 +48,98 @@ def write_json(path: Path, data) -> None:
 # ------------------------------------------------------------------ sync lock
 
 LOCK_NAME = "sync.lock"
-LOCK_MAX_AGE = timedelta(hours=6)
+_LOCK_AT = 1 << 20  # the locked byte sits past the text, so the pid stays readable
 
 
-def _pid_alive(pid: int) -> bool:
-    """True when a process with this id is running. Never sends a signal on Windows
-    (os.kill there would end the process, not test it)."""
-    if pid <= 0:
-        return False
+def _try_lock(fd: int) -> bool:
+    """Take the operating system's lock on the open lock file without waiting.
+
+    The system frees it when the holder closes the file or its process ends, so
+    a crashed sync never leaves a lock behind and no one ever has to guess that a
+    lock is stale (guessing let two syncs hold it at once)."""
     if os.name == "nt":
-        import ctypes  # noqa: PLC0415
+        import msvcrt  # noqa: PLC0415
 
-        kernel = ctypes.windll.kernel32
-        handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            return False
+        os.lseek(fd, _LOCK_AT, os.SEEK_SET)
         try:
-            code = ctypes.c_ulong()
-            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
-            return code.value == 259  # STILL_ACTIVE
-        finally:
-            kernel.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
         return True
+    import fcntl  # noqa: PLC0415
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
     return True
 
 
-class SyncLock:
-    """One sync at a time per data folder: two at once would both read the same
-    watermark and both prepend the same new messages (duplicate rows).
+def _unlock(fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt  # noqa: PLC0415
 
-    The lock file is created with O_EXCL, so only one process can make it. A
-    lock left by a process that died (or older than LOCK_MAX_AGE) is taken over.
+        os.lseek(fd, _LOCK_AT, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl  # noqa: PLC0415
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+class SyncLock:
+    """One writer of chat data at a time per data folder (sync, add): two syncs at
+    once would both read the same watermark and both prepend the same new
+    messages (duplicate rows).
+
+    `sync.lock` is opened (never moved or deleted, so every process locks the
+    same file) and locked with the operating system's file lock, held until
+    release. The system drops the lock of a process that dies, so there is no
+    stale-lock takeover. The file holds the holder's pid and start time, for
+    people only.
     """
 
     def __init__(self, home: Path):
         self.path = Path(home) / LOCK_NAME
         self.held = False
-
-    def _owner(self) -> dict:
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8")) or {}
-        except (OSError, ValueError):
-            return {}
-
-    def _stale(self) -> bool:
-        info = self._owner()
-        started = parse_date(info.get("started"))
-        if started is None:
-            try:
-                started = datetime.fromtimestamp(self.path.stat().st_mtime, timezone.utc)
-            except OSError:
-                return True
-        if datetime.now(timezone.utc) - started > LOCK_MAX_AGE:
-            return True
-        pid = info.get("pid")
-        return isinstance(pid, int) and not _pid_alive(pid)
+        self._fd: int | None = None
 
     def acquire(self) -> "SyncLock":
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+        if not _try_lock(fd):
+            os.close(fd)
+            raise UserError(
+                "Another TG Kit sync is already running for this data folder.",
+                "Wait for it to finish, then try again.",
+            )
         body = json.dumps({"pid": os.getpid(),
                            "started": datetime.now(timezone.utc).replace(microsecond=0).isoformat()})
-        for _ in range(2):
-            try:
-                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            except FileExistsError:
-                if self._stale():
-                    # Moved aside, not deleted: the replace is atomic, so only one
-                    # waiting process wins the next O_EXCL.
-                    try:
-                        self.path.replace(self.path.with_name(LOCK_NAME + ".old"))
-                    except OSError:
-                        pass
-                    continue
-                raise UserError(
-                    "Another TG Kit sync is already running for this data folder.",
-                    "Wait for it to finish, then try again.",
-                ) from None
-            try:
-                os.write(fd, body.encode("utf-8"))
-            finally:
-                os.close(fd)
-            self.held = True
-            return self
-        raise UserError("Could not start the sync: the lock file is busy.", "Try again in a minute.")
+        try:
+            os.ftruncate(fd, 0)
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.write(fd, body.encode("utf-8"))
+        except OSError:
+            pass  # the text is for people; the lock is what counts
+        self._fd = fd
+        self.held = True
+        return self
 
     def release(self) -> None:
-        if self.held:
-            self.held = False
-            try:
-                self.path.replace(self.path.with_name(LOCK_NAME + ".done"))
-            except OSError:
-                pass
+        """Free only the lock this object holds; the file stays for the next sync."""
+        if not self.held or self._fd is None:
+            return
+        fd, self._fd, self.held = self._fd, None, False
+        try:
+            os.ftruncate(fd, 0)
+        except OSError:
+            pass
+        try:
+            _unlock(fd)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
 
     def __enter__(self):
         return self.acquire()

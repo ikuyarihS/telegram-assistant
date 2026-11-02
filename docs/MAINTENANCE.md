@@ -111,12 +111,16 @@ non-ASCII folder and file name.
 ### R11 - One sync at a time per data folder
 
 Two syncs started together read the same watermark and both prepend the same
-new messages: duplicate ids. `net.sync_chats` holds `store.SyncLock`
-(`sync.lock` in the data folder, created with O_EXCL, holding the pid and
-start time) from the watermark read to the last write. A second sync refuses
-in plain words. A lock whose process is gone, or older than 6 hours, is taken
-over. A dry run writes nothing and takes no lock. Never check a pid with
-`os.kill(pid, 0)` on Windows: there it ends the process.
+new messages: duplicate ids. `net.sync_chats` holds `store.SyncLock` from the
+watermark read to the last write, and `net.add_chats` holds it while it adds
+chats (it rewrites `sync-state.json` too). The lock is the operating system's
+file lock (`msvcrt.locking` on Windows, `flock` elsewhere) on `sync.lock` in
+the data folder; the file is never moved or deleted, so every process locks
+the same file. A second sync refuses in plain words. The system frees the lock
+when its process ends, so there is no stale-lock takeover: a takeover by pid
+or age let two syncs hold the lock at once (a check, then a move, raced by a
+second sync), and let a sync running past the age limit lose its lock. A dry
+run writes nothing and takes no lock.
 
 ### R12 - The app never writes a chat
 
