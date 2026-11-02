@@ -130,7 +130,9 @@ class TelegramSetup:
             res = account.adopt(self.home, who, locked=True)  # the login holds the sync lock
         finally:
             self._end()
-        return {"step": "done", "me": who, "switched": bool(res.get("switched"))}
+        return {"step": "done", "me": who, "switched": bool(res.get("switched")),
+                "parked": res.get("parked"), "comes_back": bool(res.get("comes_back")),
+                "restored": bool(res.get("restored"))}
 
     # ------------------------------------------------------------- steps
 

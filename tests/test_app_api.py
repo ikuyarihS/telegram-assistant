@@ -265,6 +265,20 @@ def test_switch_account_shows_only_the_new_accounts_chats_and_back(home):
     assert account.adopt(home, {"id": 101, "name": "An Nguyễn", "username": "an_test"})["switched"] is False
 
 
+def test_switch_with_nothing_to_move_claims_no_move(tmp_path):
+    """account.json says 101 but its chats went to old-account-* (log out with backup):
+    a login as 202 moved nothing, so no message may say the chats were moved aside."""
+    from tgkit import account
+    (tmp_path / "account.json").write_text(json.dumps({"id": 101, "name": "A"}), encoding="utf-8")
+    res = account.adopt(tmp_path, {"id": 202, "name": "B", "username": None})
+    assert not res["switched"] and not res["parked"] and account.switch_notes(res) == []
+    assert account.owner(tmp_path)["id"] == 202 and not (tmp_path / "accounts").exists()
+    (tmp_path / "accounts" / "303" / "chats" / "x").mkdir(parents=True)  # 303 had chats here before
+    res = account.adopt(tmp_path, {"id": 303, "name": "C", "username": None})
+    assert res["switched"] and res["restored"] and not res["parked"]
+    assert account.switch_notes(res) == ["The chats this account had here before are back."]
+
+
 def test_sync_refuses_another_accounts_login_without_touching_chats(home, monkeypatch):
     from tgkit import net
     from tgkit.store import Store

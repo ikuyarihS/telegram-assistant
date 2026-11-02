@@ -106,27 +106,48 @@ def switch(base: Path, me: dict) -> dict:
     accounts/<me id>/. Nothing is deleted. The caller holds the sync lock."""
     base = Path(base)
     old = owner(base)
-    res = {"switched": False, "parked": None, "restored": False}
+    # switched / parked / restored say only what really moved: a message built on
+    # them (switch_notes) never claims a move that did not happen.
+    res = {"switched": False, "parked": None, "comes_back": False, "restored": False}
     if old and str(old.get("id")) != str(me["id"]):
         park = base / ACCOUNTS_DIR / str(old["id"])
         if any((park / i).exists() for i in ACCOUNT_DATA):
             park = park.with_name(f"{old['id']}-{datetime.now():%Y%m%d-%H%M%S}")
+        comes_back = park.name == str(old["id"])  # a dated folder is not brought back by a login
         if _move_set(base, park):
             atomic_write(park / "READ ME.txt",
                          f"TG Kit data of {old.get('name') or 'an earlier Telegram account'}, moved here on "
                          f"{datetime.now():%Y-%m-%d %H:%M} when this computer logged in to another account.\n"
-                         "Nothing was deleted. Log in to that account again and TG Kit brings it back.\n")
+                         + ("Nothing was deleted. Log in to that account again and TG Kit brings it back.\n"
+                            if comes_back else
+                            "Nothing was deleted. To use it again, log in to that account, close TG Kit and\n"
+                            "move these folders and files back into the data folder.\n"))
             res["parked"] = str(park)
+            res["comes_back"] = comes_back
         back = base / ACCOUNTS_DIR / str(me["id"])
         if back.is_dir():
             res["restored"] = bool(_move_set(back, base))
             with contextlib.suppress(OSError):
                 (back / "READ ME.txt").unlink()
                 back.rmdir()
-        res["switched"] = True
+        res["switched"] = bool(res["parked"] or res["restored"])
     atomic_write(base / OWNER_FILE, json.dumps(me, ensure_ascii=False))
     config.put(base, me=me)
     return res
+
+
+def switch_notes(res: dict) -> list[str]:
+    """Plain lines for what a switch really moved; none when nothing moved."""
+    notes = []
+    if res.get("parked") and res.get("comes_back"):
+        notes.append("This is another Telegram account: the chats of the earlier one were moved aside "
+                     "and come back when you log in to it again.")
+    elif res.get("parked"):
+        notes.append(f"This is another Telegram account: the chats of the earlier one were moved to "
+                     f"{res['parked']}. Nothing was deleted.")
+    if res.get("restored"):
+        notes.append("The chats this account had here before are back.")
+    return notes
 
 
 def adopt(base: Path, me: dict | None, locked: bool = False) -> dict:

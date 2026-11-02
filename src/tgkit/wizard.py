@@ -215,9 +215,8 @@ def run_setup(ask=None, say=print, secret=None) -> int:
     me = net.run(net.login(ctx, ask_phone, ask_code, ask_password))
     from . import account  # noqa: PLC0415
 
-    if account.adopt(base, me).get("switched"):  # another account: its own chats, never mixed
-        say("This is another Telegram account: the chats of the earlier one were moved aside "
-            "and come back when you log in to it again.")
+    for note in account.switch_notes(account.adopt(base, me)):  # only what really moved
+        say(note)
     cfg = config.load(base)
     say(f"Logged in as {me.get('name') or me.get('username') or 'you'}.")
 

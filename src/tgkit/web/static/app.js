@@ -144,7 +144,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suRecent: "The last 1000 messages of each chat (quick)", suAll: "Everything (can take a while for big groups)",
       suAdd: "Add the ticked chats", suFinish: "Done", suTerminal: "Use the setup window in a terminal instead",
       suWorking: "Talking to Telegram...", suLoading: "Loading your chats...", suAdding: "Copying the chats. Big groups take a while...",
-      suWho: (n) => `Logged in as ${n}.`, suAdded: (n) => `Added ${n} ${plural(n, "chat", "chats")}. Ask away, or add more.`,
+      suWho: (n) => `Logged in as ${n}.`,
+      suParkedAt: (p) => `This is another Telegram account: the chats of the earlier one were moved to ${p}. Nothing was deleted.`,
+      suRestored: "The chats this account had here before are back.",suAdded: (n) => `Added ${n} ${plural(n, "chat", "chats")}. Ask away, or add more.`,
       suNoneAdded: "No chat was added.", suPickOne: "Tick at least one chat.", suAlready: "already added",
       suNoChats: "No chats found.", kindGroup: "group", kindChannel: "channel", kindUser: "person",
       suShowKind: "Show", suKindAll: "All", suKindGroups: "Groups", suKindChannels: "Channels", suKindPeople: "People",
@@ -253,7 +255,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       suRecent: "1000 tin gần nhất của mỗi nhóm (nhanh)", suAll: "Tất cả (nhóm lớn có thể mất khá lâu)",
       suAdd: "Thêm các nhóm đã chọn", suFinish: "Xong", suTerminal: "Dùng cửa sổ cài đặt trong terminal",
       suWorking: "Đang kết nối Telegram...", suLoading: "Đang tải danh sách nhóm...", suAdding: "Đang sao chép các nhóm. Nhóm lớn sẽ mất một lúc...",
-      suWho: (n) => `Đang đăng nhập với ${n}.`, suAdded: (n) => `Đã thêm ${n} nhóm. Hỏi ngay, hoặc thêm nhóm khác.`,
+      suWho: (n) => `Đang đăng nhập với ${n}.`,
+      suParkedAt: (p) => `Đây là tài khoản Telegram khác: các nhóm của tài khoản trước đã được chuyển vào ${p}. Không có gì bị xóa.`,
+      suRestored: "Các nhóm trước đây của tài khoản này đã trở lại.",suAdded: (n) => `Đã thêm ${n} nhóm. Hỏi ngay, hoặc thêm nhóm khác.`,
       suNoneAdded: "Chưa thêm nhóm nào.", suPickOne: "Đánh dấu ít nhất một nhóm.", suAlready: "đã thêm",
       suNoChats: "Không tìm thấy nhóm nào.", kindGroup: "nhóm", kindChannel: "kênh", kindUser: "người",
       suShowKind: "Hiện", suKindAll: "Tất cả", suKindGroups: "Nhóm", suKindChannels: "Kênh", suKindPeople: "Người",
@@ -1155,7 +1159,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     if (r.step === "code") suShow("code");
     else if (r.step === "password") suShow("password");
     else if (r.step === "done") {
-      ui.suWho.textContent = t("suWho", (r.me && r.me.name) || "") + (r.switched ? ` ${t("suSwitched")}` : "");
+      // only what really moved: nothing parked or restored, no switch note
+      const notes = [];
+      if (r.parked) notes.push(r.comes_back ? t("suSwitched") : t("suParkedAt", r.parked));
+      if (r.restored) notes.push(t("suRestored"));
+      ui.suWho.textContent = [t("suWho", (r.me && r.me.name) || ""), ...notes].join(" ");
       refresh().catch(() => {});
       suShow("chats");
     }
