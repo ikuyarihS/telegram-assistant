@@ -243,13 +243,17 @@ def test_b2_stop_and_retry_cancels_a_hung_copy_in_process(codes, monkeypatch):
 def test_b2_stop_and_retry_ends_the_windows_own_hung_sync_child(home):
     code = ("import sys,time; sys.path.insert(0, sys.argv[1]); from tgkit.store import SyncLock; "
             "SyncLock(sys.argv[2]).acquire(); print('held', flush=True); time.sleep(120)")
-    child = subprocess.Popen([sys.executable, "-c", code, SRC, str(home)], stdout=subprocess.PIPE, text=True)
+    # as App.sync starts it: the owner token in the env (a venv launcher puts the lock
+    # holder one process below child, so the token, not child.pid, proves it is ours)
+    env = dict(os.environ, **{storemod.OWNER_ENV: "own-b2"})
+    child = subprocess.Popen([sys.executable, "-c", code, SRC, str(home)], stdout=subprocess.PIPE, text=True,
+                             env=env)
     try:
         assert child.stdout.readline().strip() == "held"
         app = App(home, claude=ClaudeRunner(cmd=[]), token=TOKEN)
-        app._proc = child  # as App.sync keeps it
+        app._proc, app._proc_owner = child, "own-b2"  # as App.sync keeps them
         info = app.lock_info()
-        assert info["held"] and info["can_stop"] and info["pid"] == child.pid
+        assert info["held"] and info["can_stop"] and info["owner"] == "own-b2"
         assert app.stop_lock()["ok"] and free(home)
     finally:
         if child.poll() is None:
