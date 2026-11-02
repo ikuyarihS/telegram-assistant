@@ -108,6 +108,13 @@
       suWho: (n) => `Logged in as ${n}.`, suAdded: (n) => `Added ${n} ${plural(n, "chat", "chats")}. Ask away, or add more.`,
       suNoneAdded: "No chat was added.", suPickOne: "Tick at least one chat.", suAlready: "already added",
       suNoChats: "No chats found.", kindGroup: "group", kindChannel: "channel", kindUser: "person",
+      openChatTg: "Open the chat in Telegram",
+      openChatTip: "Telegram has no links to single messages of private chats and small groups, so this opens the chat.",
+      suStep0: "Data folder",
+      suFolderWhy: "TG Kit keeps a copy of the chats you pick on this computer. Choose where.",
+      suKeep: (p) => `Keep them in ${p}`, suOther: "Use another folder",
+      suFolderPath: "Full path of the folder",
+      suFolderHelp: "For example D:\\TG Kit. TG Kit makes the folder if it is not there yet.",
     },
     vi: {
       newChat: "Cuộc trò chuyện mới", filter: "Lọc cuộc trò chuyện và nhóm", conversations: "Cuộc trò chuyện",
@@ -201,6 +208,13 @@
       suWho: (n) => `Đang đăng nhập với ${n}.`, suAdded: (n) => `Đã thêm ${n} nhóm. Hỏi ngay, hoặc thêm nhóm khác.`,
       suNoneAdded: "Chưa thêm nhóm nào.", suPickOne: "Đánh dấu ít nhất một nhóm.", suAlready: "đã thêm",
       suNoChats: "Không tìm thấy nhóm nào.", kindGroup: "nhóm", kindChannel: "kênh", kindUser: "người",
+      openChatTg: "Mở cuộc trò chuyện trên Telegram",
+      openChatTip: "Telegram không có liên kết tới từng tin trong chat riêng và nhóm nhỏ, nên liên kết này mở cả cuộc trò chuyện.",
+      suStep0: "Thư mục dữ liệu",
+      suFolderWhy: "TG Kit giữ bản sao các nhóm bạn chọn trên máy này. Chọn nơi lưu.",
+      suKeep: (p) => `Giữ ở ${p}`, suOther: "Dùng thư mục khác",
+      suFolderPath: "Đường dẫn đầy đủ của thư mục",
+      suFolderHelp: "Ví dụ D:\\TG Kit. TG Kit tự tạo thư mục nếu chưa có.",
     },
   };
   const EXAMPLES = {
@@ -238,6 +252,8 @@
     suChangeCodes: $("suChangeCodes"), suCodeIn: $("suCodeIn"), suResend: $("suResend"), suPwIn: $("suPwIn"),
     suWho: $("suWho"), suFilter: $("suFilter"), suList: $("suList"), suAdd: $("suAdd"), suDone: $("suDone"),
     suTerminal: $("suTerminal"),
+    suFolder: $("suFolder"), suKeepText: $("suKeepText"), suFolderPathField: $("suFolderPathField"),
+    suFolderPathIn: $("suFolderPathIn"),
   };
 
   const app = {
@@ -363,26 +379,31 @@
     return rtf.format(Math.round(v), "year");
   }
 
+  // The server answers in the window's language. A problem the user can fix (a wrong
+  // login code, a bad setting) comes back as 200 with user_error, so the browser
+  // logs no failed request for it; it is still thrown here like any error.
+  const HEADERS = { "X-TGKit-Token": TOKEN, "X-TGKit-Lang": LANG, "Content-Type": "application/json" };
+
   async function api(path, body) {
     let res;
     try {
       res = await fetch(path, {
         method: body === undefined ? "GET" : "POST",
-        headers: { "X-TGKit-Token": TOKEN, "Content-Type": "application/json" },
+        headers: HEADERS,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
       throw Object.assign(new Error(t("errOffline")), { data: {} });
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.message || t("errGeneric")), { data });
+    if (!res.ok || data.user_error) throw Object.assign(new Error(data.message || t("errGeneric")), { data });
     return data;
   }
 
   async function stream(path, body, onEvent, signal) {
     const res = await fetch(path, {
       method: "POST",
-      headers: { "X-TGKit-Token": TOKEN, "Content-Type": "application/json" },
+      headers: HEADERS,
       body: JSON.stringify(body || {}),
       signal,
     });
@@ -540,21 +561,40 @@
     }, t("saveFile"));
   }
 
-  // A link that opens the message in Telegram (only chats Telegram has message links for).
+  // The Telegram link of a message: the message itself in channels and supergroups;
+  // private chats and basic groups have no message links, so theirs opens the chat.
   function linkFor(folder, id) {
     const chat = app.chats.find((c) => c.folder === folder);
-    return chat && chat.link_base && id ? `${chat.link_base}/${id}` : null;
+    if (!chat || !chat.link_tpl) return null;
+    let url = chat.link_tpl;
+    if (url.includes("{id}")) {
+      if (id === undefined || id === null || id === "") {
+        if (chat.link_kind !== "chat") return null;
+        url = url.replace(/&message_id=\{id\}/, "");
+      } else {
+        url = url.replace("{id}", encodeURIComponent(id));
+      }
+    }
+    return { url, kind: chat.link_kind };
   }
 
-  function tgLink(url) {
-    if (!url) return null;
+  function tgLink(link) {
+    if (!link || !link.url) return null;
+    const chatOnly = link.kind === "chat";
     return el("a", {
-      class: "tg-link", href: url, target: "_blank", rel: "noopener noreferrer",
+      class: "tg-link", href: link.url, target: "_blank", rel: "noopener noreferrer",
+      title: chatOnly ? t("openChatTip") : null,
       onclick: (e) => {
         e.preventDefault();
-        api("/api/open-link", { url }).catch((err) => toast(err.message, null, true));
+        api("/api/open-link", { url: link.url })
+          .then((r) => { if (r && r.note) toast(r.note); })
+          .catch((err) => toast(err.data && err.data.hint ? `${err.message} ${err.data.hint}` : err.message, null, true));
       },
-    }, t("openTg"));
+    }, chatOnly ? t("openChatTg") : t("openTg"));
+  }
+
+  function itemLink(item) {
+    return item.link ? { url: item.link, kind: item.link_kind || "message" } : linkFor(item.folder, item.id);
   }
 
   function usageText(u, model) {
@@ -608,7 +648,7 @@
       box.hidden = false;
       btn.textContent = t("hideCtx");
     });
-    return [el("div", { class: "row-actions" }, btn, tgLink(item.link || linkFor(item.folder, item.id))), box];
+    return [el("div", { class: "row-actions" }, btn, tgLink(itemLink(item))), box];
   }
 
   function hitsCard(c) {
@@ -967,10 +1007,11 @@
 
   // ------------------------------------------------------------ setup in the window
 
-  const PANES = { codes: "suCodes", phone: "suPhone", code: "suCode", password: "suPassword", chats: "suChats" };
-  const STEP_OF = { codes: "codes", phone: "login", code: "login", password: "login", chats: "chats" };
+  const PANES = { folder: "suFolder", codes: "suCodes", phone: "suPhone", code: "suCode", password: "suPassword", chats: "suChats" };
+  const STEP_OF = { folder: "folder", codes: "codes", phone: "login", code: "login", password: "login", chats: "chats" };
   let suDialogs = [];
   let suAddedAny = false;
+  let suFolderDone = false;
 
   function suNote(text, bad) {
     ui.suStatus.textContent = text || "";
@@ -983,7 +1024,7 @@
 
   function suShow(pane) {
     for (const [name, id] of Object.entries(PANES)) ui[id].hidden = name !== pane;
-    const order = ["codes", "login", "chats"];
+    const order = ["folder", "codes", "login", "chats"];
     const at = order.indexOf(STEP_OF[pane]);
     ui.suSteps.querySelectorAll("li").forEach((li, i) => {
       li.classList.toggle("done", i < at);
@@ -1030,17 +1071,31 @@
     suAddedAny = false;
     try {
       const s = await api("/api/setup/state");
-      ui.suApiId.value = s.api_id || "";
-      ui.suWho.textContent = s.logged_in && s.me ? t("suWho", s.me.name || "") : "";
       if (typeof pane === "string") suShow(pane);
-      else if (!s.has_codes) suShow("codes");
-      else if (s.step === "code" || s.step === "password") suShow(s.step);
-      else if (!s.logged_in) suShow("phone");
-      else suShow("chats");
+      else suRoute(s);
     } catch (e) {
       suShow("codes");
       suError(e);
     }
+  }
+
+  // The next pane for a setup state. A first setup starts with where to keep the data.
+  function suRoute(s) {
+    ui.suApiId.value = s.api_id || "";
+    ui.suWho.textContent = s.logged_in && s.me ? t("suWho", s.me.name || "") : "";
+    ui.suKeepText.textContent = t("suKeep", s.home || "");
+    if (s.fresh && !s.home_fixed && !suFolderDone && !s.step) suShow("folder");
+    else if (!s.has_codes) suShow("codes");
+    else if (s.step === "code" || s.step === "password") suShow(s.step);
+    else if (!s.logged_in) suShow("phone");
+    else suShow("chats");
+  }
+
+  function suFolderChoice() {
+    const other = (document.querySelector('input[name="suHome"]:checked') || {}).value === "other";
+    ui.suFolderPathField.hidden = !other;
+    ui.suFolderPathIn.required = other;
+    if (other) setTimeout(() => ui.suFolderPathIn.focus(), 0);
   }
 
   function kindLabel(kind) {
@@ -1117,6 +1172,17 @@
     } finally {
       buttons.forEach((b) => { b.disabled = false; });
     }
+  });
+  ui.suFolder.addEventListener("change", (e) => { if (e.target.name === "suHome") suFolderChoice(); });
+  ui.suFolder.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const other = (document.querySelector('input[name="suHome"]:checked') || {}).value === "other";
+    const r = await suRun(ui.suFolder, () => api("/api/setup/folder",
+      other ? { choice: "other", path: ui.suFolderPathIn.value } : { choice: "keep" }));
+    if (!r) return;
+    suFolderDone = true;
+    refresh().catch(() => {});
+    suRoute(r);
   });
   ui.suFilter.addEventListener("input", renderDialogs);
   ui.suSite.addEventListener("click", () => api("/api/setup/open-site", {}).catch(suError));

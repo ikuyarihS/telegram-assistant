@@ -47,6 +47,7 @@ _L = {
         "open": "open", "done": "done", "dropped": "dropped", "nothing": "Nothing to show.",
         "which_open": "Open tasks", "which_mine": "Open tasks for you", "which_all": "All tasks",
         "updated_col": "Updated", "count": "Messages", "link": "Link", "open_tg": "Open in Telegram",
+        "open_chat_tg": "Open the chat in Telegram",
     },
     "vi": {
         "search": "Tìm kiếm", "summary": "Tóm tắt", "tasks": "Việc cần làm", "conversation": "Cuộc trò chuyện",
@@ -62,6 +63,7 @@ _L = {
         "open": "đang mở", "done": "xong", "dropped": "bỏ", "nothing": "Không có gì để hiển thị.",
         "which_open": "Việc đang mở", "which_mine": "Việc của bạn", "which_all": "Tất cả việc",
         "updated_col": "Cập nhật", "count": "Số tin", "link": "Liên kết", "open_tg": "Mở trên Telegram",
+        "open_chat_tg": "Mở cuộc trò chuyện trên Telegram",
     },
 }
 
@@ -87,15 +89,29 @@ def _doc(title: str, L: dict, meta: list[str] | None = None) -> dict:
     return {"title": title, "meta": [*(meta or []), f"{L['exported']} {_stamp()}"], "blocks": [], "table": None}
 
 
-def _link(url, L: dict):
-    """A table cell that opens the message in Telegram (a hyperlink in Word and Excel)."""
-    return {"text": L["open_tg"], "url": url} if url else ""
+def _link(url, L: dict, kind: str | None = None):
+    """A table cell that opens the message in Telegram (a hyperlink in Word and Excel).
+    A private chat or a basic group has no message links: its cell says it opens the chat."""
+    if not url:
+        return ""
+    if kind is None:
+        kind = "message" if str(url).startswith("https://t.me/") else "chat"
+    return {"text": L["open_chat_tg"] if kind == "chat" else L["open_tg"], "url": url}
 
 
-def _hits_table(items: list[dict], L: dict):
+def _row_link(store: Store | None, folder, msg_id, L: dict, have=None, kind=None):
+    """The link cell of one row: the link the row has, else the best one for its chat."""
+    if not have and store is not None and folder and msg_id is not None:
+        info = store.link_info(store.chats / str(folder), msg_id)
+        have, kind = info["link"], info["link_kind"]
+    return _link(have, L, kind)
+
+
+def _hits_table(items: list[dict], L: dict, store: Store | None = None):
     head = [L["date"], L["chat"], L["from"], L["message"], L["file"], L["link"]]
     rows = [[_lt(h.get("date")), h.get("chat") or "", h.get("sender") or "", h.get("text") or "",
-             h.get("file") or "", _link(h.get("link"), L)] for h in items]
+             h.get("file") or "", _row_link(store, h.get("folder"), h.get("id"), L, h.get("link"), h.get("link_kind"))]
+            for h in items]
     return head, rows
 
 
@@ -110,12 +126,10 @@ def _tasks_table(rows: list[dict], L: dict, store: Store | None = None):
     for t in rows:
         notes = "; ".join(f"{_lt(n.get('at'))}: {n.get('text')}" if isinstance(n, dict) else str(n)
                           for n in t.get("notes") or [])
-        link = t.get("link")
-        if not link and store is not None and t.get("folder") and t.get("msg_id"):
-            link = store.message_link(store.chats / str(t["folder"]), t["msg_id"])
+        link = _row_link(store, t.get("folder"), t.get("msg_id"), L, t.get("link"), t.get("link_kind"))
         out.append([t.get("id"), t.get("text") or "", _task_status(t, L), t.get("due") or "",
                     L["yes"] if t.get("for_me") else "", t.get("chat") or "", t.get("sender") or "",
-                    _lt(t.get("date")), notes, _link(link, L)])
+                    _lt(t.get("date")), notes, link])
     return head, out
 
 
@@ -131,10 +145,13 @@ def _item_line(it: dict, L: dict) -> str:
     return line
 
 
-def _summary_blocks(doc: dict, chats: list[dict], quiet: list[str], L: dict) -> list[list]:
+def _summary_blocks(doc: dict, chats: list[dict], quiet: list[str], L: dict,
+                    store: Store | None = None) -> list[list]:
     """Blocks for each chat of a summary; returns the rows of its table too."""
     table = []
     for c in chats:
+        def cell(item, _folder=c.get("folder")):
+            return _row_link(store, _folder, item.get("id"), L, item.get("link"), item.get("link_kind"))
         doc["blocks"].append({"h": 2, "text": c.get("title") or ""})
         span = " - ".join(x for x in (_lt(c.get("first")) or c.get("first") or "",
                                       _lt(c.get("last")) or c.get("last") or "") if x)
@@ -150,35 +167,36 @@ def _summary_blocks(doc: dict, chats: list[dict], quiet: list[str], L: dict) -> 
         if threads:
             doc["blocks"].append({"h": 3, "text": L["threads"]})
             doc["blocks"].append({"bullets": [
-                f"{_item_line(t.get('root') or {}, L)} ({t.get('messages')} {L['messages']})" for t in threads]})
+                {"text": f"{_item_line(t.get('root') or {}, L)} ({t.get('messages')} {L['messages']})",
+                 "link": cell(t.get("root") or {})} for t in threads]})
         for key, label in (("questions", "questions"), ("decisions", "decisions"), ("tasks", "requests")):
             items = c.get(key) or []
             if items:
                 doc["blocks"].append({"h": 3, "text": L[label]})
-                doc["blocks"].append({"bullets": [_item_line(i, L) for i in items]})
+                doc["blocks"].append({"bullets": [{"text": _item_line(i, L), "link": cell(i)} for i in items]})
                 table += [[c.get("title") or "", L[label], _lt(i.get("date")), i.get("sender") or "",
-                           i.get("text") or ""] for i in items]
+                           i.get("text") or "", cell(i)] for i in items]
         links = c.get("links") or []
         if links:
             doc["blocks"].append({"h": 3, "text": L["links"]})
-            doc["blocks"].append({"bullets": [f"{_lt(x.get('date'))}, {x.get('sender') or ''}: {x.get('url')}"
-                                              for x in links]})
+            doc["blocks"].append({"bullets": [{"text": f"{_lt(x.get('date'))}, {x.get('sender') or ''}: {x.get('url')}",
+                                               "link": cell(x)} for x in links]})
             table += [[c.get("title") or "", L["links"], _lt(x.get("date")), x.get("sender") or "",
-                       x.get("url") or ""] for x in links]
+                       x.get("url") or "", cell(x)] for x in links]
         files = c.get("files") or []
         if files:
             doc["blocks"].append({"h": 3, "text": L["files"]})
-            doc["blocks"].append({"bullets": [f"{_lt(x.get('date'))}, {x.get('sender') or ''}: {x.get('name') or ''}"
-                                              for x in files]})
+            doc["blocks"].append({"bullets": [{"text": f"{_lt(x.get('date'))}, {x.get('sender') or ''}: "
+                                                       f"{x.get('name') or ''}", "link": cell(x)} for x in files]})
             table += [[c.get("title") or "", L["files"], _lt(x.get("date")), x.get("sender") or "",
-                       x.get("name") or ""] for x in files]
+                       x.get("name") or "", cell(x)] for x in files]
     if quiet:
         doc["blocks"].append({"meta": f"{L['quiet']}: {', '.join(q for q in quiet if q)}"})
     return table
 
 
 def _summary_head(L: dict):
-    return [L["chat"], L["kind"], L["date"], L["from"], L["text"]]
+    return [L["chat"], L["kind"], L["date"], L["from"], L["text"], L["link"]]
 
 
 def search_doc(store: Store, query: str, chat=None, since=None, lang="en") -> dict:
@@ -192,7 +210,7 @@ def search_doc(store: Store, query: str, chat=None, since=None, lang="en") -> di
     if since:
         meta.append(f"{L['period']}: {since}")
     doc = _doc(f"{L['search']}: “{query}”", L, meta)
-    doc["table"] = _hits_table(data["results"], L)
+    doc["table"] = _hits_table(data["results"], L, store)
     doc["blocks"].append({"table": doc["table"]})
     return doc
 
@@ -207,7 +225,7 @@ def summary_doc(store: Store, chat=None, since=None, lang="en") -> dict:
                [f"{dg.get('total_messages', 0)} {L['messages']}, {len(chats)} {L['chats'].lower()}"]
                + ([f"{L['in_chat']}: {chat}"] if chat else []))
     quiet = [q.get("title") for q in dg.get("quiet_chats") or []]
-    doc["table"] = (_summary_head(L), _summary_blocks(doc, chats, quiet, L))
+    doc["table"] = (_summary_head(L), _summary_blocks(doc, chats, quiet, L, store))
     return doc
 
 
@@ -224,26 +242,26 @@ def tasks_doc(base: Path, store: Store, which="open", chat=None, since=None, lan
     return doc
 
 
-def card_doc(card: dict, lang="en") -> dict:
+def card_doc(card: dict, lang="en", store: Store | None = None) -> dict:
     """A result card exactly as the app shows it (used when it cannot be run again)."""
     L = _labels(lang)
     kind = card.get("type") if isinstance(card, dict) else None
     items = [i for i in (card.get("items") or []) if isinstance(i, dict)] if kind else []
     if kind == "hits":
         doc = _doc(f"{L['search']}: “{card.get('query') or ''}”", L, [f"{card.get('total', len(items))} {L['messages']}"])
-        doc["table"] = _hits_table(items, L)
+        doc["table"] = _hits_table(items, L, store)
         doc["blocks"].append({"table": doc["table"]})
         return doc
     if kind == "tasks":
         doc = _doc(L[f"which_{card.get('which')}"] if card.get("which") in ("open", "mine", "all") else L["tasks"], L)
-        doc["table"] = _tasks_table(items, L)
+        doc["table"] = _tasks_table(items, L, store)
         doc["blocks"].append({"table": doc["table"]})
         return doc
     if kind == "summary":
         chats = [c for c in card.get("chats") or [] if isinstance(c, dict)]
         doc = _doc(f"{L['summary']}: {card.get('label') or ''}".strip(": "), L,
                    [f"{card.get('total', 0)} {L['messages']}, {len(chats)} {L['chats'].lower()}"])
-        doc["table"] = (_summary_head(L), _summary_blocks(doc, chats, card.get("quiet") or [], L))
+        doc["table"] = (_summary_head(L), _summary_blocks(doc, chats, card.get("quiet") or [], L, store))
         return doc
     if kind == "chats":
         doc = _doc(L["chats"], L)
@@ -254,9 +272,9 @@ def card_doc(card: dict, lang="en") -> dict:
     raise UserError("This result cannot be saved as a file.", "Save the whole conversation instead.")
 
 
-def _card_blocks(doc: dict, card: dict, lang: str) -> None:
+def _card_blocks(doc: dict, card: dict, lang: str, store: Store | None = None) -> None:
     try:
-        sub = card_doc(card, lang)
+        sub = card_doc(card, lang, store)
     except UserError:
         return
     doc["blocks"].append({"h": 3, "text": sub["title"]})
@@ -283,7 +301,7 @@ def conversation_doc(base: Path, ident: str, lang="en") -> dict:
         rows.append([when, who, turn.get("text") or ""])
         for card in turn.get("cards") or []:
             if isinstance(card, dict):
-                _card_blocks(doc, card, lang)
+                _card_blocks(doc, card, lang, Store(base))
     doc["table"] = ([L["time"], L["who"], L["text"]], rows)
     return doc
 
@@ -299,7 +317,7 @@ def build(base: Path, kind: str, *, query=None, chat=None, since=None, which="op
             kind, query, chat, since = src["kind"], src.get("query"), src.get("chat"), src.get("since")
             which = src.get("which") or which
         else:
-            return card_doc(card or {}, lang)
+            return card_doc(card or {}, lang, store)
     if kind == "search":
         return search_doc(store, query or "", chat, since, lang)
     if kind == "summary":
@@ -333,15 +351,29 @@ def _run(text, bold=False) -> str:
     return f"<w:r>{props}{inner}</w:r>"
 
 
+def _hyperlink(cell: dict, links: list) -> str:
+    rid = f"rIdL{len(links) + 1}"
+    links.append((rid, str(cell["url"])))
+    return (f'<w:hyperlink r:id="{rid}" w:history="1"><w:r><w:rPr><w:color w:val="0B5CAD"/>'
+            f'<w:u w:val="single"/></w:rPr><w:t xml:space="preserve">{_x(_text(cell))}</w:t></w:r>'
+            f"</w:hyperlink>")
+
+
 def _para(text, style=None, bold=False, links: list | None = None) -> str:
     ppr = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
     if isinstance(text, dict) and text.get("url") and links is not None:
-        rid = f"rIdL{len(links) + 1}"
-        links.append((rid, str(text["url"])))
-        return (f'<w:p>{ppr}<w:hyperlink r:id="{rid}" w:history="1"><w:r><w:rPr><w:color w:val="0B5CAD"/>'
-                f'<w:u w:val="single"/></w:rPr><w:t xml:space="preserve">{_x(_text(text))}</w:t></w:r>'
-                f"</w:hyperlink></w:p>")
+        return f"<w:p>{ppr}{_hyperlink(text, links)}</w:p>"
     return f"<w:p>{ppr}{_run(text, bold)}</w:p>"
+
+
+def _bullet(item, links: list) -> str:
+    """A list line; a summary line ends with its link to Telegram."""
+    if isinstance(item, dict):
+        link = item.get("link")
+        tail = (_run(" (") + _hyperlink(link, links) + _run(")")) if isinstance(link, dict) and link.get("url") else ""
+        line = "• " + str(item.get("text") or "")
+        return f'<w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr>{_run(line)}{tail}</w:p>'
+    return _para(f"• {item}", "ListBullet")
 
 
 def _docx_table(head, rows, links: list | None = None) -> str:
@@ -399,7 +431,7 @@ def to_docx(doc: dict) -> bytes:
         elif "meta" in b:
             body.append(_para(b["meta"], "Meta"))
         elif "bullets" in b:
-            body += [_para(f"\u2022 {t}", "ListBullet") for t in b["bullets"]]
+            body += [_bullet(t, links) for t in b["bullets"]]
         elif "table" in b:
             head, rows = b["table"]
             body.append(_docx_table(head, rows, links) if rows else _para("-", "Meta"))
@@ -570,6 +602,14 @@ def _md_cell(v) -> str:
     return ("" if v is None else str(v)).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
+def _md_bullet(item) -> str:
+    if isinstance(item, dict):
+        link = item.get("link")
+        tail = f" ({_md_cell(link)})" if isinstance(link, dict) and link.get("url") else ""
+        return _md_cell(item.get("text") or "") + tail
+    return _md_cell(item)
+
+
 def to_md(doc: dict) -> bytes:
     out = [f"# {doc['title']}", ""] + [f"_{m}_  " for m in doc.get("meta") or []] + [""]
     for b in doc.get("blocks") or []:
@@ -580,7 +620,7 @@ def to_md(doc: dict) -> bytes:
         elif "meta" in b:
             out += [f"_{b['meta']}_", ""]
         elif "bullets" in b:
-            out += [f"- {_md_cell(t)}" for t in b["bullets"]] + [""]
+            out += [f"- {_md_bullet(t)}" for t in b["bullets"]] + [""]
         elif "table" in b:
             head, rows = b["table"]
             out.append("| " + " | ".join(_md_cell(h) for h in head) + " |")

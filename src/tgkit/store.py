@@ -39,7 +39,14 @@ def atomic_write(path: Path, text: str) -> None:
         fh.write(text)
         fh.flush()
         os.fsync(fh.fileno())
-    tmp.replace(path)
+    for attempt in range(20):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:  # Windows: a reader has the file open for a moment
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def write_json(path: Path, data) -> None:
@@ -295,6 +302,63 @@ def describe_since(text: str | None, default: str | None = None) -> str:
     return f"since {text}"
 
 
+# ------------------------------------------------------------------- links to Telegram
+#
+# What each Telegram app opens (checked 2026-11-02 against the sources:
+# tdesktop Telegram/SourceFiles/core/local_url_handlers.cpp and Telegram for
+# Android org/telegram/ui/LaunchActivity.java):
+#   t.me/<username>/<n>, t.me/c/<id>/<n>, tg://resolve?domain=<username>&post=<n>,
+#   tg://privatepost?channel=<id>&post=<n>   every app, the exact message
+#                                            (channels and supergroups only)
+#   tg://resolve?domain=<username>           every app, the chat of that username
+#   tg://user?id=<id>                        Telegram's own link to a person (Bot API);
+#                                            Telegram Desktop has no handler for it
+#   tg://openmessage?chat_id=<id>&message_id=<n>
+#                                            Telegram for Android: the message of a
+#                                            basic group; Telegram Desktop has no handler
+# Private chats and basic groups have no message links in Telegram at all.
+
+USERNAME_RE = re.compile(r"[A-Za-z0-9_]{4,64}")
+# Link forms that Telegram Desktop cannot open by itself (see above).
+DESKTOP_CANNOT_JUMP = ("tg://user?", "tg://openmessage?")
+
+
+def _username(meta: dict) -> str | None:
+    user = meta.get("username")
+    return str(user) if user and USERNAME_RE.fullmatch(str(user)) else None
+
+
+def _ident(meta: dict) -> str | None:
+    ident = str(meta.get("id") if meta.get("id") is not None else "")
+    return ident if ident.isdigit() and len(ident) <= 20 else None
+
+
+def telegram_link(meta: dict, msg: str | None) -> tuple[str | None, str | None]:
+    """(link, kind) for a message of a chat. kind "message": the link opens that
+    message; "chat": it opens only the chat (Telegram has no message links for
+    private chats and basic groups). msg is the message number as text, "{id}"
+    for a template, or None for the chat itself."""
+    kind, user, ident = meta.get("type"), _username(meta), _ident(meta)
+    if kind == "Channel":
+        if msg:
+            if user:
+                return f"https://t.me/{user}/{msg}", "message"
+            if ident:
+                return f"https://t.me/c/{ident}/{msg}", "message"
+        elif user:
+            return f"tg://resolve?domain={user}", "chat"
+        elif ident:
+            return f"tg://privatepost?channel={ident}", "chat"
+    elif kind == "User":
+        if user:
+            return f"tg://resolve?domain={user}", "chat"
+        if ident:
+            return f"tg://user?id={ident}", "chat"
+    elif kind == "Chat" and ident:
+        return f"tg://openmessage?chat_id={ident}" + (f"&message_id={msg}" if msg else ""), "chat"
+    return None, None
+
+
 # ------------------------------------------------------------------- store
 
 
@@ -328,17 +392,27 @@ class Store:
         """The start of a t.me link to a message of this chat, or None when Telegram has
         no message links for it (private chats and small basic groups)."""
         meta = self.meta(d)
-        user = meta.get("username")
         if meta.get("type") == "Channel":
-            if user and re.fullmatch(r"[A-Za-z0-9_]{4,64}", str(user)):
+            user = _username(meta)
+            if user:
                 return f"https://t.me/{user}"
-            if str(meta.get("id") or "").isdigit():
-                return f"https://t.me/c/{meta['id']}"
+            if _ident(meta):
+                return f"https://t.me/c/{_ident(meta)}"
         return None
 
+    def link_info(self, d: Path, msg_id=None) -> dict:
+        """The best Telegram link for a message of this chat, see telegram_link."""
+        msg = str(int(msg_id)) if str(msg_id if msg_id is not None else "").isdigit() else None
+        link, kind = telegram_link(self.meta(d), msg)
+        return {"link": link, "link_kind": kind}
+
     def message_link(self, d: Path, msg_id) -> str | None:
-        base = self.link_base(d)
-        return f"{base}/{int(msg_id)}" if base and str(msg_id).isdigit() else None
+        return self.link_info(d, msg_id)["link"]
+
+    def link_template(self, d: Path) -> dict:
+        """The link of any message of this chat, with {id} for the message number."""
+        link, kind = telegram_link(self.meta(d), "{id}")
+        return {"link_tpl": link, "link_kind": kind}
 
     def title(self, d: Path) -> str:
         if d not in self._titles:

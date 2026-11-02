@@ -170,12 +170,11 @@ def run_setup(ask=None, say=print, secret=None) -> int:
             "switch in the next step.")
         again = ask("Press Enter to keep them, or type new to enter new ones: ").strip().lower()
         if again == "new":
-            cfg["api_id"], cfg["api_hash"] = ask_credentials(ask, say)
-            cfg.pop("me", None)
+            api_id, api_hash = ask_credentials(ask, say)
+            cfg = config.put(base, api_id=api_id, api_hash=api_hash, me=None)
     else:
-        cfg["api_id"], cfg["api_hash"] = ask_credentials(ask, say)
-        cfg.pop("me", None)
-    config.save(base, cfg)
+        api_id, api_hash = ask_credentials(ask, say)
+        cfg = config.put(base, api_id=api_id, api_hash=api_hash, me=None)
     say("Saved.")
 
     say("\nStep 3 of 4: log in to Telegram")
@@ -214,8 +213,7 @@ def run_setup(ask=None, say=print, secret=None) -> int:
             raise Cancelled() from None
 
     me = net.run(net.login(ctx, ask_phone, ask_code, ask_password))
-    cfg["me"] = me
-    config.save(base, cfg)
+    cfg = config.put(base, me=me)
     say(f"Logged in as {me.get('name') or me.get('username') or 'you'}.")
 
     say("\nStep 4 of 4: pick the chats TG Kit should follow")

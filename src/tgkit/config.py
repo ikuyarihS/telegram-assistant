@@ -9,10 +9,11 @@ Nothing is hard-coded to a drive or a user name.
 
 import os
 import re
+import threading
 from pathlib import Path
 
 from .errors import UserError
-from .store import atomic_write, read_json, write_json
+from .store import SyncLock, atomic_write, read_json, write_json
 
 POINTER_NAME = ".tgkit-home"
 
@@ -64,7 +65,49 @@ def load(base: Path) -> dict:
 
 
 def save(base: Path, cfg: dict) -> None:
+    """Write the whole file (atomic: tmp then replace). TG Kit itself changes
+    config.json only through update() / put(), which hold the config lock."""
     write_json(config_path(base), cfg)
+
+
+class ConfigLock(SyncLock):
+    """One change of config.json at a time, across threads and processes: the
+    app's Settings, a login finishing in the app, `tgkit setup` and log out each
+    read the file, change some keys and write it back; without the lock the
+    later write would drop the earlier change. Changes are short, so a second
+    writer waits a little instead of refusing."""
+
+    name = "config.lock"
+    wait = 15.0
+
+    def _busy(self) -> UserError:
+        return UserError("The settings file is busy: another TG Kit is changing it.", "Try again in a moment.")
+
+
+_CONFIG_MUTEX = threading.Lock()
+
+
+def update(base: Path, change) -> dict:
+    """Read config.json, let change(cfg) edit it in place, write it back, all
+    under the config lock. A UserError raised by change leaves the file as it was."""
+    base = Path(base)
+    base.mkdir(parents=True, exist_ok=True)
+    with _CONFIG_MUTEX, ConfigLock(base):
+        cfg = load(base)
+        change(cfg)
+        save(base, cfg)
+    return cfg
+
+
+def put(base: Path, **values) -> dict:
+    """Set some keys of config.json under the lock; a value None removes the key."""
+    def change(cfg: dict) -> None:
+        for key, value in values.items():
+            if value is None:
+                cfg.pop(key, None)
+            else:
+                cfg[key] = value
+    return update(base, change)
 
 
 def _env_file(base: Path) -> dict:

@@ -49,6 +49,7 @@ def chat_list(store: Store) -> list[dict]:
             "synced_at": when.replace(microsecond=0).isoformat() if when else None,
             "stale": store.is_stale(when),
             "link_base": store.link_base(d),
+            **store.link_template(d),
         })
     out.sort(key=lambda c: c["title"].casefold())
     return out
@@ -97,7 +98,7 @@ def hit_dict(store: Store, r: dict, d: Path) -> dict:
         "chat": store.title(d), "folder": d.name, "id": r.get("id"), "date": r.get("date"),
         "sender": store.sender_name(r.get("sender_id")), "text": r.get("text") or "",
         "file": (r.get("media") or {}).get("file_name"), "reply_to": r.get("reply_to_msg_id"),
-        "link": store.message_link(d, r.get("id")),
+        **store.link_info(d, r.get("id")),
     }
 
 

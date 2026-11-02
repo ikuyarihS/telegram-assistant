@@ -29,8 +29,8 @@ from . import __version__, account, config, engine, export, intent, setupflow, u
 from . import claude as claudemod
 from .claude import ClaudeRunner
 from .conversations import Conversations
-from .errors import UserError
-from .store import Store
+from .errors import UserError, is_vi, localize
+from .store import DESKTOP_CANNOT_JUMP, Store, _ident, _username
 
 STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
@@ -52,8 +52,32 @@ def _python() -> str:
     return str(exe)
 
 
-_TG_LINK = re.compile(r"https://t\.me/(?:c/(\d{1,20})|([A-Za-z0-9_]{4,64}))/(\d{1,12})")
+# The only links /api/open-link opens, each for a chat that is in TG Kit (see
+# store.telegram_link). (pattern, which chats it may name, has a message number)
+_OPEN_FORMS = (
+    (re.compile(r"https://t\.me/c/(\d{1,20})/(\d{1,12})"), "channel_id"),
+    (re.compile(r"https://t\.me/([A-Za-z0-9_]{4,64})/(\d{1,12})"), "channel_user"),
+    (re.compile(r"tg://privatepost\?channel=(\d{1,20})(?:&post=(\d{1,12}))?"), "channel_id"),
+    (re.compile(r"tg://resolve\?domain=([A-Za-z0-9_]{4,64})(?:&post=(\d{1,12}))?"), "username"),
+    (re.compile(r"tg://user\?id=(\d{1,20})"), "user_id"),
+    (re.compile(r"tg://openmessage\?chat_id=(\d{1,20})(?:&message_id=(\d{1,12}))?"), "chat_id"),
+)
 TELEGRAM_CODES_URL = "https://my.telegram.org/apps"
+
+
+def _known_chat(store: Store, key: str, value: str, post: str | None) -> dict | None:
+    """The channel.json of the followed chat a link names, or None."""
+    for d in store.chat_dirs():
+        meta = store.meta(d)
+        kind, ident, user = meta.get("type"), _ident(meta), (_username(meta) or "").lower()
+        ok = ((key == "channel_id" and kind == "Channel" and ident == value)
+              or (key == "channel_user" and kind == "Channel" and user == value.lower())
+              or (key == "username" and user == value.lower() and (kind == "Channel" or not post))
+              or (key == "user_id" and kind == "User" and ident == value)
+              or (key == "chat_id" and kind == "Chat" and ident == value))
+        if ok:
+            return {**meta, "_title": store.title(d)}
+    return None
 
 
 def _has_tg_handler() -> bool:
@@ -67,10 +91,24 @@ def _has_tg_handler() -> bool:
         return False
 
 
-def _error(exc: UserError) -> dict:
+def _error(exc: UserError, lang: str | None = None) -> dict:
+    """A problem the user can fix. It is answered with HTTP 200 and user_error: the
+    page shows it as a message, and the browser logs no failed request for it."""
     hint = exc.hint or ""
     needs = "setup" if "tgkit setup" in (exc.message + hint) else None
-    return {"type": "error", "message": exc.message, "hint": hint, "needs": needs}
+    return {"type": "error", "user_error": True, "ok": False, "message": localize(exc.message, lang),
+            "hint": localize(hint, lang) or "", "needs": needs}
+
+
+def _local_event(ev, lang: str | None):
+    """A streamed error or notice in the window's language."""
+    if not is_vi(lang) or not isinstance(ev, dict):
+        return ev
+    if ev.get("type") == "error":
+        return {**ev, "message": localize(ev.get("message"), lang), "hint": localize(ev.get("hint"), lang)}
+    if ev.get("type") == "notice":
+        return {**ev, "text": localize(ev.get("text"), lang)}
+    return ev
 
 
 class App:
@@ -278,10 +316,11 @@ class App:
         }
 
     def save_settings(self, body: dict) -> dict:
-        """Change only the keys sent, each checked; everything else in config.json stays."""
-        with self._settings_lock:
-            cfg = self._cfg()
-            st = self.claude_status()
+        """Change only the keys sent, each checked; everything else in config.json stays.
+        The change runs under the config lock that every config.json writer takes."""
+        st = self.claude_status()
+
+        def change(cfg: dict) -> None:
             if "model" in body:
                 model = str(body.get("model") or "").strip()
                 allowed = set(st.get("models") or claudemod.BASE_MODELS)
@@ -316,7 +355,7 @@ class App:
                 if not 1 <= mb <= 4000:
                     raise UserError("The file size limit must be between 1 and 4000 MB.", "For example: 50")
                 cfg["max_media_mb"] = mb
-            config.save(self.home, cfg)
+        config.update(self.home, change)
         return self.settings()
 
     def usage(self, conversation: str | None = None) -> dict:
@@ -379,28 +418,60 @@ class App:
             raise UserError("That file is not in your export folder any more.", "Open the folder from Settings.")
         return {"ok": export.reveal(path)}
 
-    def open_link(self, body: dict) -> dict:
-        """Open a message in Telegram: the Telegram app when it is installed, else the browser."""
+    def open_link(self, body: dict, lang: str | None = None) -> dict:
+        """Open a message or a chat in Telegram: the Telegram app when it is installed,
+        else the browser. Only the link forms of store.telegram_link, and only for a
+        chat that is in TG Kit; the link opened is rebuilt from that chat's own data."""
         url = str(body.get("url") or "")
-        m = _TG_LINK.fullmatch(url)
-        if not m:
-            raise UserError("That is not a link to a Telegram message.", "")
-        target = url
-        if os.name == "nt" and _has_tg_handler():
-            chan, user, msg = m.group(1), m.group(2), m.group(3)
-            target = (f"tg://privatepost?channel={chan}&post={msg}" if chan
-                      else f"tg://resolve?domain={user}&post={msg}")
+        for pattern, key in _OPEN_FORMS:
+            m = pattern.fullmatch(url)
+            if m:
+                break
+        else:
+            m = None
+        post = m.group(2) if m and m.re.groups >= 2 else None
+        meta = _known_chat(self.store(), key, m.group(1), post) if m else None
+        if meta is None:
+            raise UserError("That is not a link to a chat in TG Kit.", "Open it from a result in this window.")
+        user, ident = _username(meta), _ident(meta)
+        web = None  # the same place on t.me, for a computer without Telegram Desktop
+        if meta.get("type") == "Channel" and post:
+            target = f"tg://resolve?domain={user}&post={post}" if user else f"tg://privatepost?channel={ident}&post={post}"
+            web = f"https://t.me/{user}/{post}" if user else f"https://t.me/c/{ident}/{post}"
+            opens = "message"
+        elif user:  # a username opens the chat in every Telegram app, Desktop included
+            target, web, opens = f"tg://resolve?domain={user}", f"https://t.me/{user}", "chat"
+        elif key == "channel_id":
+            target, opens = f"tg://privatepost?channel={ident}", "chat"
+        elif key == "user_id":
+            target, opens = f"tg://user?id={ident}", "chat"
+        else:
+            target = f"tg://openmessage?chat_id={ident}" + (f"&message_id={post}" if post else "")
+            opens = "chat"
+        note = None
+        if target.startswith(DESKTOP_CANNOT_JUMP):
+            note = localize(f"Telegram is opening. Telegram Desktop cannot jump to this chat by itself: "
+                            f"pick '{meta['_title']}' in its chat list.", lang)
+        if os.name == "nt" and not _has_tg_handler() and not os.environ.get("TGKIT_NO_REVEAL"):
+            if not web:
+                raise UserError("Telegram Desktop is not on this computer.",
+                                "Install it from desktop.telegram.org, then press the link again.")
+            target, note = web, None
+        res = {"ok": True, "url": target, "opens": opens, "note": note}
         if os.environ.get("TGKIT_NO_REVEAL"):
-            return {"ok": True, "url": target}
-        try:
-            if target.startswith("tg://"):
+            return res
+        if target.startswith("tg://") and os.name == "nt":
+            try:
                 os.startfile(target)  # noqa: S606  (the Telegram app's own link handler)
-                return {"ok": True, "url": target}
-        except OSError:
-            target = url
+                return res
+            except OSError:
+                if not web:
+                    raise UserError("Telegram Desktop is not on this computer.",
+                                    "Install it from desktop.telegram.org, then press the link again.") from None
+                target, res["note"] = web, None
         import webbrowser  # noqa: PLC0415
 
-        return {"ok": bool(webbrowser.open(target)), "url": target}
+        return {**res, "ok": bool(webbrowser.open(target)), "url": target}
 
     def open_install(self) -> dict:
         return self._browse(claudemod.INSTALL_URL)
@@ -427,6 +498,38 @@ class App:
         if self._sync_busy.locked():
             raise UserError("New messages are being fetched right now.", "Wait until it is done, then add chats.")
         return self.tg.add(body.get("ids"), body.get("limit", 1000))
+
+    def setup_folder(self, body: dict) -> dict:
+        """The first setup step: keep the data folder TG Kit uses now, or pick another.
+        The choice is saved like `tgkit setup` saves it (~/.tgkit-home)."""
+        if os.environ.get("TGKIT_HOME"):
+            raise UserError("The data folder is set by TGKIT_HOME, so it cannot be changed here.",
+                            "Keep it, or ask the person who set up this computer.")
+        if self.tg.step:
+            raise UserError("A login is under way.", "Finish it or close the setup, then change the folder.")
+        if self._sync_busy.locked():
+            raise UserError("New messages are being fetched right now.", "Wait until it is done, then change the folder.")
+        if str(body.get("choice") or "keep") == "keep":
+            target = self.home
+        else:
+            raw = str(body.get("path") or "").strip().strip('"')
+            if not raw or not Path(raw).expanduser().is_absolute():
+                raise UserError("Type the full path of the folder.", r"For example: D:\TG Kit")
+            target = Path(raw).expanduser()
+        if target.exists() and not target.is_dir():
+            raise UserError("That is a file, not a folder.", "Pick a folder.")
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise UserError(f"That folder could not be made ({exc.strerror or exc}).", "Pick another folder.") from None
+        config.remember_home(target)
+        if target != self.home:
+            self.tg.cancel()
+            self.home = target
+            self.convs = Conversations(target)
+            self.tg = setupflow.TelegramSetup(target)
+            self._status = None
+        return self.tg.state()
 
     def setup_step(self, step: str, body: dict) -> dict:
         if step == "codes":
@@ -458,10 +561,13 @@ def make_handler(app: App):
             host = (self.headers.get("Host") or "").split(":")[0]
             return host in ("127.0.0.1", "localhost")
 
+        def _lang(self) -> str:
+            return (self.headers.get("X-TGKit-Lang") or "en").strip().lower()[:8]
+
         def _auth(self) -> bool:
             if not self._host_ok() or not secrets.compare_digest(
                     self.headers.get("X-TGKit-Token", ""), app.token):
-                self._json({"type": "error", "message": "Not allowed."}, 403)
+                self._json({"type": "error", "message": localize("Not allowed.", self._lang())}, 403)
                 return False
             app.last_seen = time.monotonic()
             return True
@@ -479,8 +585,16 @@ def make_handler(app: App):
             self._send(json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", code)
 
         def _body(self) -> dict:
-            n = int(self.headers.get("Content-Length") or 0)
-            if n <= 0 or n > 1_000_000:
+            """Read the whole request body. It is read before any answer, even a 403:
+            an answer sent while the client is still sending can reset the connection."""
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = 0
+            if n > 1_000_000:
+                self.close_connection = True  # too big to read: answer, then close
+                return {}
+            if n <= 0:
                 return {}
             try:
                 data = json.loads(self.rfile.read(n).decode("utf-8"))
@@ -489,19 +603,21 @@ def make_handler(app: App):
             return data if isinstance(data, dict) else {}
 
         def _stream(self, events):
+            lang = self._lang()
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             try:
                 for ev in events:
+                    ev = _local_event(ev, lang)
                     self.wfile.write((json.dumps(ev, ensure_ascii=False) + "\n").encode("utf-8"))
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 pass  # the user pressed Stop or closed the window
             except UserError as exc:
                 try:
-                    self.wfile.write((json.dumps(_error(exc), ensure_ascii=False) + "\n").encode("utf-8"))
+                    self.wfile.write((json.dumps(_error(exc, lang), ensure_ascii=False) + "\n").encode("utf-8"))
                 except OSError:
                     pass
             finally:
@@ -555,18 +671,19 @@ def make_handler(app: App):
                     ident = int((q.get("id") or ["0"])[0])
                     return self._json({"items": engine.thread(app.store(), folder, ident)})
             except UserError as exc:
-                return self._json(_error(exc), 400)
+                return self._json(_error(exc, self._lang()))
             except ValueError:
-                return self._json({"type": "error", "message": "That request was not understood."}, 400)
-            self._json({"type": "error", "message": "Not found."}, 404)
+                return self._json({"type": "error", "message": localize("That request was not understood.",
+                                                                         self._lang())}, 400)
+            self._json({"type": "error", "message": localize("Not found.", self._lang())}, 404)
 
         def do_POST(self):
             path = urlparse(self.path).path
+            body = self._body()  # first: see _body
             if not path.startswith("/api/") or not self._auth():
                 if not path.startswith("/api/"):
                     self._send(b"Not found", "text/plain", 404)
                 return
-            body = self._body()
             try:
                 if path == "/api/ask":
                     return self._stream(app.ask(body))
@@ -574,6 +691,8 @@ def make_handler(app: App):
                     return self._stream(app.sync())
                 if path == "/api/setup":
                     return self._json(app.open_setup())
+                if path == "/api/setup/folder":
+                    return self._json(app.setup_folder(body))
                 m = re.fullmatch(r"/api/setup/(codes|phone|code|password|cancel)", path)
                 if m:
                     return self._json(app.setup_step(m.group(1), body))
@@ -600,7 +719,7 @@ def make_handler(app: App):
                 if path == "/api/reveal":
                     return self._json(app.reveal(body))
                 if path == "/api/open-link":
-                    return self._json(app.open_link(body))
+                    return self._json(app.open_link(body, self._lang()))
                 m = re.fullmatch(r"/api/tasks/(\d+)", path)
                 if m:
                     t = engine.set_task(app.home, m.group(1), str(body.get("status") or ""))
@@ -610,8 +729,8 @@ def make_handler(app: App):
                     app.convs.archive(m.group(1))
                     return self._json({"ok": True})
             except UserError as exc:
-                return self._json(_error(exc), 400)
-            self._json({"type": "error", "message": "Not found."}, 404)
+                return self._json(_error(exc, self._lang()))
+            self._json({"type": "error", "message": localize("Not found.", self._lang())}, 404)
 
     return Handler
 

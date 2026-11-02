@@ -174,6 +174,11 @@ second writer waits up to 15 seconds, then refuses in plain words.
   `chats/`.
 - Task detection is keyword based (Vietnamese and English cues); it finds
   candidates, the user decides (`done`, `drop`).
+- Change `config.json` only through `config.update` / `config.put`: they hold
+  `config.lock` (threads and processes) and write atomically, so a Settings
+  change and a login finishing at the same moment both stay.
+- `/api/open-link` opens only the link forms of `store.telegram_link`, and only
+  for a chat that is in TG Kit; the link opened is rebuilt from that chat's data.
 
 ## 4. Security
 

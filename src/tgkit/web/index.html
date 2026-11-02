@@ -212,11 +212,29 @@
     </button>
   </div>
   <ol class="su-steps" id="suSteps">
+    <li data-step="folder"><span data-i18n="suStep0">Data folder</span></li>
     <li data-step="codes"><span data-i18n="suStep1">Telegram codes</span></li>
     <li data-step="login"><span data-i18n="suStep2">Log in</span></li>
     <li data-step="chats"><span data-i18n="suStep3">Pick chats</span></li>
   </ol>
   <div class="settings-body">
+    <form class="su-pane" id="suFolder" hidden>
+      <p data-i18n="suFolderWhy">TG Kit keeps a copy of the chats you pick on this computer. Choose where.</p>
+      <fieldset class="choice">
+        <legend class="sr-only" data-i18n="suStep0">Data folder</legend>
+        <label><input type="radio" name="suHome" value="keep" checked> <span id="suKeepText" class="path-choice">Keep them in the current folder</span></label>
+        <label><input type="radio" name="suHome" value="other"> <span data-i18n="suOther">Use another folder</span></label>
+      </fieldset>
+      <label class="field" id="suFolderPathField" hidden>
+        <span class="field-label" data-i18n="suFolderPath">Full path of the folder</span>
+        <input id="suFolderPathIn" type="text" spellcheck="false" autocomplete="off">
+      </label>
+      <p class="field-help" data-i18n="suFolderHelp">For example D:\TG Kit. TG Kit makes the folder if it is not there yet.</p>
+      <div class="set-actions">
+        <button class="btn btn-primary" type="submit" data-i18n="suNext">Next</button>
+      </div>
+    </form>
+
     <form class="su-pane" id="suCodes" hidden>
       <p data-i18n="suCodesWhy">TG Kit reads your chats with two codes from Telegram. You make them once, on Telegram's own website.</p>
       <ol class="fix-steps">

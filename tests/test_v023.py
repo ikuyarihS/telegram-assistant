@@ -13,8 +13,8 @@ from xml.etree import ElementTree
 
 import pytest
 
-from fixture_data import MINUTES_FILE
-from test_app_api import TOKEN, call
+from fixture_data import MINUTES_FILE, _row, write_chat
+from test_app_api import TOKEN, call, refused
 from test_claude_mode import permitted
 
 from tgkit import account, claude, config, engine, export, usage
@@ -300,13 +300,13 @@ def test_settings_api_checks_and_saves(home, server):
     assert code == 200 and s["model"] == "" and "opus" in s["models"] and "high" in s["efforts"]
     assert s["account"]["name"] == "An Nguyễn"
     code, body = call(base, "/api/settings", {"model": "gpt-9"})
-    assert code == 400 and "not a model" in json.loads(body)["message"]
+    assert refused(code, body) and "not a model" in json.loads(body)["message"]
     code, body = call(base, "/api/settings", {"effort": "turbo"})
-    assert code == 400
+    assert refused(code, body)
     code, body = call(base, "/api/settings", {"usage_daily_limit": -5})
-    assert code == 400
+    assert refused(code, body)
     code, body = call(base, "/api/settings", {"export_dir": "relative/folder"})
-    assert code == 400
+    assert refused(code, body)
     code, body = call(base, "/api/settings", {"model": "haiku", "effort": "low", "usage_daily_limit": 50000,
                                               "usage_hard_stop": True})
     assert code == 200
@@ -446,23 +446,118 @@ def test_safe_names():
 # ------------------------------------------------------------------ links to messages
 
 
+def add_private_chats(home):
+    """Two private chats: one person with a username, one without."""
+    write_chat(home, "Binh_rieng", {"id": 5005, "type": "User", "title": None, "username": "binh_test",
+                                    "first_name": "Bình", "last_name": "Riêng"},
+               [_row(90, 30, 102, "Gửi em biên bản riêng nhé")])
+    write_chat(home, "Chi_rieng", {"id": 6006, "type": "User", "title": None, "username": None,
+                                   "first_name": "Chi", "last_name": "Riêng"},
+               [_row(91, 29, 103, "Cần gửi biên bản cho chị trước 17h hôm nay")])
+
+
 def test_message_links(home, tg_json):
     store = Store(home)
     assert store.message_link(store.chats / "Du_an_Alpha", 24) == "https://t.me/c/1001/24"
     assert store.message_link(store.chats / "Phòng_Kế_toán", 70) == "https://t.me/ketoan_test/70"
-    assert store.message_link(store.chats / "Team_Beta", 50) is None
     res = tg_json("search", "biên bản")["results"]
     assert {r["id"]: r["link"] for r in res}[24] == "https://t.me/c/1001/24"
-    chats = {c["folder"]: c["link_base"] for c in engine.chat_list(store)}
-    assert chats["Phòng_Kế_toán"] == "https://t.me/ketoan_test" and chats["Team_Beta"] is None
+    chats = {c["folder"]: c for c in engine.chat_list(store)}
+    assert chats["Phòng_Kế_toán"]["link_base"] == "https://t.me/ketoan_test" and chats["Team_Beta"]["link_base"] is None
 
 
-def test_open_link_api_only_opens_telegram_message_links(server):
+def test_links_per_chat_type(home, tg_json):
+    """Supergroup or channel: the message. Private chat and basic group: the chat,
+    said plainly (Telegram has no message links for them)."""
+    add_private_chats(home)
+    store = Store(home)
+
+    def info(folder, ident):
+        return store.link_info(store.chats / folder, ident)
+    assert info("Du_an_Alpha", 24) == {"link": "https://t.me/c/1001/24", "link_kind": "message"}
+    assert info("Phòng_Kế_toán", 70) == {"link": "https://t.me/ketoan_test/70", "link_kind": "message"}
+    assert info("Binh_rieng", 90) == {"link": "tg://resolve?domain=binh_test", "link_kind": "chat"}
+    assert info("Chi_rieng", 91) == {"link": "tg://user?id=6006", "link_kind": "chat"}
+    assert info("Team_Beta", 50) == {"link": "tg://openmessage?chat_id=2002&message_id=50", "link_kind": "chat"}
+    # search hits: every row has a link and says what it opens
+    hits = {r["folder"]: r for r in tg_json("search", "biên bản")["results"]}
+    assert hits["Du_an_Alpha"]["link_kind"] == "message"
+    assert hits["Binh_rieng"]["link"] == "tg://resolve?domain=binh_test" and hits["Binh_rieng"]["link_kind"] == "chat"
+    assert hits["Chi_rieng"]["link"] == "tg://user?id=6006"
+    # the chat list carries one template per chat for tasks and summaries in the window
+    tpl = {c["folder"]: (c["link_tpl"], c["link_kind"]) for c in engine.chat_list(store)}
+    assert tpl["Du_an_Alpha"] == ("https://t.me/c/1001/{id}", "message")
+    assert tpl["Team_Beta"] == ("tg://openmessage?chat_id=2002&message_id={id}", "chat")
+    assert tpl["Binh_rieng"] == ("tg://resolve?domain=binh_test", "chat")
+    assert tpl["Empty_Chat"] == ("tg://user?id=4004", "chat")
+
+
+def test_exports_link_every_chat_type(home, tg):
+    add_private_chats(home)
+    code, out, err = tg("export", "search", "biên bản", "--format", "md", "--json")
+    assert code == 0, err
+    md = Path(json.loads(out)["path"]).read_text(encoding="utf-8")
+    assert "[Open in Telegram](https://t.me/c/1001/24)" in md
+    assert "[Open the chat in Telegram](tg://resolve?domain=binh_test)" in md
+    assert "[Open the chat in Telegram](tg://user?id=6006)" in md
+    assert tg("tasks", "--since", "3650d")[0] == 0
+    code, out, err = tg("export", "tasks", "all", "--format", "csv", "--json")
+    assert code == 0, err
+    rows = list(csv.reader(io.StringIO(Path(json.loads(out)["path"]).read_text(encoding="utf-8-sig"))))
+    links = {r[5]: r[-1] for r in rows[1:]}  # chat -> link
+    assert links["Team Beta"].startswith("tg://openmessage?chat_id=2002&message_id=")
+    assert links["Chi Riêng"] == "tg://user?id=6006"
+    assert all(r[-1] for r in rows[1:])  # no task without a link
+    code, out, err = tg("export", "summary", "--since", "30d", "--format", "md", "--json", "--lang", "vi")
+    assert code == 0, err
+    md = Path(json.loads(out)["path"]).read_text(encoding="utf-8")
+    assert "[Mở cuộc trò chuyện trên Telegram](tg://openmessage?chat_id=2002&message_id=" in md
+    assert "[Mở trên Telegram](https://t.me/c/1001/" in md
+    code, out, err = tg("export", "search", "biên bản", "--json")  # Word: a real hyperlink
+    with zipfile.ZipFile(Path(json.loads(out)["path"])) as z:
+        rels = z.read("word/_rels/document.xml.rels").decode("utf-8")
+    assert "tg://user?id=6006" in rels
+
+
+def test_open_link_api_only_opens_links_of_chats_in_tg_kit(home, server):
+    add_private_chats(home)
     _, base = server
-    code, body = call(base, "/api/open-link", {"url": "https://t.me/c/1001/24"})
-    assert code == 200 and json.loads(body)["ok"]
-    for bad in ("https://evil.example/x", "file:///C:/Windows", "https://t.me/c/1001/24 & calc", "tg://x"):
-        assert call(base, "/api/open-link", {"url": bad})[0] == 400
+
+    def opened(url, lang="en"):
+        code, body = call(base, "/api/open-link", {"url": url}) if lang == "en" else \
+            call_lang(base, "/api/open-link", {"url": url}, lang)
+        assert code == 200, body
+        return json.loads(body)
+    r = opened("https://t.me/c/1001/24")
+    assert r["ok"] and r["opens"] == "message" and r["note"] is None
+    assert opened("https://t.me/ketoan_test/70")["opens"] == "message"
+    assert opened("tg://privatepost?channel=1001&post=24")["url"] == "tg://privatepost?channel=1001&post=24"
+    r = opened("tg://resolve?domain=binh_test")
+    assert r["opens"] == "chat" and r["url"] == "tg://resolve?domain=binh_test" and r["note"] is None
+    r = opened("tg://user?id=6006")
+    assert r["opens"] == "chat" and "Chi Riêng" in r["note"]  # Telegram Desktop cannot jump there: said plainly
+    r = opened("tg://openmessage?chat_id=2002&message_id=50")
+    assert r["opens"] == "chat" and r["url"] == "tg://openmessage?chat_id=2002&message_id=50"
+    assert "Team Beta" in opened("tg://openmessage?chat_id=2002", "vi")["note"]
+    assert "Telegram Desktop không tự mở" in opened("tg://user?id=6006", "vi")["note"]
+    for bad in ("https://evil.example/x", "file:///C:/Windows", "https://t.me/c/1001/24 & calc", "tg://x",
+                "tg://user?id=999", "tg://user?id=2002", "tg://openmessage?chat_id=1001",
+                "tg://resolve?domain=somebody_else", "tg://resolve?domain=binh_test&post=5",
+                "https://t.me/c/2002/50", "https://t.me/binh_test/90", "tg://privatepost?channel=2002&post=1",
+                "tg://user?id=6006&x=calc", "TG://user?id=6006", "tg://resolve?domain=binh_test#x",
+                "tg://resolve?domain=binh_test\n", "javascript:alert(1)", ""):
+        assert refused(*call(base, "/api/open-link", {"url": bad})), bad
+
+
+def call_lang(base, path, body, lang):
+    import urllib.request  # noqa: PLC0415
+
+    req = urllib.request.Request(base + path, data=json.dumps(body).encode("utf-8"), method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("X-TGKit-Token", TOKEN)
+    req.add_header("X-TGKit-Lang", lang)
+    with urllib.request.urlopen(req, timeout=20) as res:
+        return res.status, res.read().decode("utf-8")
 
 
 def test_reveal_api_stays_in_the_export_folder(home, server, tmp_path):
@@ -470,7 +565,7 @@ def test_reveal_api_stays_in_the_export_folder(home, server, tmp_path):
     code, body = call(base, "/api/export", {"kind": "tasks", "format": "md"})
     path = json.loads(body)["path"]
     assert code == 200 and call(base, "/api/reveal", {"path": path})[0] == 200
-    assert call(base, "/api/reveal", {"path": str(home / "config.json")})[0] == 400
+    assert refused(*call(base, "/api/reveal", {"path": str(home / "config.json")}))
 
 
 # ------------------------------------------------------------------ the read-only Claude session
@@ -553,9 +648,9 @@ def test_setup_codes_are_checked_and_saved(home, server):
     _, base = server
     assert call(base, "/api/setup/codes", {"api_id": "12", "api_hash": "x"}, token=None)[0] == 403
     code, body = call(base, "/api/setup/codes", {"api_id": "abc", "api_hash": "0" * 32})
-    assert code == 400 and "api_id" in json.loads(body)["message"]
+    assert refused(code, body) and "api_id" in json.loads(body)["message"]
     code, body = call(base, "/api/setup/codes", {"api_id": "1234567", "api_hash": "1" * 31})
-    assert code == 400 and "api_hash" in json.loads(body)["message"]
+    assert refused(code, body) and "api_hash" in json.loads(body)["message"]
     code, body = call(base, "/api/setup/codes", {"api_id": " 1234567 ", "api_hash": "ab" * 16})
     st = json.loads(body)
     assert code == 200 and st["has_codes"] and st["api_id"] == "1234567"
@@ -575,12 +670,12 @@ def test_setup_login_with_two_step_password(home, server, monkeypatch):
     assert ("send", "+84912345678") in client.calls
     assert not lock_free(home)  # no sync touches the login file during the login
     code, body = call(base, "/api/setup/code", {"code": "11111"})
-    assert code == 400 and "not right" in json.loads(body)["message"]
+    assert refused(code, body) and "not right" in json.loads(body)["message"]
     assert json.loads(call(base, "/api/setup/state")[1])["step"] == "code"  # can type it again
     code, body = call(base, "/api/setup/code", {"code": "2 2 2 2 2"})
     assert code == 200 and json.loads(body)["step"] == "password"
     code, body = call(base, "/api/setup/password", {"password": "nope"})
-    assert code == 400 and "password" in json.loads(body)["message"]
+    assert refused(code, body) and "password" in json.loads(body)["message"]
     code, body = call(base, "/api/setup/password", {"password": "pw"})
     res = json.loads(body)
     assert code == 200 and res["step"] == "done" and res["me"]["name"] == "Bình Trần"
@@ -594,14 +689,14 @@ def test_setup_cancel_frees_the_sync_lock(home, server, monkeypatch):
     config.save(home, {**config.load(home), "api_id": "1234567", "api_hash": "0" * 32})
     monkeypatch.setattr(net, "make_client", lambda base, cfg: LoginClient(two_step=False))
     _, base = server
-    assert call(base, "/api/setup/phone", {"phone": "123"})[0] == 400  # too short: nothing started
+    assert refused(*call(base, "/api/setup/phone", {"phone": "123"}))  # too short: nothing started
     assert lock_free(home)
     assert call(base, "/api/setup/phone", {"phone": "+84912345678"})[0] == 200
     assert not lock_free(home)
     assert json.loads(call(base, "/api/setup/cancel", {})[1])["step"] is None
     assert lock_free(home)
     code, body = call(base, "/api/setup/code", {"code": "22222"})
-    assert code == 400 and "Send code" in json.loads(body)["hint"]
+    assert refused(code, body) and "Send code" in json.loads(body)["hint"]
 
 
 def test_setup_refuses_while_a_sync_holds_the_lock(home, server, monkeypatch):
@@ -611,7 +706,7 @@ def test_setup_refuses_while_a_sync_holds_the_lock(home, server, monkeypatch):
     _, base = server
     with SyncLock(home):
         code, body = call(base, "/api/setup/phone", {"phone": "+84912345678"})
-    assert code == 400 and "sync" in json.loads(body)["message"]
+    assert refused(code, body) and "sync" in json.loads(body)["message"]
     assert json.loads(call(base, "/api/setup/state")[1])["step"] is None
 
 
@@ -644,7 +739,7 @@ def test_setup_pick_chats(home, server, monkeypatch):
     ds = {d["name"]: d for d in json.loads(body)["dialogs"]}
     assert code == 200 and ds["Kế toán"]["added"] is False and ds["Du an Alpha"]["added"] is True
     assert "entity" not in ds["Kế toán"]
-    assert call(base, "/api/setup/add", {"ids": []})[0] == 400
+    assert refused(*call(base, "/api/setup/add", {"ids": []}))
     code, body = call(base, "/api/setup/add", {"ids": ["1001", "2002"], "limit": 1000})
     assert code == 200 and chosen == {"names": ["Kế toán"], "limit": 1000}  # an added chat is never re-added
     call(base, "/api/setup/add", {"ids": ["2002"], "limit": "all"})
@@ -655,9 +750,173 @@ def test_settings_file_size_and_data_folder(home, server):
     _, base = server
     s = json.loads(call(base, "/api/settings")[1])
     assert s["max_media_mb"] == 50 and s["home"] == str(home)
-    assert call(base, "/api/settings", {"max_media_mb": 0})[0] == 400
-    assert call(base, "/api/settings", {"max_media_mb": "lots"})[0] == 400
+    assert refused(*call(base, "/api/settings", {"max_media_mb": 0}))
+    assert refused(*call(base, "/api/settings", {"max_media_mb": "lots"}))
     assert json.loads(call(base, "/api/settings", {"max_media_mb": 200})[1])["max_media_mb"] == 200
     assert config.max_media_bytes(home, config.load(home)) == 200 * 1024 * 1024
     assert json.loads(call(base, "/api/open-data", {})[1])["folder"] == str(home)
     assert json.loads(call(base, "/api/setup/open-site", {})[1])["url"] == "https://my.telegram.org/apps"
+
+
+# ------------------------------------------------------------------ 0.2.3 gate: config lock, language, setup folder
+
+
+PUTTER = """
+import sys
+sys.path.insert(0, sys.argv[2])
+from tgkit import config
+for i in range(25):
+    config.put(sys.argv[1], other_process=i)
+"""
+
+
+def test_every_config_write_keeps_the_others(home, tmp_path):
+    """A settings change and a login finishing at the same moment both stay
+    (gate note 1): one lock, across threads and processes, and an atomic write."""
+    import subprocess
+
+    import tgkit
+    src = Path(tgkit.__file__).resolve().parent
+    for p in src.glob("*.py"):  # every writer goes through config.update / config.put
+        if p.name != "config.py":
+            assert "config.save(" not in p.read_text(encoding="utf-8"), p.name
+    app = App(home, claude=ClaudeRunner(cmd=[]), token="t")
+    script = tmp_path / "putter.py"
+    script.write_text(PUTTER, encoding="utf-8")
+    proc = subprocess.Popen([sys.executable, str(script), str(home), str(src.parent)])
+
+    def settings(n):
+        for i in range(25):
+            app.save_settings({"max_media_mb": 100 + i, "usage_daily_limit": 1000 + i})
+
+    def login(n):
+        for i in range(25):
+            config.put(home, me={"id": 77, "name": f"Bình {i}", "username": "binh"})
+
+    def codes(n):
+        for i in range(25):
+            app.tg.codes("1234567", "%032x" % i)
+    threads = [threading.Thread(target=f, args=(0,)) for f in (settings, login, codes)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert proc.wait(60) == 0
+    cfg = config.load(home)
+    assert (cfg["max_media_mb"], cfg["usage_daily_limit"]) == (124, 1024)
+    assert cfg["me"]["name"] == "Bình 24" and cfg["api_hash"] == "%032x" % 24
+    assert cfg["other_process"] == 24
+    assert not (home / "config.json.tmp").exists()
+
+
+def test_a_refused_change_writes_nothing(home, server):
+    _, base = server
+    before = (home / "config.json").read_bytes()
+    assert refused(*call(base, "/api/settings", {"usage_daily_limit": 5, "max_media_mb": 0}))
+    assert (home / "config.json").read_bytes() == before  # the good key of a refused change is not saved either
+
+
+def test_wrong_login_code_is_a_handled_answer_in_the_window_language(home, server, monkeypatch):
+    """Gate notes 2 and 3: no HTTP error for the browser to log, and Vietnamese
+    text in the Vietnamese window."""
+    from tgkit import net
+    config.save(home, {**config.load(home), "api_id": "1234567", "api_hash": "0" * 32})
+    monkeypatch.setattr(net, "make_client", lambda base, cfg: LoginClient())
+    _, base = server
+    assert call(base, "/api/setup/phone", {"phone": "+84912345678"})[0] == 200
+    code, body = call_lang(base, "/api/setup/code", {"code": "11111"}, "vi")
+    res = json.loads(body)
+    assert refused(code, body) and res["message"] == "Mã đăng nhập này chưa đúng."
+    assert res["hint"] == "Xem lại mã trong ứng dụng Telegram rồi gõ lại."
+    code, body = call_lang(base, "/api/setup/code", {"code": "11111"}, "en")
+    assert json.loads(body)["message"] == "That login code was not right."
+    code, body = call_lang(base, "/api/settings", {"model": "gpt-9"}, "vi")
+    assert json.loads(body)["message"] == "'gpt-9' không phải mô hình TG Kit chọn được."
+    assert call(base, "/api/setup/cancel", {})[0] == 200
+
+
+def test_every_error_the_window_can_show_has_vietnamese():
+    """Each UserError text of the modules the app's server runs, with its hint,
+    has a Vietnamese text (a name or number inside is filled with X here)."""
+    import ast
+
+    import tgkit
+    from tgkit.cli import _FRIENDLY
+    from tgkit.errors import localize
+    src = Path(tgkit.__file__).resolve().parent
+
+    def sample(arg):
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            return arg.value
+        if isinstance(arg, ast.JoinedStr):
+            return "".join(v.value if isinstance(v, ast.Constant) else "X" for v in arg.values)
+        return None
+    texts = []
+    for mod in ("account", "appserver", "config", "conversations", "engine", "export", "net", "setupflow",
+                "store", "tasks"):
+        tree = ast.parse((src / f"{mod}.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "UserError":
+                texts += [(mod, sample(a)) for a in node.args]
+            if isinstance(node, ast.FunctionDef) and node.name == "_friendly":  # setupflow's own hints
+                texts += [(mod, n.value) for n in ast.walk(node)
+                          if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.endswith(".")
+                          and " " in n.value]
+    texts += [("cli._FRIENDLY", t) for pair in _FRIENDLY.values() for t in pair]
+    assert len(texts) > 100
+    missing = [f"{mod}: {t}" for mod, t in texts if t and localize(t, "vi") == t]
+    assert not missing, "\n".join(missing)
+
+
+def test_refused_post_reads_the_body_first(server):
+    """Gate note 4: a 403 answered before the body was read reset the connection
+    now and then (WinError 10053). The body is read first, so it never does."""
+    _, base = server
+    big = {"api_id": "1", "api_hash": "x" * 300_000}
+    for _ in range(10):
+        assert call(base, "/api/setup/codes", big, token=None)[0] == 403
+        assert call(base, "/api/setup/codes", {"api_id": "12", "api_hash": "x"}, token=None)[0] == 403
+
+
+@pytest.fixture
+def fresh_server(tmp_path, monkeypatch):
+    """A first start: no data yet, the data folder not fixed by TGKIT_HOME, and a
+    home folder of its own (where ~/.tgkit-home is written)."""
+    user = tmp_path / "user"
+    user.mkdir()
+    for k in ("TGKIT_HOME", "TG_API_ID", "TG_API_HASH", "TGKIT_API_ID", "TGKIT_API_HASH"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("USERPROFILE", str(user))
+    monkeypatch.setenv("HOME", str(user))
+    monkeypatch.setenv("TGKIT_NO_REVEAL", "1")
+    monkeypatch.setenv("TGKIT_EXPORT_DIR", str(tmp_path / "exports"))
+    assert config.pointer_file() == user / ".tgkit-home"
+    app = App(config.home(), claude=ClaudeRunner(cmd=[]), token=TOKEN)
+    httpd = serve(app)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield app, f"http://127.0.0.1:{httpd.server_address[1]}", tmp_path
+    httpd.shutdown()
+
+
+def test_setup_in_the_window_starts_with_the_data_folder(fresh_server, monkeypatch):
+    """Gate note 5: keep the folder TG Kit uses now, or pick another, like `tgkit setup`."""
+    app, base, tmp_path = fresh_server
+    st = json.loads(call(base, "/api/setup/state")[1])
+    assert st["fresh"] and not st["home_fixed"] and st["home"] == str(config.default_home())
+    assert refused(*call(base, "/api/setup/folder", {"choice": "other", "path": "relative/folder"}))
+    (tmp_path / "a-file").write_text("x", encoding="utf-8")
+    assert refused(*call(base, "/api/setup/folder", {"choice": "other", "path": str(tmp_path / "a-file")}))
+    picked = tmp_path / "Dữ liệu TG Kit"
+    code, body = call(base, "/api/setup/folder", {"choice": "other", "path": f'"{picked}"'})
+    st = json.loads(body)
+    assert code == 200 and st["home"] == str(picked) and picked.is_dir() and app.home == picked
+    assert config.pointer_file().read_text(encoding="utf-8").strip() == str(picked)
+    assert config.home() == picked  # every later run, the CLI too, finds it
+    call(base, "/api/setup/codes", {"api_id": "1234567", "api_hash": "ab" * 16})
+    assert config.load(picked)["api_id"] == "1234567"  # the next steps save there
+    assert not json.loads(call(base, "/api/setup/state")[1])["fresh"]
+    code, body = call(base, "/api/setup/folder", {"choice": "keep"})
+    assert code == 200 and json.loads(body)["home"] == str(picked)
+    monkeypatch.setenv("TGKIT_HOME", str(tmp_path / "fixed"))
+    assert json.loads(call(base, "/api/setup/state")[1])["home_fixed"]
+    assert refused(*call(base, "/api/setup/folder", {"choice": "keep"}))

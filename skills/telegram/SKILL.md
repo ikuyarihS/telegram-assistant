@@ -83,8 +83,10 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
 
 - `search --json`: `{"query", "total", "results": [...]}`; each result has
   `chat`, `folder`, `id`, `date`, `sender`, `text`, `file`, `reply_to` (the
-  id of the message it answers) and `link` (a t.me link that opens the
-  message in Telegram, or null for chats Telegram has no message links for).
+  id of the message it answers), `link` and `link_kind`. `link_kind`
+  "message": the link (t.me) opens that message in Telegram; "chat": the chat
+  is a private chat or a small group, Telegram has no links to its messages,
+  and the link (tg://) opens only the chat. Say which when you give a link.
   `total` counts every hit; `results` holds the newest 30 unless `--limit`
   says otherwise (`--limit 0` = all).
 - `summary --json`: `{"window": {"since", "label"}, "total_messages",

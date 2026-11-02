@@ -20,6 +20,7 @@ nothing is kept after the login but Telethon's own session file.
 import asyncio
 import contextlib
 import io
+import os
 import threading
 import time
 from pathlib import Path
@@ -99,9 +100,7 @@ class TelegramSetup:
         from .net import display_name  # noqa: PLC0415
 
         who = {"id": me.id, "name": display_name(me), "username": getattr(me, "username", None)}
-        cfg = self._cfg()
-        cfg["me"] = who
-        config.save(self.home, cfg)
+        config.put(self.home, me=who)  # under the config lock, like every config.json write
         self._end()
         return {"step": "done", "me": who}
 
@@ -112,11 +111,16 @@ class TelegramSetup:
             self._expire()
             cfg = self._cfg()
             api_id = str(cfg.get("api_id") or "")
-            return {"has_codes": config.has_credentials(self.home, cfg),
-                    "api_id": api_id, "logged_in": config.logged_in(self.home),
-                    "me": cfg.get("me") if config.logged_in(self.home) else None,
+            has_codes, logged_in = config.has_credentials(self.home, cfg), config.logged_in(self.home)
+            chats = len(Store(self.home).chat_dirs())
+            return {"has_codes": has_codes,
+                    "api_id": api_id, "logged_in": logged_in,
+                    "me": cfg.get("me") if logged_in else None,
                     "step": self.step, "home": str(self.home),
-                    "chats": len(Store(self.home).chat_dirs())}
+                    "chats": chats,
+                    # the data folder step: offered on a first setup, unless TGKIT_HOME fixes the folder
+                    "home_fixed": bool(os.environ.get("TGKIT_HOME")),
+                    "fresh": not has_codes and not logged_in and chats == 0}
 
     def codes(self, api_id: str, api_hash: str) -> dict:
         api_id, api_hash = str(api_id or "").strip(), str(api_hash or "").strip().replace(" ", "")
@@ -127,10 +131,7 @@ class TelegramSetup:
                             "It has 32 letters and digits. Copy it from the page and paste it here.")
         with self._mutex:
             self._end()
-            self.home.mkdir(parents=True, exist_ok=True)
-            cfg = self._cfg()
-            cfg["api_id"], cfg["api_hash"] = api_id, api_hash
-            config.save(self.home, cfg)
+            config.put(self.home, api_id=api_id, api_hash=api_hash)
         return self.state()
 
     def phone(self, number: str) -> dict:

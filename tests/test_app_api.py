@@ -39,6 +39,18 @@ def call(base, path, body=None, token=TOKEN):
         return exc.code, exc.read().decode("utf-8")
 
 
+def refused(code, body) -> bool:
+    """A problem the user can fix: answered 200 with user_error, so the page's
+    browser logs no failed request for it (0.2.3 gate note 3)."""
+    if code != 200:
+        return False
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return False
+    return data.get("user_error") is True and data.get("type") == "error" and bool(data.get("message"))
+
+
 def events(text):
     return [json.loads(x) for x in text.splitlines() if x.strip()]
 
@@ -108,8 +120,8 @@ def test_task_buttons(home, server):
     assert code == 200 and json.loads(body)["task"]["status"] == "done"
     saved = json.loads((home / "tasks.json").read_text(encoding="utf-8"))
     assert [t["status"] for t in saved["tasks"] if t["id"] == first] == ["done"]
-    assert call(base, f"/api/tasks/{first}", {"status": "nonsense"})[0] == 400
-    assert call(base, "/api/tasks/9999", {"status": "done"})[0] == 400
+    assert refused(*call(base, f"/api/tasks/{first}", {"status": "nonsense"}))
+    assert refused(*call(base, "/api/tasks/9999", {"status": "done"}))
 
 
 def test_thread_and_archive(server):
@@ -118,7 +130,7 @@ def test_thread_and_archive(server):
     items = json.loads(body)["items"]
     assert code == 200 and [m["id"] for m in items] == [20, 21]
     assert [m["anchor"] for m in items] == [False, True]
-    assert call(base, "/api/thread?folder=..&id=1")[0] == 400
+    assert refused(*call(base, "/api/thread?folder=..&id=1"))
     conv = ask(base, "summary")[0]["id"]
     assert call(base, f"/api/conversations/{conv}/archive", {})[0] == 200
     s = json.loads(call(base, "/api/state")[1])

@@ -112,8 +112,8 @@ def logout(base: Path, data: str = "keep", server=None) -> dict:
             except Exception as exc:  # noqa: BLE001  (offline, revoked, ...: the local log out still happens)
                 result["telegram_note"] = f"Telegram could not be reached ({type(exc).__name__})."
         result["removed"] = _remove_session(base)
-        if cfg.pop("me", None) is not None:
-            config.save(base, cfg)
+        if config.config_path(base).exists():
+            config.put(base, me=None)  # under the config lock: a settings change meanwhile stays
         if data == "backup":
             dest = _backup(base, name)
             result["backup"] = str(dest) if dest else None
