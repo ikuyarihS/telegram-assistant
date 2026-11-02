@@ -275,7 +275,7 @@ def cmd_tasks(args) -> int:
         if not args.json:
             return 0
     which = {"list": "open", "open": "open", "scan": "open", "mine": "mine", "all": "all"}[action]
-    rows = tl.select(which)
+    rows = engine.select_tasks(tl, store, which, args.chat, args.since)
     if args.json:
         print(json.dumps({"tasks": rows}, ensure_ascii=False, indent=2))
         return 0
@@ -425,8 +425,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("tasks", aliases=["task", "todo"])
     p.add_argument("action", nargs="?")
     p.add_argument("rest", nargs="*")
-    p.add_argument("--since", default=None, help="how far back to look for tasks, default 30d")
-    p.add_argument("--chat")
+    p.add_argument("--since", default=None,
+                   help="only tasks since e.g. 7d; also how far back to look for new ones (default 30d)")
+    p.add_argument("--chat", help="only tasks from chats whose name contains this")
     p.add_argument("--due", help="due date for tasks add")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_tasks)

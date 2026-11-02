@@ -9,6 +9,7 @@ from pathlib import Path
 
 from tgkit.appserver import App
 from tgkit.claude import ClaudeRunner
+from tgkit.store import parse_date, parse_since
 
 STUB = str(Path(__file__).resolve().parent / "fake_claude.py")
 
@@ -157,12 +158,23 @@ def test_filtered_task_reads_run_and_writes_are_denied(home, tg, monkeypatch):
         for cmd in WRITES:
             assert not permitted(cmd, shell), (shell, cmd)
     monkeypatch.setenv("TGKIT_READONLY", "1")
+    every = json.loads(tg("tasks", "all", "--json")[1])["tasks"]  # scans every chat once
+    assert len({t["chat"] for t in every}) > 1, "the fixture needs tasks in two chats"
     for cmd in FILTERED_READS:
         code, out, err = tg(*shlex.split(cmd)[1:])
         assert code == 0, (cmd, err)
-        if "--json" in cmd:
-            assert isinstance(json.loads(out)["tasks"], list)
-    tg("tasks", "--json")
+        if "--json" not in cmd:
+            continue
+        rows = json.loads(out)["tasks"]
+        argv = shlex.split(cmd)
+        if "--chat" in argv:  # gate B-1: --chat limits the list, not only the scan
+            assert rows and all("Alpha" in t["chat"] for t in rows), (cmd, rows)
+        if "--since" in argv:
+            cut = parse_since(argv[argv.index("--since") + 1])
+            assert all(parse_date(t["date"]) >= cut for t in rows), cmd
+    rows = json.loads(tg("tasks", "all", "--chat", "beta", "--json")[1])["tasks"]
+    assert rows and all(t["chat"] == "Team Beta" for t in rows)
+    assert len(rows) < len(every)
     seen = (home / "tasks.json").read_bytes()
     for cmd in WRITES[:9]:
         code, out, err = tg(*shlex.split(cmd)[1:])

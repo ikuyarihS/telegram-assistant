@@ -82,7 +82,9 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
 - `tasks --json`: `{"tasks": [...]}`; each task has `id` (the number for
   `done`, `note`, `drop`), `text`, `chat`, `msg_id`, `sender`, `date`, `due`,
   `assignees`, `for_me`, `status` (`open`, `done`, `dropped`), `notes` and
-  `source` (`message` or `manual`). Listing tasks also saves newly found ones.
+  `source` (`message` or `manual`). `--chat` keeps only tasks from those
+  chats, `--since` only tasks from that period. Listing tasks also saves
+  newly found ones.
 - `chats-log --json`: `{"conversations": [...]}`, newest first; each has
   `id`, `title`, `created`, `updated` and `turns` (see below).
 - `chats`, `show` and `media` print plain text: chat names with their message

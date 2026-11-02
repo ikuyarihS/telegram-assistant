@@ -130,6 +130,20 @@ def scan_tasks(base: Path, store: Store, chat: str | None = None, since: str | N
     return tl, found
 
 
+def select_tasks(tl, store: Store, which: str, chat: str | None = None,
+                 since: str | None = None) -> list[dict]:
+    """The tasks to list: `which` ones, only from the chats `chat` names and only since
+    `since` when given. The scan alone limits only where new tasks are looked for."""
+    rows = tl.select(which)
+    if chat:
+        folders = {d.name for d in store.match(chat)}
+        rows = [t for t in rows if t.get("folder") in folders]
+    cut = parse_since(since) if since else None
+    if cut:
+        rows = [t for t in rows if (parse_date(t.get("date")) or cut) >= cut]
+    return rows
+
+
 def set_task(base: Path, ident, status: str) -> dict:
     if status not in ("open", "done", "dropped"):
         raise UserError(f"'{status}' is not a task state.", "Use open, done or dropped.")
@@ -322,7 +336,7 @@ def answer(base: Path, store: Store, it: Intent) -> dict:
 
     if it.kind == "tasks":
         tl, found = scan_tasks(base, store, it.chat, it.since)
-        rows = tl.select(it.which)
+        rows = select_tasks(tl, store, it.which, it.chat, it.since)
         n = len(rows)
         head = {
             "open": _t(lang, f"Bạn có {n} việc đang mở.", f"You have {n} open task{'s' if n != 1 else ''}."),
