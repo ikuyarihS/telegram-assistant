@@ -354,6 +354,7 @@ a { color: var(--accent-text); text-underline-offset: 3px; }
   border-radius: 999px;
 }
 .badge.offline { color: var(--muted); background: var(--sunken); }
+.badge:empty { display: none; }
 
 .scroller { overflow-y: auto; min-height: 0; scroll-behavior: smooth; }
 
