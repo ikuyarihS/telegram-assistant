@@ -1,15 +1,18 @@
 # TG Kit installer for Windows. Double-click Install-Windows.bat rather than running this directly.
 # It creates a private Python environment in this folder (.venv), installs TG Kit into it,
-# adds the tgkit command and a desktop icon, registers the Claude Code plugin if Claude is
-# installed, and starts the first-time setup.
-# Set TGKIT_NO_SYSTEM_CHANGES=1 (or pass -NoSystemChanges) to skip PATH, icon and Claude.
-param([switch]$NoSystemChanges)
+# adds the tgkit command and the TG Kit icon (desktop and Start menu, it opens the TG Kit
+# window), registers the Claude Code plugin if Claude is installed, and starts the first-time
+# setup. Running it again (or Update-Windows.bat) updates TG Kit: your data is kept and the
+# setup is skipped when you are already logged in.
+# Set TGKIT_NO_SYSTEM_CHANGES=1 (or pass -NoSystemChanges) to skip PATH, icons and Claude.
+param([switch]$NoSystemChanges, [switch]$Update)
 
 $ErrorActionPreference = 'Stop'
 $Kit = Split-Path -Parent $PSScriptRoot
 $Venv = Join-Path $Kit '.venv'
 $VPy = Join-Path $Venv 'Scripts\python.exe'
 $Exe = Join-Path $Venv 'Scripts\tgkit.exe'
+$AppExe = Join-Path $Venv 'Scripts\tgkit-app.exe'
 if ($env:TGKIT_NO_SYSTEM_CHANGES) { $NoSystemChanges = $true }
 
 function Say($text) { Write-Host $text }
@@ -61,8 +64,15 @@ if (-not (Test-Path $VPy)) {
 
 Say 'Step 2 of 3: installing TG Kit (needs internet, about 1 minute)...'
 & $VPy -m pip install --quiet --disable-pip-version-check --upgrade pip
-& $VPy -m pip install --quiet --disable-pip-version-check "$Kit"
+# "[app]" adds the window (pywebview). If that part cannot install, TG Kit still works and
+# its window opens in the web browser instead.
+& $VPy -m pip install --quiet --disable-pip-version-check --upgrade "$Kit[app]"
+if ($LASTEXITCODE -ne 0) {
+    Say '(The window part could not be installed; TG Kit will open in your web browser instead.)'
+    & $VPy -m pip install --quiet --disable-pip-version-check --upgrade "$Kit"
+}
 if ($LASTEXITCODE -ne 0) { Fail 'Installing failed. Check your internet connection and double-click Install-Windows.bat again.' }
+$Version = (& $VPy -c 'import tgkit; print(tgkit.__version__)').Trim()
 
 if (-not $NoSystemChanges) {
     Say 'Step 3 of 3: adding the tgkit command and a desktop icon...'
@@ -72,18 +82,28 @@ if (-not $NoSystemChanges) {
         Set-Content -Path (Join-Path $Bin 'tgkit.cmd') -Value '@"%~dp0..\.venv\Scripts\tgkit.exe" %*' -Encoding ASCII
         # Claude Code runs commands in Git Bash, which never runs a .cmd: give it an sh shim too.
         [IO.File]::WriteAllText((Join-Path $Bin 'tgkit'), "#!/bin/sh`nexec `"`$(dirname `"`$0`")/../.venv/Scripts/tgkit.exe`" `"`$@`"`n", (New-Object Text.UTF8Encoding $false))
+        # An older TG Kit unzipped in another folder leaves its bin on PATH, ahead of this one:
+        # keep only this folder's bin, so the tgkit command is always the one just installed.
         $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-        if (-not (($userPath -split ';') -contains $Bin)) {
-            if ($userPath) { $newPath = "$userPath;$Bin" } else { $newPath = $Bin }
-            [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-        }
+        $parts = @($userPath -split ';' | Where-Object {
+            $_ -and ($_ -eq $Bin -or -not (Test-Path (Join-Path $_ 'tgkit.cmd')))
+        })
+        if (-not ($parts -contains $Bin)) { $parts += $Bin }
+        $newPath = $parts -join ';'
+        if ($newPath -ne $userPath) { [Environment]::SetEnvironmentVariable('Path', $newPath, 'User') }
         $env:Path = "$env:Path;$Bin"
-        $desktop = [Environment]::GetFolderPath('Desktop')
-        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $desktop 'TG Kit.lnk'))
-        $link.TargetPath = $Exe
-        $link.WorkingDirectory = $Kit
-        $link.Description = 'TG Kit: search, summarize and track tasks from Telegram'
-        $link.Save()
+        $target = $AppExe
+        if (-not (Test-Path $target)) { $target = $Exe }
+        $shell = New-Object -ComObject WScript.Shell
+        $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'TG Kit.lnk'
+        foreach ($place in @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'TG Kit.lnk'), $menu)) {
+            $link = $shell.CreateShortcut($place)
+            $link.TargetPath = $target
+            $link.WorkingDirectory = $Kit
+            $link.IconLocation = "$target,0"
+            $link.Description = 'TG Kit: ask about your Telegram chats'
+            $link.Save()
+        }
     } catch {
         Say "Could not add the command or the icon ($($_.Exception.Message)). You can still run: $Exe"
     }
@@ -101,9 +121,16 @@ if (-not $NoSystemChanges) {
     }
 }
 
+$loggedIn = (& $VPy -c 'from tgkit import config; print(int(config.logged_in(config.home())))' 2>$null)
 Say ''
-Say 'Installed! The first-time setup starts now.'
+if ("$loggedIn".Trim() -eq '1') {
+    if ($Update) { Say "TG Kit is updated to version $Version. Your chats and tasks are kept." }
+    else { Say "TG Kit $Version is installed. You are already logged in, so the setup is skipped." }
+} else {
+    Say "Installed TG Kit $Version! The first-time setup starts now."
+    Say ''
+    & $Exe setup
+}
 Say ''
-& $Exe setup
-Say ''
-Say 'Next time, open TG Kit with the "TG Kit" icon on your desktop, or type tgkit in a new terminal window.'
+Say 'Open TG Kit with the "TG Kit" icon on your desktop or in the Start menu.'
+Say 'It opens a window where you ask about your chats in your own words.'

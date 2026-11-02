@@ -29,9 +29,12 @@ TEXT_MAX = 500
 
 
 def is_question(text: str) -> bool:
-    if "?" in (text or ""):
+    # A "?" inside a link (a query string) is not a question: drop links first,
+    # then count only a "?" that ends a word or a sentence.
+    bare = _URL.sub(" ", text or "")
+    if re.search(r"\?(?=[\s\"')\].,!?]|$)", bare):
         return True
-    f = re.sub(r"[\s.!,]+$", "", fold(text))
+    f = re.sub(r"[\s.!,]+$", "", fold(bare))
     return any(f == e or f.endswith(" " + e) for e in _QUESTION_ENDINGS)
 
 

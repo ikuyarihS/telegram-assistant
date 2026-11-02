@@ -45,6 +45,115 @@ def write_json(path: Path, data) -> None:
     atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
 
+# ------------------------------------------------------------------ sync lock
+
+LOCK_NAME = "sync.lock"
+LOCK_MAX_AGE = timedelta(hours=6)
+
+
+def _pid_alive(pid: int) -> bool:
+    """True when a process with this id is running. Never sends a signal on Windows
+    (os.kill there would end the process, not test it)."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes  # noqa: PLC0415
+
+        kernel = ctypes.windll.kernel32
+        handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+class SyncLock:
+    """One sync at a time per data folder: two at once would both read the same
+    watermark and both prepend the same new messages (duplicate rows).
+
+    The lock file is created with O_EXCL, so only one process can make it. A
+    lock left by a process that died (or older than LOCK_MAX_AGE) is taken over.
+    """
+
+    def __init__(self, home: Path):
+        self.path = Path(home) / LOCK_NAME
+        self.held = False
+
+    def _owner(self) -> dict:
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8")) or {}
+        except (OSError, ValueError):
+            return {}
+
+    def _stale(self) -> bool:
+        info = self._owner()
+        started = parse_date(info.get("started"))
+        if started is None:
+            try:
+                started = datetime.fromtimestamp(self.path.stat().st_mtime, timezone.utc)
+            except OSError:
+                return True
+        if datetime.now(timezone.utc) - started > LOCK_MAX_AGE:
+            return True
+        pid = info.get("pid")
+        return isinstance(pid, int) and not _pid_alive(pid)
+
+    def acquire(self) -> "SyncLock":
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        body = json.dumps({"pid": os.getpid(),
+                           "started": datetime.now(timezone.utc).replace(microsecond=0).isoformat()})
+        for _ in range(2):
+            try:
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            except FileExistsError:
+                if self._stale():
+                    # Moved aside, not deleted: the replace is atomic, so only one
+                    # waiting process wins the next O_EXCL.
+                    try:
+                        self.path.replace(self.path.with_name(LOCK_NAME + ".old"))
+                    except OSError:
+                        pass
+                    continue
+                raise UserError(
+                    "Another TG Kit sync is already running for this data folder.",
+                    "Wait for it to finish, then try again.",
+                ) from None
+            try:
+                os.write(fd, body.encode("utf-8"))
+            finally:
+                os.close(fd)
+            self.held = True
+            return self
+        raise UserError("Could not start the sync: the lock file is busy.", "Try again in a minute.")
+
+    def release(self) -> None:
+        if self.held:
+            self.held = False
+            try:
+                self.path.replace(self.path.with_name(LOCK_NAME + ".done"))
+            except OSError:
+                pass
+
+    def __enter__(self):
+        return self.acquire()
+
+    def __exit__(self, *exc):
+        self.release()
+        return False
+
+
 def read_json(path: Path, default):
     """Read a JSON file; a missing file gives `default`, a damaged one raises UserError."""
     if not path.exists():

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from . import config
 from .errors import UserError
-from .store import Store, atomic_write, write_json
+from .store import Store, SyncLock, atomic_write, write_json
 
 
 class _NoFloodWait(Exception):
@@ -256,6 +256,16 @@ def _now() -> str:
 
 
 async def sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool = False, dry_run: bool = False) -> int:
+    """One sync per data folder at a time (store.SyncLock): two syncs reading the
+    same watermark would both prepend the same new messages. A dry run writes
+    nothing, so it needs no lock."""
+    if dry_run:
+        return await _sync_chats(ctx, dirs, quiet, dry_run)
+    with SyncLock(ctx.store.home):
+        return await _sync_chats(ctx, dirs, quiet, dry_run)
+
+
+async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) -> int:
     store = ctx.store
     # Every watermark is read BEFORE connecting: a damaged file aborts with a
     # clear message, not after a login round-trip.

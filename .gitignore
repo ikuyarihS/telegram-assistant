@@ -12,6 +12,8 @@ summary.json
 channels.txt
 dialogs.tsv
 logs/
+/app/
+sync.lock*
 
 # Made by the installers and by Python
 .venv/

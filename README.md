@@ -40,7 +40,8 @@ you can simply ask Claude about your chats in your own words.
 5. Wait about a minute while it installs. The first-time setup then starts by
    itself: go on with [First-time setup](#first-time-setup) below.
 
-When it is done you have a **TG Kit** icon on your desktop.
+When it is done you have a **TG Kit** icon on your desktop and in the Start
+menu. It opens the TG Kit window (see [The TG Kit window](#the-tg-kit-window)).
 
 ## Install on a Mac
 
@@ -97,10 +98,43 @@ later with `tgkit setup` (or option 7 in the menu).
 
 ---
 
-## Everyday use
+## The TG Kit window
 
-The easiest way: double-click the **TG Kit** icon (Windows), or open a
-terminal and type `tgkit`. A menu opens:
+Double-click the **TG Kit** icon (Windows), or type `tgkit app` in a terminal
+(Mac, Linux). A window opens with one box at the bottom: type a question in
+Vietnamese or English, with or without accents, and press **Enter**.
+
+- "Tuần này các nhóm bàn gì?", "What happened this week?" gives a summary;
+- "tìm biên bản họp", "find the invoice" finds messages; **Show conversation**
+  under a result shows the messages around it;
+- "Việc của tôi", "my open tasks" lists your tasks, each with a **Mark done**
+  (and **Undo**) button;
+- **Get new messages** (bottom left) fetches what is new from Telegram, with
+  a progress bar. In the list of chats, a green dot means the copy is fresh;
+  an amber dot means it was last updated more than 12 hours ago.
+
+On the left are your past conversations and your chats; the box above them
+filters both. Click a chat to get its summary for this week.
+Keys: **Enter** sends, **Shift+Enter** starts a new line, **Ctrl+K** starts a
+new conversation, **Esc** stops an answer.
+
+**Who answers.** If Claude Code is installed and signed in on the computer,
+Claude answers ("Claude" at the top right): it decides what to search, runs
+TG Kit, and writes the answer; click "Ran 2 TG Kit commands" to see what it
+ran. Claude may only read your chats through TG Kit: it cannot change files,
+fetch messages or touch your tasks. Without Claude, TG Kit answers by itself
+with simple rules ("Offline"). You can choose **TG Kit only** at the bottom
+left to never use Claude.
+
+The window follows the light or dark theme of your computer. Your questions
+are kept in your data folder; Claude Code can read them with
+`tgkit chats-log --json` (see [Use it with Claude](#use-it-with-claude)). If
+the window part could not be installed, TG Kit opens the same screen in your
+web browser.
+
+## Everyday use in a terminal
+
+Open a terminal and type `tgkit`. A menu opens:
 
 ```
   1  Search messages
@@ -173,6 +207,10 @@ in Claude Code, replacing the path with your TG Kit folder:
 There are also short commands in Claude: `/tg-search`, `/tg-summary`,
 `/tg-tasks` and `/tg-sync`.
 
+Claude Code can also see what you asked in the TG Kit window: ask it, for
+example, "continue the search I did in the TG Kit app". It reads your saved
+conversations with `tgkit chats-log --json` and runs the search again.
+
 ---
 
 ## Where your data lives, and privacy
@@ -190,10 +228,29 @@ There are also short commands in Claude: `/tg-search`, `/tg-summary`,
 
 ## Updating and removing
 
-- **Update:** download the new TG Kit, unzip it over the old folder, and run
-  the installer again. Your data folder is not touched.
-- **Remove:** delete the TG Kit folder and the desktop icon. Your data folder
-  stays until you delete it yourself.
+- **Update:** unzip the new TG Kit over the old folder (or into a new one) and
+  double-click **`Update-Windows.bat`** (on a Mac, `Install-Mac.command`
+  again). Your chats, tasks and login are kept, and the setup is skipped
+  because you are already logged in. The icons and the `tgkit` command move
+  to the new version by themselves.
+- **Remove:** delete the TG Kit folder and the TG Kit icons (desktop and Start
+  menu). Your data folder stays until you delete it yourself.
+
+## Share TG Kit with someone
+
+TG Kit is shared as a zip file. In the TG Kit folder (a git copy), run:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\make-share-zip.ps1
+```
+
+It makes `dist\TGKit-<version>.zip` from the committed files only: never your
+data folder, your login, `.venv` or anything in `.gitignore`. Send that zip.
+The other person unzips it and double-clicks `Install-Windows.bat` (on a Mac,
+`Install-Mac.command`); each person logs in with their own Telegram account.
+For a new version, raise `version` in `pyproject.toml`, commit, make a new
+zip and send it; they unzip it over the old folder and double-click
+`Update-Windows.bat`.
 
 ## Troubleshooting
 
@@ -218,8 +275,12 @@ There are also short commands in Claude: `/tg-search`, `/tg-summary`,
   `python -m pip install -e .[test]` then `python -m pytest`.
 - Read [docs/MAINTENANCE.md](docs/MAINTENANCE.md) before changing anything
   that writes data: sync has rules that each cost a real data loss once.
-- Why a command plus a Claude plugin, and not a window app: one small package
-  works the same on Windows, macOS and Linux, the menu and the installer cover
-  people who never use a terminal, and inside Claude the "app" is simply
-  asking in your own words. A separate window app would need its own build
-  and signing for each system and would duplicate what Claude already does.
+- The window (`tgkit app`, `src/tgkit/app.py`) is the system's own web view
+  through pywebview (optional extra `tgkit[app]`), showing a local HTML/CSS/JS
+  page (`src/tgkit/web/`) served on 127.0.0.1 by `appserver.py`. The same
+  package and the same installers work on Windows, macOS and Linux; no
+  separate build or signing per system. The offline answers come from
+  `intent.py` and `engine.py`; Claude mode is `claude.py`.
+- The UI is checked with the impeccable detector, static and rendered:
+  `impeccable detect src/tgkit/web` and `impeccable detect http://127.0.0.1:<port>/`
+  (start a server with `tgkit app --no-window --port <port>`).

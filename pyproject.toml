@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tgkit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Search, summarize and track tasks from your own Telegram chats. Local copy, works offline."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,12 +12,21 @@ dependencies = ["telethon>=1.36"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+# The desktop window (Edge WebView2 on Windows, WebKit on macOS). Without it,
+# `tgkit app` opens the same screen in the web browser.
+app = ["pywebview>=5"]
 
 [project.scripts]
 tgkit = "tgkit.cli:main"
 
+[project.gui-scripts]
+tgkit-app = "tgkit.app:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+tgkit = ["web/*.html", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

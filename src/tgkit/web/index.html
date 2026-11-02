@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="tgkit-token" content="__TGKIT_TOKEN__">
+<title>TG Kit</title>
+<link rel="icon" href="static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+<div class="shell" id="shell">
+  <aside class="side" id="side" aria-label="Conversations and chats">
+    <div class="brand">
+      <img class="logo" src="static/icon.svg" alt="" width="28" height="28">
+      <span class="brand-name">TG Kit</span>
+      <span class="version" id="version"></span>
+    </div>
+
+    <button class="btn btn-primary wide" id="newChat" type="button">
+      <span class="btn-label" data-i18n="newChat">New conversation</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+
+    <label class="search-field">
+      <span class="sr-only" data-i18n="filter">Filter conversations and chats</span>
+      <input id="filter" type="search" autocomplete="off" data-i18n-ph="filter" placeholder="Filter conversations and chats">
+    </label>
+
+    <nav class="side-scroll" aria-label="Lists">
+      <section class="side-section" aria-labelledby="convHead">
+        <h2 id="convHead" data-i18n="conversations">Conversations</h2>
+        <ul class="list" id="convList"></ul>
+        <p class="side-empty" id="convEmpty" data-i18n="noConvs">Your questions will be kept here.</p>
+      </section>
+      <section class="side-section" aria-labelledby="chatHead">
+        <h2 id="chatHead" data-i18n="chats">Your chats</h2>
+        <ul class="list" id="chatList"></ul>
+        <p class="side-empty" id="chatEmpty" data-i18n="noChats">No chats yet.</p>
+      </section>
+    </nav>
+
+    <div class="side-foot">
+      <button class="btn wide" id="syncBtn" type="button">
+        <span class="btn-label" data-i18n="sync">Get new messages</span>
+      </button>
+      <div class="progress" id="syncProgress" hidden><div class="progress-bar" id="syncBar"></div></div>
+      <p class="sync-status" id="syncStatus" aria-live="polite"></p>
+      <fieldset class="mode-pick">
+        <legend data-i18n="answersBy">Answers</legend>
+        <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude when available</span></label>
+        <label><input type="radio" name="mode" value="offline"> <span data-i18n="offline">TG Kit only</span></label>
+      </fieldset>
+      <p class="mode-note" id="modeNote"></p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <button class="btn btn-quiet menu-btn" id="menuBtn" type="button" data-i18n-label="menu" aria-label="Show conversations">
+        <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+      <h1 id="title" data-i18n="newChat">New conversation</h1>
+      <span class="badge" id="modeBadge"></span>
+    </header>
+
+    <div class="scroller" id="scroller">
+      <div class="thread" id="thread" aria-live="polite"></div>
+
+      <section class="empty" id="empty" aria-labelledby="emptyTitle">
+        <h2 id="emptyTitle" data-i18n="emptyTitle">Ask about your Telegram chats</h2>
+        <p data-i18n="emptyBody">Search messages, get a summary of what happened, or see your tasks. Type in Vietnamese or English, accents optional.</p>
+        <div class="setup-box" id="setupBox" hidden>
+          <h3 data-i18n="notConnected">TG Kit is not connected to Telegram yet</h3>
+          <p data-i18n="notConnectedBody">Connect once: a window opens and asks for your Telegram login. Come back here when it is done.</p>
+          <button class="btn btn-primary" id="setupBtn" type="button" data-i18n="connect">Connect to Telegram</button>
+        </div>
+        <ul class="examples" id="examples"></ul>
+      </section>
+    </div>
+
+    <form class="composer" id="composer">
+      <div class="input-wrap">
+        <label class="sr-only" for="input" data-i18n="inputPh">Ask about your chats</label>
+        <textarea id="input" rows="1" data-i18n-ph="inputPh" placeholder="Ask about your chats"></textarea>
+        <button class="btn btn-primary send" id="send" type="submit">
+          <span class="btn-label" id="sendLabel" data-i18n="send">Send</span>
+        </button>
+      </div>
+      <p class="hint" data-i18n="hint">Enter to send, Shift+Enter for a new line, Esc to stop</p>
+    </form>
+  </main>
+</div>
+<script src="static/app.js"></script>
+</body>
+</html>

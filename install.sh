@@ -39,8 +39,13 @@ fi
 
 say "Step 2 of 3: installing TG Kit (needs internet, about 1 minute)..."
 "$VENV/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade pip || true
-"$VENV/bin/python" -m pip install --quiet --disable-pip-version-check "$KIT" \
-  || fail "Installing failed. Check your internet connection and run this again."
+# "[app]" adds the TG Kit window (pywebview); without it the window opens in the web browser.
+if ! "$VENV/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "$KIT[app]"; then
+  say "(The window part could not be installed; TG Kit will open in your web browser instead.)"
+  "$VENV/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade "$KIT" \
+    || fail "Installing failed. Check your internet connection and run this again."
+fi
+VERSION="$("$VENV/bin/python" -c 'import tgkit; print(tgkit.__version__)')"
 
 if [ -z "${TGKIT_NO_SYSTEM_CHANGES:-}" ]; then
   say "Step 3 of 3: making the tgkit command available..."
@@ -66,8 +71,14 @@ if [ -z "${TGKIT_NO_SYSTEM_CHANGES:-}" ]; then
 fi
 
 say ""
-say "Installed! The first-time setup starts now."
+if [ "$("$VENV/bin/python" -c 'from tgkit import config; print(int(config.logged_in(config.home())))' 2>/dev/null)" = "1" ]; then
+  # Running this again is how you update: your data is kept and the setup is skipped.
+  say "TG Kit $VERSION is installed. You are already logged in, so the setup is skipped."
+else
+  say "Installed TG Kit $VERSION! The first-time setup starts now."
+  say ""
+  "$VENV/bin/tgkit" setup || true
+fi
 say ""
-"$VENV/bin/tgkit" setup || true
-say ""
-say "Next time, open a new terminal window and type: tgkit"
+say "Next time, open a new terminal window and type: tgkit app   (the TG Kit window)"
+say "or just: tgkit   (a simple menu)"

@@ -14,6 +14,11 @@ chats cannot always be fetched again.
 | `tasks.py` | task cues and `tasks.json` | only `tasks.json` |
 | `wizard.py` | setup questions and the menu | `config.json`, the pointer file |
 | `cli.py` | the `tgkit` command, plain-language errors | crash log only |
+| `engine.py` | reads shared by the CLI and the app (search, tasks, threads) and the app's offline answers and cards | only `tasks.json`, through `tasks.TaskList` |
+| `intent.py` | the app's offline intent parser (words to a query) | no |
+| `conversations.py` | the app's saved conversations, read by `tgkit chats-log` | only `app/conversations/*.json` |
+| `claude.py` | the app's Claude mode: a headless `claude -p` limited to tgkit read commands | only `app/claude/tgkit-guide.md` |
+| `appserver.py`, `app.py`, `web/` | the TG Kit window: a local server on 127.0.0.1 and its HTML/CSS/JS | no chat data; sync runs `tgkit sync` |
 
 ## 1. The rules that produced this design
 
@@ -102,6 +107,26 @@ authorized, instead of letting Telethon ask for a phone number. Claude runs
 Chat titles, folder names and file names are often Vietnamese. Output is
 reconfigured to UTF-8 even when piped on a Windows console; tests run a
 non-ASCII folder and file name.
+
+### R11 - One sync at a time per data folder
+
+Two syncs started together read the same watermark and both prepend the same
+new messages: duplicate ids. `net.sync_chats` holds `store.SyncLock`
+(`sync.lock` in the data folder, created with O_EXCL, holding the pid and
+start time) from the watermark read to the last write. A second sync refuses
+in plain words. A lock whose process is gone, or older than 6 hours, is taken
+over. A dry run writes nothing and takes no lock. Never check a pid with
+`os.kill(pid, 0)` on Windows: there it ends the process.
+
+### R12 - The app never writes a chat
+
+The TG Kit window (`appserver.py`) reads through `engine`, the same code the
+CLI runs. Its sync button starts `tgkit sync` as a child process, so R1 to
+R11 apply unchanged. Its only writes are `tasks.json` (the task buttons, via
+`TaskList`) and its own files under `app/`. Its API listens on 127.0.0.1 and
+needs the random token written into the page; chat text is put on the page
+with `textContent`, never parsed as HTML. Claude mode may run only tgkit read
+commands (`claude.ALLOWED`); anything else is denied without a prompt.
 
 ## 2. How to change this code
 

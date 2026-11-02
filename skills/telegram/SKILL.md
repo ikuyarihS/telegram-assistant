@@ -50,6 +50,7 @@ they wrote in. Do not show them commands unless they ask.
 | "what files were sent in Y" | `tgkit media "Y"` |
 | "which chats do you have" | `tgkit chats` |
 | "get the latest messages" | `tgkit sync` |
+| "what did I ask in the TG Kit app", "continue what I asked there" | `tgkit chats-log --json` |
 
 Chat names can be typed partly and without accents: `--chat "ke toan"`
 matches "Phòng Kế toán". Search also ignores accents when the words are typed
@@ -63,6 +64,19 @@ meeting prep note, a status update. Run the `--json` form of `summary`,
 chat, sender and date, and check the `stale` flag first: when a chat is stale,
 say so or run `tgkit sync` before using it. A decision in the summary is only
 "possible": read its `in_reply_to` message before writing that someone agreed.
+
+## The TG Kit app (what the user asked there)
+
+The user may also ask questions in the TG Kit window (`tgkit app`, the
+desktop icon). Each conversation there is saved in the data folder, and
+`tgkit chats-log --json` prints them, newest first: every question the user
+typed, the answer, which mode answered (`claude` or `offline`), the parsed
+query (`intent`) and the tgkit commands Claude ran (`commands`). Add
+`--last 5` for fewer, an id for one conversation, `--cards` for the result
+data. Use it when the user refers to something they asked in the app ("the
+search I did this morning", "finish what I started there"): read it, then
+run the tgkit query again yourself, because the answer it holds may be old.
+It is read-only; never edit the files under `app/` in the data folder.
 
 ## If `tgkit` is not found
 

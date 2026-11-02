@@ -7,7 +7,7 @@ import sys
 import traceback
 from datetime import datetime
 
-from . import __version__, config, digest, wizard
+from . import __version__, config, digest, engine, wizard
 from . import tasks as taskmod
 from .errors import UserError
 from .store import Store, atomic_write, local_time, matcher, parse_date, parse_since
@@ -21,8 +21,10 @@ Everyday:
   tgkit tasks                     your open tasks, found in your messages
   tgkit tasks done 3              mark task 3 done
   tgkit sync                      get new messages from Telegram
+  tgkit app                       open the TG Kit window: ask in your own words
 
 More:
+  tgkit chats-log                 what you asked in the TG Kit window (--json for Claude)
   tgkit tasks note 3 "text"       add a note to task 3   (also: add, drop, undo, mine, all)
   tgkit show "chat"               read the latest messages of a chat
   tgkit chats                     your chats and when they were last updated
@@ -120,22 +122,8 @@ def cmd_chats(args) -> int:
 
 
 def _hits(store: Store, args) -> list[tuple]:
-    test = matcher(args.query, args.case)
-    since = parse_since(args.since) if args.since else None
-    out = []
-    for d in store.match(args.chat):
-        rs = store.rows(d)
-        for i, r in enumerate(rs):
-            if since and (parse_date(r.get("date")) or since) < since:
-                continue
-            hay = r.get("text") or ""
-            m = r.get("media") or {}
-            if m.get("file_name"):
-                hay += " " + m["file_name"]
-            if test(hay):
-                out.append((r, d, i, rs))
-    out.sort(key=lambda h: h[0].get("date") or "", reverse=True)
-    return out
+    # One search rule for the CLI and the app (engine.find).
+    return engine.find(store, args.query, args.chat, args.since, args.case)
 
 
 def cmd_search(args) -> int:
@@ -150,11 +138,7 @@ def cmd_search(args) -> int:
         print(json.dumps({
             "query": args.query,
             "total": len(hits),
-            "results": [{
-                "chat": store.title(d), "folder": d.name, "id": r.get("id"), "date": r.get("date"),
-                "sender": store.sender_name(r.get("sender_id")), "text": r.get("text") or "",
-                "file": (r.get("media") or {}).get("file_name"), "reply_to": r.get("reply_to_msg_id"),
-            } for r, d, _, _ in shown],
+            "results": [engine.hit_dict(store, r, d) for r, d, _, _ in shown],
         }, ensure_ascii=False, indent=2))
         return 0
     if not hits:
@@ -252,10 +236,13 @@ def cmd_tasks(args) -> int:
         if not rest:
             raise UserError("Which task? Add its number.", f"For example: tgkit tasks {action} 3")
         status = {"done": "done", "undo": "open", "reopen": "open", "drop": "dropped"}[action]
+        # Check every number first: one bad number changes nothing and claims nothing.
         for ident in rest:
-            t = tl.set_status(ident, status)
-            print(f"Task {t['id']} is now {status}.")
+            tl.get(ident)
+        changed = [tl.set_status(ident, status) for ident in rest]
         tl.save()
+        for t in changed:
+            print(f"Task {t['id']} is now {status}.")
         return 0
     if action == "note":
         if len(rest) < 2:
@@ -272,15 +259,7 @@ def cmd_tasks(args) -> int:
         print(f"Added task {t['id']}.")
         return 0
 
-    dirs = store.chat_dirs()
-    if args.chat:
-        dirs = store.match(args.chat)
-    found = 0
-    if dirs:
-        me = config.load(base).get("me")
-        found = tl.scan(store, dirs, taskmod.window_start(args.since), me)
-        if found:
-            tl.save()
+    tl, found = engine.scan_tasks(base, store, args.chat, args.since)
     if action == "scan":
         _info(args, f"Found {found} new task(s).")
         if not args.json:
@@ -335,6 +314,45 @@ def cmd_setup(args) -> int:
     except wizard.Cancelled:
         print("\nSetup stopped. Start it again any time with: tgkit setup")
         return 0
+
+
+def cmd_app(args) -> int:
+    from . import app  # noqa: PLC0415
+
+    rest = list(args.app_args or [])
+    if rest[:1] == ["--"]:
+        rest = rest[1:]
+    return app.run(rest)
+
+
+def cmd_chats_log(args) -> int:
+    from .conversations import Conversations, log_view  # noqa: PLC0415
+
+    convs = Conversations(config.home())
+    if args.id:
+        items = [convs.get(args.id)]
+    else:
+        items = convs.all()[: args.last] if args.last else convs.all()
+    if args.json:
+        print(json.dumps({"conversations": [log_view(c, args.cards) for c in items]},
+                         ensure_ascii=False, indent=2))
+        return 0
+    if not items:
+        print("No conversations in the TG Kit app yet. Open it with: tgkit app")
+        return 0
+    if args.id:
+        c = items[0]
+        print(f"{c.get('title')}  ({local_time(c.get('created'))})")
+        for t in c.get("turns") or []:
+            who = "You" if t.get("role") == "user" else f"TG Kit ({t.get('mode') or 'offline'})"
+            print(f"\n[{local_time(t.get('at'))}] {who}:\n{t.get('text') or ''}")
+        return 0
+    print(f"Conversations in the TG Kit app ({len(items)}), newest first:")
+    for c in items:
+        print(f"  {c['id']}  {local_time(c.get('updated'))}  {len(c.get('turns') or [])} turn(s)  "
+              f"{c.get('title')}")
+    print("\nRead one: tgkit chats-log <id>   |   for Claude: tgkit chats-log --json")
+    return 0
 
 
 def cmd_menu(args) -> int:
@@ -418,6 +436,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("who")
     p.add_argument("--chat")
     p.set_defaults(func=cmd_who)
+
+    p = sub.add_parser("app", aliases=["window", "ui"], add_help=False)
+    p.add_argument("app_args", nargs=argparse.REMAINDER)
+    p.set_defaults(func=cmd_app)
+
+    p = sub.add_parser("chats-log", aliases=["history"])
+    p.add_argument("id", nargs="?", help="one conversation")
+    p.add_argument("--last", type=int, default=20, help="the newest N conversations (0 = all)")
+    p.add_argument("--cards", action="store_true", help="include the result cards")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_chats_log)
     return ap
 
 
@@ -453,6 +482,9 @@ def main(argv=None) -> int:
     if "--debug" in argv:
         argv.remove("--debug")
         debug = True
+    if argv and argv[0] in ("app", "window", "ui"):
+        # The app has its own options (--browser, --port); argparse would claim them here.
+        argv = [argv[0], "--", *argv[1:]] if len(argv) > 1 and argv[1] != "--" else argv
     try:
         args = build_parser().parse_args(argv)
     except SystemExit as exc:
