@@ -186,6 +186,27 @@ class TasksLock(SyncLock):
         )
 
 
+SESSION_LOCK_NAME = "session.lock"
+
+
+class SessionLock(SyncLock):
+    """One Telegram client at a time per data folder. Telethon keeps the login in
+    tgkit.session, an SQLite file: a second client that opens it while the first
+    writes gets sqlite3.OperationalError (database is locked). Every client is
+    made under this lock (net.connected, net.login, net.logout, the login in the
+    window), in the window's own threads and in a sync it started alike. A short
+    call waits for the one running; a long one makes the other refuse in plain words."""
+
+    name = SESSION_LOCK_NAME
+    wait = 30.0
+
+    def _busy(self) -> UserError:
+        return UserError(
+            "TG Kit is still busy with Telegram (getting new messages or copying chats).",
+            "Wait a moment and try again.",
+        )
+
+
 def read_json(path: Path, default):
     """Read a JSON file; a missing file gives `default`, a damaged one raises UserError."""
     if not path.exists():

@@ -1,7 +1,43 @@
 /* TG Kit app: chat UI over the local API. Every piece of chat data is put on the
    page with textContent or text nodes, never parsed as HTML. */
+
+/* The chat picker's rules, kept free of the page so tests can load them with node.
+   A dialog is { id, name, kind: "group" | "channel" | "person", added, picked }. */
+const TGPick = {
+  BIG: 30,
+  fold(s) {
+    return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+  },
+  // The dialogs the list shows for the "Find a chat" text and the kind chip.
+  shown(dialogs, query, kind) {
+    const q = TGPick.fold((query || "").trim());
+    return dialogs.filter((d) => (!kind || kind === "all" || d.kind === kind) && (!q || TGPick.fold(d.name).includes(q)));
+  },
+  pickable(list) { return list.filter((d) => !d.added); },
+  // Select all of these: "all" ticked, "none" ticked, or "mixed".
+  state(list) {
+    const p = TGPick.pickable(list);
+    const n = p.filter((d) => d.picked).length;
+    if (!n) return "none";
+    return n === p.length ? "all" : "mixed";
+  },
+  // Pressing Select all: ticks every shown chat, or clears them when all are ticked already.
+  toggleAll(list) {
+    const on = TGPick.state(list) !== "all";
+    TGPick.pickable(list).forEach((d) => { d.picked = on; });
+    return on;
+  },
+  count(dialogs) {
+    const p = TGPick.pickable(dialogs);
+    return { picked: p.filter((d) => d.picked).length, total: p.length };
+  },
+  big(n) { return n > TGPick.BIG; },
+};
+if (typeof module === "object" && module.exports) module.exports = TGPick;
+
 (() => {
   "use strict";
+  if (typeof document === "undefined") return;
 
   const TOKEN = document.querySelector('meta[name="tgkit-token"]').content;
   const params = new URLSearchParams(location.search);
@@ -86,6 +122,9 @@
       secData: "Copied chats", mediaCap: "Keep attached files up to (MB)",
       mediaHelp: "Bigger files stay on Telegram only; the message still says they exist. Applies to new messages.",
       dataAt: "Stored in", addChats: "Add chats",
+      logHelp: "When something goes wrong, TG Kit writes the details in a log file. Copy diagnostics and send it to whoever gave you TG Kit. It holds no messages, codes or passwords.",
+      copyDiag: "Copy diagnostics", openLogs: "Open log folder", diagCopied: "Diagnostics copied. Paste them in a message.",
+      suRetry: "Load the chats again", suSwitched: "This is another Telegram account: the chats of the earlier one were moved aside and come back when you log in to it again.",
       suTitle: "Connect to Telegram", suStep1: "Telegram codes", suStep2: "Log in", suStep3: "Pick chats",
       suCodesWhy: "TG Kit reads your chats with two codes from Telegram. You make them once, on Telegram's own website.",
       suCodes1: "Press Open my.telegram.org and log in with your phone number. Telegram sends the code to your Telegram app.",
@@ -108,6 +147,10 @@
       suWho: (n) => `Logged in as ${n}.`, suAdded: (n) => `Added ${n} ${plural(n, "chat", "chats")}. Ask away, or add more.`,
       suNoneAdded: "No chat was added.", suPickOne: "Tick at least one chat.", suAlready: "already added",
       suNoChats: "No chats found.", kindGroup: "group", kindChannel: "channel", kindUser: "person",
+      suShowKind: "Show", suKindAll: "All", suKindGroups: "Groups", suKindChannels: "Channels", suKindPeople: "People",
+      suPickAll: "Select all", suPickShown: (n) => `Select all ${n} shown`,
+      suCount: (n, m) => `${n} of ${m} selected`,
+      suBig: (n) => `${n} chats ticked. Copying that many the first time can take a while. Nothing starts until you press Add the ticked chats.`,
       openChatTg: "Open the chat in Telegram",
       openChatTip: "Telegram has no links to single messages of private chats and small groups, so this opens the chat.",
       findTg: (n) => `Open Telegram and find ${n}`, copyName: "Copy name", nameCopied: (n) => `Copied: ${n}`,
@@ -188,6 +231,9 @@
       secData: "Bản sao các nhóm", mediaCap: "Giữ tệp đính kèm đến (MB)",
       mediaHelp: "Tệp lớn hơn chỉ nằm trên Telegram; tin nhắn vẫn ghi là có tệp. Áp dụng cho tin mới.",
       dataAt: "Lưu tại", addChats: "Thêm nhóm",
+      logHelp: "Khi có lỗi, TG Kit ghi chi tiết vào một tệp nhật ký. Bấm Chép thông tin chẩn đoán rồi gửi cho người đã đưa bạn TG Kit. Trong đó không có tin nhắn, mã hay mật khẩu.",
+      copyDiag: "Chép thông tin chẩn đoán", openLogs: "Mở thư mục nhật ký", diagCopied: "Đã chép thông tin chẩn đoán. Dán vào tin nhắn để gửi.",
+      suRetry: "Tải lại danh sách nhóm", suSwitched: "Đây là tài khoản Telegram khác: các nhóm của tài khoản trước đã được cất riêng và sẽ trở lại khi bạn đăng nhập lại tài khoản đó.",
       suTitle: "Kết nối Telegram", suStep1: "Mã Telegram", suStep2: "Đăng nhập", suStep3: "Chọn nhóm",
       suCodesWhy: "TG Kit đọc các nhóm của bạn bằng hai mã của Telegram. Bạn tạo chúng một lần trên trang web của Telegram.",
       suCodes1: "Bấm Mở my.telegram.org và đăng nhập bằng số điện thoại. Telegram gửi mã vào ứng dụng Telegram của bạn.",
@@ -210,6 +256,10 @@
       suWho: (n) => `Đang đăng nhập với ${n}.`, suAdded: (n) => `Đã thêm ${n} nhóm. Hỏi ngay, hoặc thêm nhóm khác.`,
       suNoneAdded: "Chưa thêm nhóm nào.", suPickOne: "Đánh dấu ít nhất một nhóm.", suAlready: "đã thêm",
       suNoChats: "Không tìm thấy nhóm nào.", kindGroup: "nhóm", kindChannel: "kênh", kindUser: "người",
+      suShowKind: "Hiện", suKindAll: "Tất cả", suKindGroups: "Nhóm", suKindChannels: "Kênh", suKindPeople: "Người",
+      suPickAll: "Chọn tất cả", suPickShown: (n) => `Chọn cả ${n} mục đang hiện`,
+      suCount: (n, m) => `Đã chọn ${n} trên ${m}`,
+      suBig: (n) => `Đã chọn ${n} nhóm. Lần sao chép đầu với nhiều nhóm như vậy có thể mất khá lâu. Chỉ bắt đầu khi bạn bấm Thêm các nhóm đã chọn.`,
       openChatTg: "Mở cuộc trò chuyện trên Telegram",
       openChatTip: "Telegram không có liên kết tới từng tin trong chat riêng và nhóm nhỏ, nên liên kết này mở cả cuộc trò chuyện.",
       findTg: (n) => `Mở Telegram và tìm ${n}`, copyName: "Chép tên", nameCopied: (n) => `Đã chép: ${n}`,
@@ -255,7 +305,9 @@
     suSite: $("suSite"), suApiId: $("suApiId"), suApiHash: $("suApiHash"), suPhoneIn: $("suPhoneIn"),
     suChangeCodes: $("suChangeCodes"), suCodeIn: $("suCodeIn"), suResend: $("suResend"), suPwIn: $("suPwIn"),
     suWho: $("suWho"), suFilter: $("suFilter"), suList: $("suList"), suAdd: $("suAdd"), suDone: $("suDone"),
-    suTerminal: $("suTerminal"),
+    suTerminal: $("suTerminal"), suTools: $("suTools"), suKinds: $("suKinds"), suKindChannel: $("suKindChannel"),
+    suPickAll: $("suPickAll"), suPickAllText: $("suPickAllText"), suCount: $("suCount"), suBigNote: $("suBigNote"),
+    copyDiag: $("copyDiag"), openLogs: $("openLogs"),
     suFolder: $("suFolder"), suKeepText: $("suKeepText"), suFolderPathField: $("suFolderPathField"),
     suFolderPathIn: $("suFolderPathIn"),
   };
@@ -1103,7 +1155,7 @@
     if (r.step === "code") suShow("code");
     else if (r.step === "password") suShow("password");
     else if (r.step === "done") {
-      ui.suWho.textContent = t("suWho", (r.me && r.me.name) || "");
+      ui.suWho.textContent = t("suWho", (r.me && r.me.name) || "") + (r.switched ? ` ${t("suSwitched")}` : "");
       refresh().catch(() => {});
       suShow("chats");
     }
@@ -1150,9 +1202,36 @@
     return t("kindGroup");
   }
 
+  let suShown = [];
+  function suKind() {
+    return (document.querySelector('input[name="suKind"]:checked') || {}).value || "all";
+  }
+
+  // The bar above the list: Select all (ticked, clear or mixed) for the chats shown now,
+  // the count of the whole pick, and a plain note when the pick is big.
+  function syncPickBar() {
+    ui.suTools.hidden = !suDialogs.length;
+    const c = TGPick.count(suDialogs);
+    const big = TGPick.big(c.picked);
+    ui.suBigNote.hidden = !big;
+    ui.suBigNote.textContent = big ? t("suBig", c.picked) : "";
+    if (!suDialogs.length) return;
+    const state = TGPick.state(suShown);
+    const n = TGPick.pickable(suShown).length;
+    ui.suPickAll.checked = state === "all" && n > 0;
+    ui.suPickAll.indeterminate = state === "mixed";
+    ui.suPickAll.disabled = !n;
+    ui.suPickAllText.textContent = suShown.length < suDialogs.length ? t("suPickShown", n) : t("suPickAll");
+    ui.suCount.textContent = t("suCount", c.picked, c.total);
+  }
+
   function renderDialogs() {
-    const q = fold(ui.suFilter.value.trim());
-    const shown = suDialogs.filter((d) => !q || fold(d.name).includes(q));
+    const channels = suDialogs.some((d) => d.kind === "channel");
+    ui.suKindChannel.hidden = !channels;
+    if (!channels && suKind() === "channel") ui.suKinds.querySelector('input[value="all"]').checked = true;
+    suShown = TGPick.shown(suDialogs, ui.suFilter.value, suKind());
+    syncPickBar();
+    const shown = suShown;
     if (!shown.length) {
       ui.suList.replaceChildren(el("li", { class: "pick-empty" }, suDialogs.length ? t("noMatch") : t("suNoChats")));
       return;
@@ -1160,19 +1239,23 @@
     ui.suList.replaceChildren(...shown.map((d) => el("li", {},
       el("label", { class: d.added ? "pick added" : "pick" },
         el("input", { type: "checkbox", value: d.id, checked: d.added || d.picked, disabled: d.added,
-          onchange: (e) => { d.picked = e.target.checked; } }),
+          onchange: (e) => { d.picked = e.target.checked; syncPickBar(); } }),
         el("span", { class: "pick-name" }, d.name),
         el("span", { class: "pick-kind" }, d.added ? t("suAlready") : kindLabel(d.kind))))));
   }
 
   async function loadDialogs() {
     ui.suList.replaceChildren(el("li", { class: "pick-empty" }, t("suLoading")));
+    suDialogs = [];
+    suShown = [];
+    syncPickBar();
     try {
       const r = await api("/api/setup/dialogs");
       suDialogs = r.dialogs || [];
       renderDialogs();
     } catch (e) {
-      ui.suList.replaceChildren();
+      ui.suList.replaceChildren(el("li", { class: "pick-empty" },
+        el("button", { class: "link-btn", type: "button", onclick: loadDialogs }, t("suRetry"))));
       suError(e);
     }
   }
@@ -1230,6 +1313,8 @@
     suRoute(r);
   });
   ui.suFilter.addEventListener("input", renderDialogs);
+  ui.suKinds.addEventListener("change", renderDialogs);
+  ui.suPickAll.addEventListener("change", () => { TGPick.toggleAll(suShown); renderDialogs(); });
   ui.suSite.addEventListener("click", () => api("/api/setup/open-site", {}).catch(suError));
   ui.suChangeCodes.addEventListener("click", () => suShow("codes"));
   ui.suResend.addEventListener("click", async () => {
@@ -1369,6 +1454,15 @@
   ui.openExport.addEventListener("click", () => api("/api/open-folder", {}).catch((e) => setNote(e.message)));
   ui.mediaCap.addEventListener("change", () => saveSetting({ max_media_mb: Number(ui.mediaCap.value || 50) }));
   ui.openData.addEventListener("click", () => api("/api/open-data", {}).catch((e) => setNote(e.message)));
+  ui.openLogs.addEventListener("click", () => api("/api/open-logs", {}).catch((e) => setNote(e.message)));
+  ui.copyDiag.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/diagnostics");
+      if (await copyText(r.text)) setNote(t("diagCopied"));
+    } catch (e) {
+      setNote(e.message);
+    }
+  });
   ui.addChatsBtn.addEventListener("click", () => openSetup("chats"));
   ui.logoutBtn.addEventListener("click", () => { ui.logoutConfirm.hidden = false; ui.logoutNo.focus(); });
   ui.logoutNo.addEventListener("click", () => { ui.logoutConfirm.hidden = true; ui.logoutBtn.focus(); });

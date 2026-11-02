@@ -177,6 +177,11 @@
         <button class="btn" id="addChatsBtn" type="button" data-i18n="addChats">Add chats</button>
         <button class="btn" id="openData" type="button" data-i18n="openFolder">Open folder</button>
       </div>
+      <p class="field-help" data-i18n="logHelp">When something goes wrong, TG Kit writes the details in a log file. Copy diagnostics and send it to whoever gave you TG Kit. It holds no messages, codes or passwords.</p>
+      <div class="set-actions">
+        <button class="btn" id="copyDiag" type="button" data-i18n="copyDiag">Copy diagnostics</button>
+        <button class="btn" id="openLogs" type="button" data-i18n="openLogs">Open log folder</button>
+      </div>
     </section>
 
     <section class="set-sec" aria-labelledby="secAccount">
@@ -304,7 +309,21 @@
         <span class="sr-only" data-i18n="suFilter">Find a chat</span>
         <input id="suFilter" type="search" data-i18n-ph="suFilter" placeholder="Find a chat" autocomplete="off">
       </label>
-      <ul class="pick-list" id="suList" aria-live="polite"></ul>
+      <div class="pick-tools" id="suTools" hidden>
+        <fieldset class="pick-kinds" id="suKinds">
+          <legend class="sr-only" data-i18n="suShowKind">Show</legend>
+          <label><input type="radio" name="suKind" value="all" checked> <span data-i18n="suKindAll">All</span></label>
+          <label><input type="radio" name="suKind" value="group"> <span data-i18n="suKindGroups">Groups</span></label>
+          <label id="suKindChannel"><input type="radio" name="suKind" value="channel"> <span data-i18n="suKindChannels">Channels</span></label>
+          <label><input type="radio" name="suKind" value="person"> <span data-i18n="suKindPeople">People</span></label>
+        </fieldset>
+        <div class="pick-bar">
+          <label class="check pick-all"><input type="checkbox" id="suPickAll" aria-controls="suList"> <span id="suPickAllText" data-i18n="suPickAll">Select all</span></label>
+          <span class="pick-count" id="suCount" aria-live="polite"></span>
+        </div>
+      </div>
+      <ul class="pick-list" id="suList"></ul>
+      <p class="pick-note" id="suBigNote" aria-live="polite" hidden></p>
       <fieldset class="choice">
         <legend data-i18n="suHow">How much history</legend>
         <label><input type="radio" name="suLimit" value="1000" checked> <span data-i18n="suRecent">The last 1000 messages of each chat (quick)</span></label>

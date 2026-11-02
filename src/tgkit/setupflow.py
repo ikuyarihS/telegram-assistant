@@ -21,23 +21,36 @@ import asyncio
 import contextlib
 import io
 import os
+import sqlite3
 import threading
 import time
 from pathlib import Path
 
-from . import config
+from . import account, applog, config
 from .errors import UserError
-from .store import Store, SyncLock
+from .store import SessionLock, Store, SyncLock
 
 LOGIN_TIMEOUT = 15 * 60  # an unfinished login is dropped after this many seconds
 
 
-def _friendly(exc: BaseException) -> UserError:
+BUSY = ("TG Kit is still busy with Telegram (getting new messages or copying chats).",
+        "Wait a moment and try again.")
+UNKNOWN = ("Something went wrong while talking to Telegram.",
+           "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
+           "and send it to whoever gave you TG Kit.")
+
+
+# Plain words for what went wrong, never a bare error class name. Every error that
+# is not a UserError is logged with its traceback first.
+def _friendly(exc: BaseException, home=None) -> UserError:
     if isinstance(exc, UserError):
         return exc
+    applog.caught("setup in the window", exc, home)
     from .cli import _FRIENDLY  # noqa: PLC0415
 
     name = type(exc).__name__
+    if isinstance(exc, sqlite3.OperationalError) or name == "OperationalError":
+        return UserError(*BUSY)  # the login file (SQLite) was in use by another client
     if name in _FRIENDLY:
         msg, hint = _FRIENDLY[name]
         hint = {"PhoneNumberInvalidError": "Type it with the country code, like +84 912 345 678.",
@@ -48,7 +61,7 @@ def _friendly(exc: BaseException) -> UserError:
         return UserError(msg, hint)
     if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError, OSError)):
         return UserError("Could not reach Telegram.", "Check your internet connection and try again.")
-    return UserError(f"Telegram said: {name}.", "Try again in a moment.")
+    return UserError(*UNKNOWN)
 
 
 class TelegramSetup:
@@ -60,6 +73,7 @@ class TelegramSetup:
         self._phone = None
         self._hash = None
         self._lock = None
+        self._session = None
         self._since = 0.0
         self.step = None  # None, "code" or "password" while a login is under way
 
@@ -76,9 +90,11 @@ class TelegramSetup:
         try:
             return fut.result(timeout)
         except Exception as exc:  # noqa: BLE001
-            raise _friendly(exc) from None
+            raise _friendly(exc, self.home) from None
 
     def _end(self) -> None:
+        """Close the login client and free both locks. Runs on every way out of a
+        login, failures included: a lock left held would block every later sync."""
         client, self._client = self._client, None
         self._phone = self._hash = None
         self.step = None
@@ -87,22 +103,34 @@ class TelegramSetup:
                 res = client.disconnect()
                 if asyncio.iscoroutine(res):
                     self._call(res, 20)
-        lock, self._lock = self._lock, None
-        if lock is not None:
-            lock.release()
+        for name in ("_session", "_lock"):
+            lock = getattr(self, name)
+            setattr(self, name, None)
+            if lock is not None:
+                lock.release()
+
+    def _fail(self, exc: BaseException):
+        """A login step failed in a way typing again cannot fix: end the login."""
+        self._end()
+        raise _friendly(exc, self.home) from None
 
     def _expire(self) -> None:
         if self.step and time.monotonic() - self._since > LOGIN_TIMEOUT:
             self._end()
 
     def _done(self) -> dict:
-        me = self._call(self._client.get_me())
-        from .net import display_name  # noqa: PLC0415
+        """Logged in: read who it is from Telegram, save it, and when it is another
+        account than the chats shown, switch to that account's chats. The login
+        ends (locks freed) whatever happens here."""
+        try:
+            me = self._call(self._client.get_me())
+            from .net import display_name  # noqa: PLC0415
 
-        who = {"id": me.id, "name": display_name(me), "username": getattr(me, "username", None)}
-        config.put(self.home, me=who)  # under the config lock, like every config.json write
-        self._end()
-        return {"step": "done", "me": who}
+            who = {"id": me.id, "name": display_name(me), "username": getattr(me, "username", None)}
+            res = account.adopt(self.home, who, locked=True)  # the login holds the sync lock
+        finally:
+            self._end()
+        return {"step": "done", "me": who, "switched": bool(res.get("switched"))}
 
     # ------------------------------------------------------------- steps
 
@@ -145,10 +173,11 @@ class TelegramSetup:
 
             async def make():  # made on the login loop, where it will run
                 return net.make_client(self.home, cfg)  # refuses in plain words without codes
-            client = self._call(make())
             self._lock = SyncLock(self.home).acquire()  # no sync uses the login file meanwhile
-            self._client = client
             try:
+                self._session = SessionLock(self.home).acquire()  # nor any other client
+                self._client = self._call(make())
+                client = self._client
                 self._call(client.connect())
                 if self._call(client.is_user_authorized()):
                     return self._done()
@@ -178,9 +207,13 @@ class TelegramSetup:
                         return "password"
                     if type(exc).__name__ == "PhoneCodeExpiredError":
                         return "expired"
-                    raise
+                    if type(exc).__name__ in ("PhoneCodeInvalidError", "PhoneCodeEmptyError"):
+                        raise  # typing the code again fixes it: the login stays
+                    return exc
                 return "done"
             got = self._call(sign())
+            if isinstance(got, BaseException):
+                self._fail(got)
             if got == "password":
                 self.step, self._since = "password", time.monotonic()
                 return {"step": "password"}
@@ -196,7 +229,19 @@ class TelegramSetup:
                 raise UserError("The password is no longer waited for.", "Start again with Send code.")
             if not password:
                 raise UserError("Type your two-step password.", "It is the extra password you set in Telegram.")
-            self._call(self._client.sign_in(password=password))
+            client = self._client
+
+            async def sign():
+                try:
+                    await client.sign_in(password=password)
+                except Exception as exc:  # noqa: BLE001
+                    if type(exc).__name__ == "PasswordHashInvalidError":
+                        raise  # typing it again fixes it: the login stays
+                    return exc
+                return None
+            failed = self._call(sign())
+            if failed is not None:
+                self._fail(failed)
             return self._done()
 
     def cancel(self) -> dict:
@@ -213,6 +258,9 @@ class TelegramSetup:
 
         async def fetch():
             async with net.connected(ctx) as client:
+                # Who the login file belongs to now: another account than the chats
+                # shown (a login made elsewhere) switches to that account's chats.
+                account.adopt(self.home, await net.session_me(client))
                 found = await net.list_dialogs(client)
                 existing = {d.name for d in ctx.store.chat_dirs()}
                 keys = net.followed_keys(ctx.store)
@@ -222,7 +270,7 @@ class TelegramSetup:
         try:
             return {"dialogs": net.run(fetch())}
         except Exception as exc:  # noqa: BLE001
-            raise _friendly(exc) from None
+            raise _friendly(exc, self.home) from None
 
     def add(self, ids, limit) -> dict:
         from . import net  # noqa: PLC0415
@@ -244,7 +292,7 @@ class TelegramSetup:
             with contextlib.redirect_stdout(out):
                 net.run(net.add_chats(ctx, None, limit, pick))
         except Exception as exc:  # noqa: BLE001
-            raise _friendly(exc) from None
+            raise _friendly(exc, self.home) from None
         added = len(Store(self.home).chat_dirs()) - before
         lines = [x.strip() for x in out.getvalue().splitlines() if x.strip()]
         return {"added": added, "lines": lines}

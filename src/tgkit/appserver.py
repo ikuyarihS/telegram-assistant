@@ -25,7 +25,7 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, account, config, engine, export, intent, setupflow, usage
+from . import __version__, account, applog, config, engine, export, intent, setupflow, usage
 from . import claude as claudemod
 from .claude import ClaudeRunner
 from .conversations import Conversations
@@ -229,6 +229,10 @@ class App:
     # ------------------------------------------------------------- sync
 
     def sync(self):
+        if self.tg.step:
+            yield {"type": "error", "message": "A Telegram login is under way in the setup window.",
+                   "hint": "Finish it or close the setup, then press Get new messages again."}
+            return
         if not self._sync_busy.acquire(blocking=False):
             yield {"type": "error", "message": "A sync is already running.", "hint": ""}
             return
@@ -483,11 +487,42 @@ class App:
         export.reveal(self.home)
         return {"ok": True, "folder": str(self.home)}
 
+    def open_logs(self) -> dict:
+        folder = applog.log_dir(self.home)
+        folder.mkdir(parents=True, exist_ok=True)
+        export.reveal(folder)
+        return {"ok": True, "folder": str(folder)}
+
+    def diagnostics(self) -> dict:
+        """Text for Copy diagnostics: no messages, codes, phone numbers or passwords."""
+        cfg = self._cfg()
+
+        def lock_text(name: str) -> str:
+            try:
+                return (self.home / name).read_text(encoding="utf-8", errors="replace")[:200].strip() or "free"
+            except OSError:
+                return "none"
+        facts = {
+            "Window": "yes", "Telegram codes saved": config.has_credentials(self.home, cfg),
+            "Logged in": config.logged_in(self.home), "Chats": len(self.store().chat_dirs()),
+            "Sync running in this window": self._sync_busy.locked(),
+            "Login under way": self.tg.step or "no",
+            "sync.lock": lock_text("sync.lock"), "session.lock": lock_text("session.lock"),
+            "Claude": "available" if self.claude.available else "not available",
+        }
+        return {"text": applog.diagnostics(self.home, facts)}
+
     # ------------------------------------------------------------- setup
+
+    # Setup talks to Telegram only when no sync does: plain words, no wait.
+    def setup_dialogs(self) -> dict:
+        if self._sync_busy.locked():
+            raise UserError("TG Kit is still getting new messages.", "Wait until it is done, then open Add chats again.")
+        return self.tg.dialogs()
 
     def setup_add(self, body: dict) -> dict:
         if self._sync_busy.locked():
-            raise UserError("New messages are being fetched right now.", "Wait until it is done, then add chats.")
+            raise UserError("TG Kit is still getting new messages.", "Wait until it is done, then press Add again.")
         return self.tg.add(body.get("ids"), body.get("limit", 1000))
 
     def setup_folder(self, body: dict) -> dict:
@@ -652,7 +687,9 @@ def make_handler(app: App):
                 if path == "/api/setup/state":
                     return self._json(app.tg.state())
                 if path == "/api/setup/dialogs":
-                    return self._json(app.tg.dialogs())
+                    return self._json(app.setup_dialogs())
+                if path == "/api/diagnostics":
+                    return self._json(app.diagnostics())
                 m = re.fullmatch(r"/api/conversations/([\w-]+)", path)
                 if m:
                     return self._json(app.convs.get(m.group(1)))
@@ -666,7 +703,17 @@ def make_handler(app: App):
             except ValueError:
                 return self._json({"type": "error", "message": localize("That request was not understood.",
                                                                          self._lang())}, 400)
+            except Exception as exc:  # noqa: BLE001
+                return self._unexpected(path, exc)
             self._json({"type": "error", "message": localize("Not found.", self._lang())}, 404)
+
+        def _unexpected(self, path: str, exc: BaseException):
+            """An error nobody planned for: logged with its traceback, shown in plain words."""
+            applog.caught(f"window {self.command} {path}", exc, app.home)
+            return self._json(_error(UserError(
+                "Something went wrong in TG Kit.",
+                "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
+                "and send it to whoever gave you TG Kit."), self._lang()))
 
         def do_POST(self):
             path = urlparse(self.path).path
@@ -693,6 +740,8 @@ def make_handler(app: App):
                     return self._json(app.open_telegram_site())
                 if path == "/api/open-data":
                     return self._json(app.open_data())
+                if path == "/api/open-logs":
+                    return self._json(app.open_logs())
                 if path == "/api/settings":
                     return self._json(app.save_settings(body))
                 if path == "/api/export":
@@ -721,6 +770,8 @@ def make_handler(app: App):
                     return self._json({"ok": True})
             except UserError as exc:
                 return self._json(_error(exc, self._lang()))
+            except Exception as exc:  # noqa: BLE001
+                return self._unexpected(path, exc)
             self._json({"type": "error", "message": localize("Not found.", self._lang())}, 404)
 
     return Handler

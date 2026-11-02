@@ -7,7 +7,7 @@ import sys
 import traceback
 from datetime import datetime
 
-from . import __version__, config, digest, engine, wizard
+from . import __version__, applog, config, digest, engine, wizard
 from . import tasks as taskmod
 from .errors import UserError
 from .store import Store, atomic_write, local_time, matcher, parse_date, parse_since
@@ -653,6 +653,9 @@ _FRIENDLY = {
     "PhoneCodeInvalidError": ("That login code was not right.", "Run tgkit setup again."),
     "PhoneCodeExpiredError": ("That login code has expired.", "Run tgkit setup again to get a new one."),
     "PasswordHashInvalidError": ("That two-step password was not right.", "Run tgkit setup again."),
+    # sqlite3 "database is locked": another TG Kit client had the login file open
+    "OperationalError": ("TG Kit is still busy with Telegram (getting new messages or copying chats).",
+                         "Wait a moment and try again."),
 }
 
 
@@ -702,6 +705,7 @@ def main(argv=None) -> int:
         print("\nStopped.", file=sys.stderr)
         return 130
     except Exception as exc:  # noqa: BLE001
+        applog.caught(f"tgkit {getattr(func, '__name__', 'command').removeprefix('cmd_')}", exc)
         friendly = _FRIENDLY.get(type(exc).__name__)
         if debug:
             traceback.print_exc()

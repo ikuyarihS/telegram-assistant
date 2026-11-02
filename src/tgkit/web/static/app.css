@@ -875,6 +875,41 @@ textarea::placeholder { color: var(--muted); }
 .pick.added { cursor: default; color: var(--muted); }
 .pick-empty { padding: 14px 10px; font-size: 13px; color: var(--muted); }
 
+/* the tools above the list: kind chips, then Select all and the count, lined up
+   with the row checkboxes (list border 1 + padding 4 + row padding 10) */
+.pick-tools { display: grid; gap: 10px; }
+.pick-tools[hidden] { display: none; }
+.pick-kinds { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-kinds label { position: relative; display: inline-flex; cursor: pointer; }
+.pick-kinds label[hidden] { display: none; }
+.pick-kinds input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pick-kinds span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 14px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+}
+.pick-kinds label:hover span { border-color: var(--accent); }
+.pick-kinds input:checked + span { color: var(--accent-text); background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.pick-kinds input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pick-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 32px; padding: 0 15px; }
+.pick-all { align-items: center; font-size: 14px; font-weight: 600; }
+.pick-all input { margin: 0; width: 16px; height: 16px; }
+.pick-all input:disabled + span { color: var(--muted); }
+.pick-count { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pick-note {
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-radius: var(--r-sm);
+}
+
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 860px) {

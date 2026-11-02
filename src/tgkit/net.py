@@ -24,9 +24,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
+from . import account, applog, config
 from .errors import UserError
-from .store import Store, SyncLock, atomic_write, write_json
+from .store import SessionLock, Store, SyncLock, atomic_write, write_json
 
 
 class _NoFloodWait(Exception):
@@ -71,18 +71,32 @@ async def _maybe_await(value):
 
 @contextlib.asynccontextmanager
 async def connected(ctx: Ctx, need_login: bool = True):
-    """A connected client. Refuses (never prompts) when this computer is not logged in."""
-    client = make_client(ctx.base, ctx.cfg)
-    await client.connect()
-    try:
-        if need_login and not await client.is_user_authorized():
-            raise UserError(
-                "You are not logged in to Telegram on this computer yet.",
-                "Run: tgkit setup",
-            )
-        yield client
-    finally:
-        await _maybe_await(client.disconnect())
+    """A connected client. Refuses (never prompts) when this computer is not logged in.
+    Made under the session lock: one client on tgkit.session at a time."""
+    with SessionLock(ctx.base):
+        client = make_client(ctx.base, ctx.cfg)
+        await client.connect()
+        try:
+            if need_login and not await client.is_user_authorized():
+                raise UserError(
+                    "You are not logged in to Telegram on this computer yet.",
+                    "Run: tgkit setup",
+                )
+            yield client
+        finally:
+            await _maybe_await(client.disconnect())
+
+
+async def session_me(client) -> dict | None:
+    """Who the login file belongs to: {id, name, username}, or None when unknown."""
+    get = getattr(client, "get_me", None)
+    if get is None:
+        return None
+    me = await get()
+    ident = getattr(me, "id", None)
+    if not isinstance(ident, int):
+        return None
+    return {"id": ident, "name": display_name(me), "username": getattr(me, "username", None)}
 
 
 def run(coro) -> int:
@@ -277,6 +291,14 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) ->
     names: dict = {}
     checked: dict = {}
     async with connected(ctx) as client:
+        # The chats shown belong to one account: never copy another account's
+        # messages into them (a login made elsewhere, the old "me" kept).
+        owner, me = account.owner(ctx.base), await session_me(client)
+        if not dry_run and owner and me and str(owner.get("id")) != str(me["id"]):
+            raise UserError(
+                "This computer is now logged in to another Telegram account.",
+                "Open Settings and press Add chats once: TG Kit then shows that account's chats.",
+            )
         # Private chats resolve by numeric id ONLY after the dialog cache is
         # filled; without it a cold session skips nearly everything and still
         # prints "0 new", a false clean.
@@ -299,6 +321,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) ->
             try:
                 entity = await client.get_entity(target)
             except Exception as exc:  # noqa: BLE001
+                applog.caught("sync: a chat could not be opened", exc, ctx.base)
                 print(f"Skipped {title}: {type(exc).__name__}: {exc}", file=sys.stderr)
                 failed += 1
                 continue
@@ -318,6 +341,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool) ->
                       file=sys.stderr)
                 failure = exc
             except Exception as exc:  # noqa: BLE001
+                applog.caught("sync: fetching new messages failed", exc, ctx.base)
                 print(f"  {title}: {type(exc).__name__}: {exc}", file=sys.stderr)
                 failure = exc
 
@@ -469,6 +493,7 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None) -> d
             if len(rows) % 200 == 0:
                 print(f"  {len(rows)} messages so far", flush=True)
     except Exception as exc:  # noqa: BLE001
+        applog.caught("add: copying a chat failed", exc, ctx.base)
         failure = exc
 
     if not rows:
@@ -519,6 +544,9 @@ async def list_dialogs(client, limit: int = 300) -> list[dict]:
 async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick) -> int:
     """`pick(dialogs, query)` returns the dialogs the user chose (each has an "added" flag)."""
     async with connected(ctx) as client:
+        # Logged in to another account than the chats shown: switch first (never mix).
+        account.adopt(ctx.base, await session_me(client))
+        ctx.cfg = config.load(ctx.base)
         if query and (query.startswith("@") or "t.me/" in query or re.fullmatch(r"-?\d+", query)):
             await client.get_dialogs()
             try:
@@ -611,25 +639,27 @@ async def resolve_names(ctx: Ctx, dirs: list[Path]) -> int:
 
 async def login(ctx: Ctx, ask_phone, ask_code, ask_password) -> dict:
     """Interactive first login. Only ever run by the user, in their own window."""
-    client = make_client(ctx.base, ctx.cfg)
-    await client.connect()
-    try:
-        if not await client.is_user_authorized():
-            await client.start(phone=ask_phone, code_callback=ask_code, password=ask_password)
-        me = await client.get_me()
-        return {"id": me.id, "name": display_name(me), "username": getattr(me, "username", None)}
-    finally:
-        await _maybe_await(client.disconnect())
+    with SessionLock(ctx.base):
+        client = make_client(ctx.base, ctx.cfg)
+        await client.connect()
+        try:
+            if not await client.is_user_authorized():
+                await client.start(phone=ask_phone, code_callback=ask_code, password=ask_password)
+            me = await client.get_me()
+            return {"id": me.id, "name": display_name(me), "username": getattr(me, "username", None)}
+        finally:
+            await _maybe_await(client.disconnect())
 
 
 async def logout(ctx: Ctx) -> bool:
     """End this computer's Telegram login on Telegram's side (like Settings > Devices >
     Terminate). True when Telegram confirmed it. The caller removes the local file."""
-    client = make_client(ctx.base, ctx.cfg)
-    await client.connect()
-    try:
-        if not await client.is_user_authorized():
-            return False
-        return bool(await client.log_out())
-    finally:
-        await _maybe_await(client.disconnect())
+    with SessionLock(ctx.base):
+        client = make_client(ctx.base, ctx.cfg)
+        await client.connect()
+        try:
+            if not await client.is_user_authorized():
+                return False
+            return bool(await client.log_out())
+        finally:
+            await _maybe_await(client.disconnect())

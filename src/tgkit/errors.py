@@ -44,6 +44,26 @@ VI = {
     "Pick at least one chat.": "Chọn ít nhất một nhóm.",
     "Tick the chats TG Kit should follow.": "Đánh dấu các nhóm TG Kit cần theo dõi.",
     "Could not reach Telegram.": "Không kết nối được với Telegram.",
+    "TG Kit is still busy with Telegram (getting new messages or copying chats).":
+        "TG Kit vẫn đang bận với Telegram (đang lấy tin mới hoặc sao chép nhóm).",
+    "Wait a moment and try again.": "Chờ một lát rồi thử lại.",
+    "Something went wrong while talking to Telegram.": "Có lỗi khi làm việc với Telegram.",
+    "Something went wrong in TG Kit.": "TG Kit gặp lỗi.",
+    "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
+    "and send it to whoever gave you TG Kit.":
+        "Thử lại sau giây lát. Nếu vẫn lỗi, bấm Chép thông tin chẩn đoán trong Cài đặt "
+        "rồi gửi cho người đã đưa bạn TG Kit.",
+    "TG Kit is still getting new messages.": "TG Kit vẫn đang lấy tin mới.",
+    "Wait until it is done, then open Add chats again.": "Chờ xong rồi mở Thêm nhóm lại.",
+    "Wait until it is done, then press Add again.": "Chờ xong rồi bấm Thêm lần nữa.",
+    "A Telegram login is under way in the setup window.": "Đang đăng nhập Telegram trong cửa sổ cài đặt.",
+    "Finish it or close the setup, then press Get new messages again.":
+        "Hoàn tất hoặc đóng cửa sổ cài đặt, rồi bấm Lấy tin mới lần nữa.",
+    "This computer is now logged in to another Telegram account.":
+        "Máy này đang đăng nhập một tài khoản Telegram khác.",
+    "Open Settings and press Add chats once: TG Kit then shows that account's chats.":
+        "Mở Cài đặt và bấm Thêm nhóm một lần: TG Kit sẽ hiện các nhóm của tài khoản đó.",
+    "Move it away, then try again.": "Chuyển nó đi chỗ khác rồi thử lại.",
     "Check your internet connection and try again.": "Kiểm tra kết nối mạng rồi thử lại.",
     "Try again in a moment.": "Thử lại sau giây lát.",
     "Check the code in your Telegram app and type it again.": "Xem lại mã trong ứng dụng Telegram rồi gõ lại.",
@@ -202,6 +222,8 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
     (r"The file could not be copied \((.*)\)\.", "Không chép được tệp ({0})."),
     (r"That folder could not be made \((.*)\)\.", "Không tạo được thư mục này ({0})."),
     (r"Telegram said: (.+)\.", "Telegram báo: {0}."),
+    (r"TG Kit could not switch accounts: (.+) is already there\.",
+     "TG Kit chưa chuyển tài khoản được: {0} đã có sẵn."),
     (r"Could not start the sync \((.*)\)\.", "Không bắt đầu lấy tin được ({0})."),
     (r"Today's Claude limit that you set is reached \((.+) of (.+) tokens\)\. Answered without Claude\.",
      "Đã đạt giới hạn Claude hôm nay bạn đặt ({0} trên {1} token). Đã trả lời không dùng Claude."),

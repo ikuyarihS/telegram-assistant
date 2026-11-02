@@ -861,6 +861,9 @@ def test_setup_pick_chats(home, server, monkeypatch):
         async def is_user_authorized(self):
             return True
 
+        async def get_me(self):  # the account whose chats are shown: no switch
+            return type("User", (), {"id": 101, "first_name": "An", "last_name": "Nguyễn", "username": "an_test"})()
+
     async def fake_list(client, limit=300):
         return [dict(d) for d in found]
     chosen = {}

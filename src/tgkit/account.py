@@ -13,6 +13,8 @@ meanwhile):
      <data>/old-account-<date>/. Nothing is ever deleted.
 """
 
+import contextlib
+import json
 import os
 import time
 from datetime import datetime
@@ -64,6 +66,83 @@ def _remove_session(base: Path) -> list[str]:
             raise UserError(f"The login file {p} is in use and could not be removed.",
                             "Close every TG Kit window and terminal, then log out again.")
     return gone
+
+
+OWNER_FILE = "account.json"  # whose chats are in the data folder now: {id, name, username}
+ACCOUNTS_DIR = "accounts"  # the chats of other accounts, one folder per Telegram account id
+
+
+def owner(base: Path) -> dict | None:
+    """The account the chats shown belong to: account.json, else "me" in config.json."""
+    base = Path(base)
+    try:
+        data = json.loads((base / OWNER_FILE).read_text(encoding="utf-8"))
+        if isinstance(data, dict) and data.get("id") is not None:
+            return data
+    except (OSError, ValueError):
+        pass
+    me = config.load(base).get("me") if config.config_path(base).exists() else None
+    return me if isinstance(me, dict) and me.get("id") is not None else None
+
+
+def _move_set(src: Path, dst: Path) -> list[str]:
+    """Move one account's data from src to dst. Never overwrites: a name already at
+    dst stops the move before anything moved."""
+    items = [i for i in ACCOUNT_DATA if (src / i).exists()]
+    clash = [i for i in items if (dst / i).exists()]
+    if clash:
+        raise UserError(f"TG Kit could not switch accounts: {dst / clash[0]} is already there.",
+                        "Move it away, then try again.")
+    for i in items:
+        target = dst / i
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(src / i, target)
+    return items
+
+
+def switch(base: Path, me: dict) -> dict:
+    """Show the chats of `me`. The chats of the account shown until now move to
+    accounts/<its id>/, and the chats `me` had here before come back from
+    accounts/<me id>/. Nothing is deleted. The caller holds the sync lock."""
+    base = Path(base)
+    old = owner(base)
+    res = {"switched": False, "parked": None, "restored": False}
+    if old and str(old.get("id")) != str(me["id"]):
+        park = base / ACCOUNTS_DIR / str(old["id"])
+        if any((park / i).exists() for i in ACCOUNT_DATA):
+            park = park.with_name(f"{old['id']}-{datetime.now():%Y%m%d-%H%M%S}")
+        if _move_set(base, park):
+            atomic_write(park / "READ ME.txt",
+                         f"TG Kit data of {old.get('name') or 'an earlier Telegram account'}, moved here on "
+                         f"{datetime.now():%Y-%m-%d %H:%M} when this computer logged in to another account.\n"
+                         "Nothing was deleted. Log in to that account again and TG Kit brings it back.\n")
+            res["parked"] = str(park)
+        back = base / ACCOUNTS_DIR / str(me["id"])
+        if back.is_dir():
+            res["restored"] = bool(_move_set(back, base))
+            with contextlib.suppress(OSError):
+                (back / "READ ME.txt").unlink()
+                back.rmdir()
+        res["switched"] = True
+    atomic_write(base / OWNER_FILE, json.dumps(me, ensure_ascii=False))
+    config.put(base, me=me)
+    return res
+
+
+def adopt(base: Path, me: dict | None, locked: bool = False) -> dict:
+    """After a login, or when a Telegram call shows who the login file belongs to:
+    save who it is and, for another account than the chats shown, switch."""
+    if not me or me.get("id") is None:
+        return {"switched": False}
+    base = Path(base)
+    cfg_me = config.load(base).get("me") if config.config_path(base).exists() else None
+    old = owner(base)
+    if old and str(old.get("id")) == str(me["id"]) and cfg_me == me and (base / OWNER_FILE).exists():
+        return {"switched": False}
+    if locked:
+        return switch(base, me)
+    with SyncLock(base):
+        return switch(base, me)
 
 
 def _backup(base: Path, name: str | None) -> Path | None:

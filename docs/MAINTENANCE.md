@@ -149,6 +149,31 @@ it. Without this a Done click in the window and a `tgkit tasks` scan in a
 terminal each wrote back their own copy, and the later one lost the click. A
 second writer waits up to 15 seconds, then refuses in plain words.
 
+### R14 - One Telegram client at a time per data folder
+
+Telethon keeps the login in `tgkit.session`, an SQLite file. In 0.2.3 the
+window listed or added chats while another client had it open, and SQLite said
+`OperationalError: database is locked`. Every client is now made under
+`store.SessionLock` (`session.lock`, same operating-system lock as R11):
+`net.connected`, `net.login`, `net.logout` and the login in the window. A
+second client waits up to 30 seconds, then refuses in plain words. Writers take
+`SyncLock` first, then `SessionLock`. A login in the window frees both locks
+on every way out, failures included: a lock left held blocks every later sync.
+
+### R15 - The chats shown belong to one Telegram account
+
+`account.json` says whose chats are in the data folder. After a login (window
+or `tgkit setup`), and whenever setup or add asks Telegram who the login
+file belongs to, `account.adopt` saves who it is. For another account it moves
+the shown account's data (`account.ACCOUNT_DATA`) to `accounts/<its id>/` and
+brings back `accounts/<new id>/` if there is one. It never overwrites and never
+deletes. A sync never copies another account's messages into the chats shown:
+it refuses until setup or add has switched.
+
+Every caught error that is not a `UserError` goes to
+`<data>/app/logs/tgkit.log` (rotated) with its traceback, never message text,
+codes, phone numbers or passwords (`applog`). Settings has Copy diagnostics.
+
 ## 2. How to change this code
 
 1. Run the tests first: `python -m pytest`. They use a synthetic data folder
