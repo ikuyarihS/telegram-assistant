@@ -296,8 +296,11 @@ python scripts/make-icons.py
 It writes `src/tgkit/web/static/tgkit.ico` (16 to 256 px: the shortcuts, the
 window and the taskbar), `icon-256.png` and `favicon.png` (the page icon).
 Commit the four files. `python scripts/make-icons.py --draw` draws the
-built-in picture into `assets/icon-source.png` again; `assets/icon.svg` and
-`web/static/icon.svg` are the same design as a vector.
+built-in placeholder picture into `assets/icon-source.png` again (that
+placeholder is also kept as a vector in `assets/icon.svg` and
+`web/static/icon.svg`). The shipped picture is a raster: the page logo and
+favicon use `icon-256.png` and `favicon.png`, so they always match the
+shortcuts.
 
 ## 5. Security
 
