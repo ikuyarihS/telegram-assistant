@@ -374,9 +374,10 @@ button it shows, one at a time:
 4. Press **Check again**. It says "Gemini: signed in" when it is ready.
 
 At the top of Settings, **AI answers** says who writes the answers:
-**Claude**, **Gemini** or **Off**. If you never pick one, Telegram Assistant
-picks for you: Claude when it is there, otherwise Gemini. In a terminal,
-`tgkit ai-status` tells you the same.
+**Automatic**, **Claude**, **Gemini** or **Off**. Automatic (the start
+setting) picks for you: Claude when it is there and logged in, otherwise
+Gemini when it is signed in. Pick **Automatic** again to go back to it. In a
+terminal, `tgkit ai-status` tells you the same.
 
 Gemini answers like Claude does: you see its words as they come, each
 Telegram Assistant command it runs, and the same result cards. It may only

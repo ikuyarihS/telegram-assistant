@@ -182,7 +182,22 @@ ran anyway, the runner stops the answer (`blocked`). Signed in = an auth type
 in `~/.gemini/settings.json` plus the Google account in
 `google_accounts.json` (or `GEMINI_API_KEY`), until an answer fails with exit
 41; the token itself is in the system keychain. `ai.pick` decides who answers:
-Settings' choice, else Claude first, then Gemini.
+Settings' choice, else Claude first, then Gemini. In auto the window checks
+Claude's login (cached) as soon as Gemini is signed in, so its first pick
+matches `tgkit ai-status`.
+
+The CLI tests a `commandRegex` against the JSON of the arguments (`"command":"`
++ the pattern), where a quote is `\"` and a tab is `\t`: `[^"]*` stops at the
+first quoted argument. `gemini.task_write_regex()` reads past escaped quotes
+and matches a changing word in any case, quoted or with `^`, `\` or backticks
+between its letters. The CLI silently drops a rule whose pattern fails its
+ReDoS check (`isSafeRegExp`: no quantified group after any `(?`, at most 2048
+characters), so the pattern has no quantified group: the quotes are nested
+optional groups `QUOTE_DEPTH` deep and `many_quotes_regex()` refuses a tasks
+command with more. Check a changed pattern with the real CLI: a dropped rule
+prints "Unsafe regex pattern" at startup (`gemini -p hi --admin-policy
+file.toml` shows it before the sign-in error). `test_policy_allows_only_tgkit_reads`
+runs the same check.
 
 ### R13 - One change of tasks.json at a time
 

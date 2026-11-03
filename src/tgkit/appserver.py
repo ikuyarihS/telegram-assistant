@@ -494,8 +494,11 @@ class App:
                                            steps=list(steps.values()), cards=cards, **extra)
                 yield {"type": "done", "mode": provider, "text": final, "turn": turn}
                 return
-            if failed and failed.get("reason") == "login" and provider == "gemini":
-                self._gstatus = None  # Settings shows "sign in needed" now
+            if failed and failed.get("reason") == "login":  # check again: Settings and the next pick see it
+                if provider == "gemini":
+                    self._gstatus = None
+                else:
+                    self._status = None
             failed = failed or {"message": f"{name} stopped without an answer."}
             notice = failed["message"] + f" Answered without {name}."
             yield {"type": "notice", "text": notice, "reason": failed.get("reason")}
@@ -710,14 +713,16 @@ class App:
 
     def provider(self) -> str | None:
         """The AI that answers now (ai.pick): Settings' choice, else Claude first, then
-        Gemini when it is signed in. Checks only what the choice needs."""
+        Gemini when it is signed in. Checks only what the choice needs, but checks it
+        (cached), so the window picks like `tgkit ai-status` from the first question."""
         chosen = ai.choice(self.home)
         if chosen == "off":
             return None
-        claude_state = (self._status or {}).get("state")
-        need_gemini = self.gemini.available and (
-            chosen == "gemini" or (chosen == "auto" and (not self.claude.available or claude_state == "not_logged_in")))
-        gemini_state = self.gemini_status()["state"] if need_gemini else None
+        gemini_state = claude_state = None
+        if chosen == "auto" and self.gemini.available:
+            gemini_state = self.gemini_status()["state"]
+            if gemini_state == "connected" and self.claude.available:
+                claude_state = self.claude_status()["state"]  # logged in? else Gemini answers
         return ai.pick(chosen, self.claude.available, claude_state, self.gemini.available, gemini_state)
 
     def ai_status(self, refresh: bool = False) -> dict:

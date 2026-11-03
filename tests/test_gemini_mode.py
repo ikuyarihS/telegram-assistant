@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 import time
 import tomllib
@@ -95,8 +96,13 @@ def test_policy_allows_only_tgkit_reads(home):
     denies = [r for r in rules if r["decision"] == "deny" and "commandRegex" in r]
     assert all(r["priority"] > allow[0]["priority"] for r in denies)
     text = " ".join(r["commandRegex"] for r in denies)
-    for word in ai.WRITE_COMMANDS + ai.TASK_WRITES:
+    for r in denies:  # the real CLI drops a rule its ReDoS check refuses (isSafeRegExp, 0.66.0)
+        p = '"command":"' + r["commandRegex"]
+        assert len(p) <= 2048 and not re.search(r"\([^)]*[*+?{].*\)[*+?{]", p), r["commandRegex"][:40]
+    for word in ai.WRITE_COMMANDS:
         assert word in text
+    for word in ai.TASK_WRITES:  # spelled letter by letter in the pattern ([dD]...): check the decision
+        assert policy_decision(f"tgkit tasks --json {word} 1") == "deny", word
     # the same lists as Claude's rules: one source
     assert claude.READ_COMMANDS is ai.READ_COMMANDS and claude.DENIED_COMMANDS is ai.DENIED_COMMANDS
     assert gemini.APP_RULES == ai.app_rules("the run_shell_command tool")
@@ -155,6 +161,58 @@ def test_allowed_command_matches_the_policy_words():
                 "tgkit search x && del y", "tgkit search x > out.txt", "cat x", "tgkit search $(whoami)",
                 "tgkit import-crawl D:/x", "tgkit setup", "tgkit logout --yes"):
         assert not ai.allowed_command(bad), bad
+
+
+# Gate 0.2.9 B-1..B-3: the CLI matches the JSON of the arguments, where a quote is \".
+QUOTED_WRITES = ['tgkit tasks --chat "Team" done 1', 'tgkit tasks "done" 1', 'tgkit tasks --chat "a b" --json drop 2',
+                 "tgkit tasks 'undo' 1", 'tgkit tasks "do"ne 1', "tgkit tasks d^one 1", "tgkit tasks \\done 1",
+                 "tgkit tasks DONE 1", "tgkit tasks\tnote 1 hi", 'tgkit tasks --chat "x" --since 7d reopen 4',
+                 'tgkit tasks --chat "x" add "call Lan"', "tgkit tasks --chat 'x' note 1 hi", "tgkit tasks done 1"]
+QUOTED_READS = ['tgkit tasks --chat "Team" --json', 'tgkit tasks all --chat "du an" --since 7d --json',
+                'tgkit tasks --chat "Undone list" --json', "tgkit tasks mine --json", "tgkit tasks"]
+
+
+def policy_decision(command):
+    """The real CLI's matching (chunk-HJ5KJXNZ.js buildArgsPatterns): highest priority first."""
+    rules =sorted(tomllib.loads(gemini.policy_text())["rule"], key=lambda r: -r.get("priority", 0))
+    text = json.dumps({"command": command}, separators=(",", ":"))
+    for r in rules:
+        if r.get("toolName") != "run_shell_command":
+            continue
+        if "commandRegex" in r and re.search('"command":"' + r["commandRegex"], text):
+            return r["decision"]
+        if "commandPrefix" in r and any(re.search(re.escape('"command":' + json.dumps(p)[:-1]) + r'(?:[\s"]|\\")', text)
+                                        for p in r["commandPrefix"]):
+            return r["decision"]
+    return "deny"  # the "*" rule
+
+
+@pytest.mark.parametrize("command", QUOTED_WRITES)
+def test_policy_denies_a_task_change_however_it_is_quoted(command):
+    assert policy_decision(command) == "deny"
+    assert not ai.allowed_command(command)  # the runner's guard agrees
+
+
+@pytest.mark.parametrize("command", QUOTED_READS)
+def test_policy_still_allows_quoted_task_reads(command):
+    assert policy_decision(command) == "allow"
+    assert ai.allowed_command(command)
+
+
+def test_policy_past_many_quotes():
+    depth = gemini.QUOTE_DEPTH
+    few = "tgkit tasks" + ' --chat "a"' * (depth // 2 - 1)  # depth - 2 escaped quotes
+    assert policy_decision(few + " --json") == "allow"
+    assert policy_decision(few + ' "done" 1') == "deny"  # the word past depth - 2 quotes, itself quoted
+    many = "tgkit tasks" + ' --chat "a"' * (depth // 2 + 1)
+    assert policy_decision(many + " --json") == "deny"  # more than the rule reads past: refused
+    assert policy_decision(many + " done 1") == "deny"
+
+
+def test_claude_denies_quoted_task_words_too():
+    for q in ('"', "'"):
+        for w in ai.TASK_WRITES:
+            assert f"tgkit tasks * {q}{w}{q} *" in ai.DENIED_COMMANDS and f"tgkit tasks {q}{w}{q}*" in ai.DENIED_COMMANDS
 
 
 def test_auth_and_quota_failures(home, monkeypatch, signed_in):
@@ -301,6 +359,20 @@ def test_choice_off_and_claude_default(home, monkeypatch, signed_in):
     from tgkit.errors import UserError
     with pytest.raises(UserError):
         app.save_settings({"ai_provider": "chatgpt"})
+
+
+def test_auto_checks_claude_login_before_the_first_question(home, monkeypatch, signed_in):
+    """Gate 0.2.9 B-4: Claude installed but not logged in, Gemini signed in: a fresh
+    window answers with Gemini at once, like `tgkit ai-status`."""
+    monkeypatch.setenv("FAKE_CLAUDE_AUTH", '{"loggedIn": false}')
+    monkeypatch.setenv("FAKE_CLAUDE_HELP", "Usage: claude [options] [command]\n  -p, --print\n"
+                                            "Commands:\n  auth  Manage authentication")
+    claude._HELP_CACHE.clear()  # another test's fake help (no auth command) is cached per command
+    app = App(home, claude=ClaudeRunner(cmd=[sys.executable, CLAUDE_STUB]), gemini=runner(), token="t")
+    assert app.state()["ai"] == "gemini"
+    assert app.ai_status()["active"] == "gemini"
+    evs = list(app.ask({"text": "tìm biên bản"}))
+    assert evs[-1]["mode"] == "gemini"
 
 
 def test_install_reports_failure_unless_gemini_is_really_there(home, tmp_path, monkeypatch):

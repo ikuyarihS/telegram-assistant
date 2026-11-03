@@ -164,7 +164,7 @@ search, a summary or the task list, and tells you where it saved it.
 The user may also ask questions in the Telegram Assistant window (`tgkit app`, the
 desktop icon). Each conversation there is saved in the data folder, and
 `tgkit chats-log --json` prints them, newest first: every question the user
-typed, the answer, which mode answered (`claude` or `offline`), the parsed
+typed, the answer, which mode answered (`claude`, `gemini` or `offline`), the parsed
 query (`intent`) and the tgkit commands Claude ran (`commands`). Add
 `--last 5` for fewer, an id for one conversation, `--cards` for the result
 data. Use it when the user refers to something they asked in the app ("the

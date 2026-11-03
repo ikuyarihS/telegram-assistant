@@ -97,9 +97,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       fixNotLogged: ["Press Open a window to log in.", "Log in with your Claude account in the page that opens.",
         "Come back and press Check again."],
       loginOpened: "A window opened. Log in there, then press Check again.",
-      secAi: "AI answers", aiOff: "Off",
+      secAi: "AI answers", aiOff: "Off", aiAutoPick: "Automatic",
       aiHelp: "Who writes the answers. Off: Telegram Assistant answers by itself, with its own rules.",
-      aiAuto: "Chosen automatically: Claude first, then Gemini when it is signed in. Pick one to change it.",
+      aiAuto: (name) => `Automatic: Claude first, then Gemini when it is signed in. Now answering: ${name}.`,
       aiNone: "No AI is ready yet: set up Claude or Gemini below. Until then Telegram Assistant answers by itself.",
       geminiWhat: "For a Google account with a Gemini plan, instead of Claude.",
       gStNoNode: "Gemini: not installed. It needs Node.js first, a free helper program.",
@@ -282,9 +282,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
         "Bấm Mở cửa sổ đăng nhập và đăng nhập tài khoản Claude.", "Bấm Kiểm tra lại."],
       fixNotLogged: ["Bấm Mở cửa sổ đăng nhập.", "Đăng nhập tài khoản Claude ở trang vừa mở.", "Quay lại đây và bấm Kiểm tra lại."],
       loginOpened: "Một cửa sổ đã mở. Đăng nhập ở đó rồi bấm Kiểm tra lại.",
-      secAi: "AI trả lời", aiOff: "Tắt",
+      secAi: "AI trả lời", aiOff: "Tắt", aiAutoPick: "Tự động",
       aiHelp: "Ai viết câu trả lời. Tắt: Telegram Assistant tự trả lời theo quy tắc có sẵn.",
-      aiAuto: "Đang tự chọn: Claude trước, rồi đến Gemini khi đã đăng nhập. Chọn một mục để đổi.",
+      aiAuto: (name) => `Tự động: Claude trước, rồi đến Gemini khi đã đăng nhập. Đang trả lời: ${name}.`,
       aiNone: "Chưa có AI nào sẵn sàng: cài Claude hoặc Gemini ở dưới. Trong lúc đó Telegram Assistant tự trả lời.",
       geminiWhat: "Dành cho tài khoản Google có gói Gemini, thay cho Claude.",
       gStNoNode: "Gemini: chưa cài. Cần cài Node.js trước, một chương trình hỗ trợ miễn phí.",
@@ -1852,11 +1852,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   }
 
   function showAi(st) {
-    const picked = st.choice === "auto" ? st.active : st.choice;
     document.querySelectorAll('input[name="ai"]').forEach((r) => {
-      r.checked = st.choice === "auto" && st.active === "off" ? false : r.value === picked;
+      r.checked = r.value === st.choice;  // Automatic stays a choice: the way back after picking one
     });
-    ui.aiNote.textContent = st.choice !== "auto" ? t("aiHelp") : st.active !== "off" ? t("aiAuto") : t("aiNone");
+    const now = st.active === "gemini" ? "Gemini" : "Claude";
+    ui.aiNote.textContent = st.choice !== "auto" ? t("aiHelp") : st.active !== "off" ? t("aiAuto", now) : t("aiNone");
     showClaude(st.claude);
     showGemini(st.gemini);
   }

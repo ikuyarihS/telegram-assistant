@@ -111,7 +111,7 @@ def test_api_ai_status_settings_and_setup_need_the_token(server, monkeypatch):
 def test_window_strings_in_both_languages():
     js = (WEB / "static" / "app.js").read_text(encoding="utf-8")
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    keys = ("secAi", "aiOff", "aiHelp", "aiAuto", "aiNone", "geminiWhat", "gStNoNode", "gStOldNode", "gStMissing",
+    keys = ("secAi", "aiOff", "aiAutoPick", "aiHelp", "aiAuto", "aiNone", "geminiWhat", "gStNoNode", "gStOldNode", "gStMissing",
             "gStNotLogged", "gStConnected", "gFixNoNode", "gFixMissing", "gFixNotLogged", "installNode",
             "installGemini", "loginGemini", "installingGemini", "geminiInstalled", "nodeOpened", "nodeSite",
             "modeGemini", "geminiOn", "noAi")
@@ -120,7 +120,7 @@ def test_window_strings_in_both_languages():
     for ident in ("geminiDot", "geminiStateText", "geminiSteps", "geminiNode", "geminiInstall", "geminiLogin",
                   "geminiCheck", "aiNote"):
         assert f'id="{ident}"' in html and f'$("{ident}")' in js
-    for value in ("claude", "gemini", "off"):
+    for value in ("auto", "claude", "gemini", "off"):  # auto: the way back after picking one
         assert f'name="ai" value="{value}"' in html
     assert "/api/ai-status" in js and "/api/gemini/install" in js and "/api/gemini/login" in js
 

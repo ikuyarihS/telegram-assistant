@@ -75,10 +75,36 @@ def _toml_list(items) -> str:
     return "[" + ", ".join(json.dumps(i) for i in items) + "]"
 
 
+# Escaped quotes the task rule reads past; a tasks command with more is refused outright.
+QUOTE_DEPTH = 32
+
+
+def task_write_regex() -> str:
+    """The deny pattern for a task change. The CLI tests `"command":"` + this against
+    the JSON of the arguments, where a quote is \\" and a tab is \\t. So it reads the
+    command as JSON string text (past escaped quotes, never past its closing quote),
+    finds a word start (a space, a quote, an escape) and the changing word in any
+    case, with quotes, backslashes, carets or backticks between its letters ("do"ne,
+    d^one, DONE): every way a shell can still hand argparse the word. Over-denying a
+    chat name that holds the word is fine (the window has the buttons).
+    The CLI drops a pattern with a quantified group after any "(?" (its ReDoS check,
+    isSafeRegExp), so nothing here is a quantified group: the escaped quotes are
+    nested optional groups, QUOTE_DEPTH deep (many_quotes_regex covers the rest)."""
+    glue = r"""[\\"'`^]*"""  # a backslash, quote, ' ` or ^ between letters
+    words = "|".join(glue.join(f"[{c.lower()}{c.upper()}]" for c in w) for w in ai.TASK_WRITES)
+    body = r'(?:[^"]*\\"' * QUOTE_DEPTH + "|)" * QUOTE_DEPTH + '[^"]*'
+    return ("tgkit tasks" + body + r'(?:[^A-Za-z0-9_"\\]|\\u[0-9a-fA-F]{4}|\\.)'
+            + glue + f"(?:{words})(?![A-Za-z0-9_])")
+
+
+def many_quotes_regex() -> str:
+    """A tasks command with more escaped quotes than task_write_regex reads past."""
+    return "tgkit tasks" + r'[^"]*\\"' * QUOTE_DEPTH
+
+
 def policy_text() -> str:
     """The policy file of every Gemini run (TOML, Gemini CLI policy engine)."""
     writes = "|".join(ai.WRITE_COMMANDS)
-    task_writes = "|".join(ai.TASK_WRITES)
     return f"""# Telegram Assistant: the only tool of the Gemini session is tgkit's read commands.
 # Written by Telegram Assistant for each answer; your own Gemini settings are not changed.
 
@@ -91,10 +117,17 @@ denyMessage = "Telegram Assistant is read-only here."
 
 [[rule]]
 toolName = "{SHELL_TOOL}"
-commandRegex = {json.dumps(f"tgkit tasks[^\"]*\\b({task_writes})\\b")}
+commandRegex = {json.dumps(task_write_regex())}
 decision = "deny"
 priority = 998
 denyMessage = "Telegram Assistant is read-only here: task changes use the window's buttons."
+
+[[rule]]
+toolName = "{SHELL_TOOL}"
+commandRegex = {json.dumps(many_quotes_regex())}
+decision = "deny"
+priority = 997
+denyMessage = "Too many quotes in one tasks command: ask with fewer filters."
 
 [[rule]]
 toolName = "{SHELL_TOOL}"

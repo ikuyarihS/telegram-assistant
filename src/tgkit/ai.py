@@ -21,6 +21,7 @@ command when TGKIT_READONLY is set.
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -43,9 +44,10 @@ READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit task
 # export writes a file and logout ends the Telegram login: the user does them, never a session.
 # import (import-crawl) writes chats: the user does it in Settings.
 WRITE_COMMANDS = ("setup", "add", "sync", "logout", "export", "login", "import")
+# A changing word also counts in quotes ("done" or 'done'): the shell drops them.
 DENIED_COMMANDS = ([f"tgkit {w}*" for w in WRITE_COMMANDS]
-                   + [p for w in TASK_WRITES
-                      for p in (f"tgkit tasks {w}*", f"tgkit tasks * {w}", f"tgkit tasks * {w} *")])
+                   + [p for w in TASK_WRITES for q in ("", '"', "'")
+                      for p in (f"tgkit tasks {q}{w}{q}*", f"tgkit tasks * {q}{w}{q}", f"tgkit tasks * {q}{w}{q} *")])
 # The same read commands as plain prefixes (a CLI that matches "starts with this word").
 READ_PREFIXES = sorted({c.rstrip("*").strip() for c in READ_COMMANDS} | {"tgkit chats-log"})
 READONLY_ENV = "TGKIT_READONLY"  # the same name as cli.READONLY_ENV
@@ -94,7 +96,8 @@ def allowed_command(command: str) -> bool:
     cmd = " ".join(raw.split())
     if not any(cmd == p or cmd.startswith(p + " ") for p in READ_PREFIXES):
         return False
-    words = [w.strip("\"'").lower() for w in cmd.split()]
+    # what the shell hands argparse: quotes and escapes dropped ("do"ne, d^one, \done), any case
+    words = [re.sub(r"[\"'\\^`]", "", w).lower() for w in cmd.split()]
     if words[1:2] == ["tasks"] and any(w in TASK_WRITES for w in words[2:]):
         return False
     return words[1] not in WRITE_COMMANDS
