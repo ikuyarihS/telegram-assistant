@@ -73,15 +73,17 @@ def _app_id() -> None:
             pass
 
 
-def _window(url: str, home=None) -> bool:
+def _window(url: str, home=None, app=None) -> bool:
     try:
         import webview  # noqa: PLC0415
     except ImportError:
         return False
     try:
         _app_id()
-        webview.create_window(TITLE, url, width=1200, height=800, min_size=(720, 520),
-                              text_select=True)
+        win = webview.create_window(TITLE, url, width=1200, height=800, min_size=(720, 520),
+                                    text_select=True)
+        if app is not None:  # Update: the window closes, the update finishes after it
+            app.quit_hook = win.destroy
         kw = {}
         # Windows (WinForms) loads it with System.Drawing.Icon, which only takes an .ico:
         # a PNG there kills the whole app on the .NET thread, past any try/except here.
@@ -125,8 +127,13 @@ def run(argv=None) -> int:
             print(f"Telegram Assistant is running at {url}  (Ctrl+C stops it)", flush=True)
             while True:
                 time.sleep(3600)
-        if not args.browser and _window(url, app.home):
+        if not args.browser and _window(url, app.home, app):
             return 0
+
+        def _quit() -> None:  # Update in the browser: stop serving, like a closed page
+            app.last_seen = -IDLE_STOP
+
+        app.quit_hook = _quit
         webbrowser.open(url)
         print(f"Telegram Assistant opened in your browser: {url}", flush=True)
         app.last_seen = time.monotonic() + 60  # give the browser time to load the page

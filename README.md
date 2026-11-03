@@ -406,7 +406,20 @@ Assistant answers by itself.
 
 ## Updating and removing
 
-- **Update:** unzip the new Telegram Assistant over the old folder (or into a new one) and
+- **Update from the window (0.2.10 and later):** Settings, Updates, **Check for
+  updates**. When a newer version is out on GitHub
+  (github.com/ikuyarihS/telegram-assistant, releases) it says
+  "Version X is ready" with what is new, and **Update** gets it: the zip is
+  downloaded from GitHub only, checked against the checksum published with
+  it (a zip that does not match, or a release without a checksum, is never
+  used), then the window closes, the same installer as `Update-Windows.bat`
+  runs in its own window and the new version opens. Your chats, tasks and
+  login are kept; if the update cannot finish, the old version keeps working.
+  The window also checks by itself once a day when it opens (untick "Check
+  once a day" to stop that); without internet it says nothing. In a terminal:
+  `tgkit update --check`, then `tgkit update`. It never installs an older
+  version. A git copy of the code is updated with git instead.
+- **Update by hand:** unzip the new Telegram Assistant over the old folder (or into a new one) and
   double-click **`Update-Windows.bat`** (on a Mac, `Install-Mac.command`
   again). Your chats, tasks and login are kept, and the setup is skipped
   because you are already logged in. The icons and the `tgkit` command move
@@ -434,7 +447,18 @@ The app icon comes from one picture, `assets/icon-source.png`;
 says how to replace it.
 For a new version, raise `version` in `pyproject.toml`, commit, make a new
 zip and send it; they unzip it over the old folder and double-click
-`Update-Windows.bat`.
+`Update-Windows.bat`. The script also writes
+`dist\TelegramAssistant-<version>.zip.sha256`. To let everyone's Check for
+updates find the new version, push the commit and publish the release with
+the GitHub CLI (`gh auth login` once):
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\release.ps1
+```
+
+It makes the release `v<version>` on github.com/ikuyarihS/telegram-assistant
+with the zip and its `.sha256` attached (both are needed: Update refuses a
+zip without its checksum).
 
 ## Troubleshooting
 

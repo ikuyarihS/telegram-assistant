@@ -43,7 +43,7 @@ READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit task
                  "tgkit ai-status", "tgkit ai-status *"]
 # export writes a file and logout ends the Telegram login: the user does them, never a session.
 # import (import-crawl) writes chats: the user does it in Settings.
-WRITE_COMMANDS = ("setup", "add", "sync", "logout", "export", "login", "import")
+WRITE_COMMANDS = ("setup", "add", "sync", "logout", "export", "login", "import", "update", "upgrade")
 # A changing word also counts in quotes ("done" or 'done'): the shell drops them.
 DENIED_COMMANDS = ([f"tgkit {w}*" for w in WRITE_COMMANDS]
                    + [p for w in TASK_WRITES for q in ("", '"', "'")

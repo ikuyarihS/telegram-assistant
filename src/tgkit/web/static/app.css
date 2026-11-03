@@ -952,6 +952,15 @@ textarea::placeholder { color: var(--muted); }
 .lock-note p { margin: 0 0 6px; overflow-wrap: anywhere; }
 .lock-note .btn[hidden] { display: none; }
 
+/* a newer Telegram Assistant is out (sidebar) and its notes (Settings, Updates) */
+.update-note { padding: 8px 10px; font-size: 12px; color: var(--accent-text); background: var(--accent-soft); border-radius: var(--r-sm); }
+.update-note[hidden] { display: none; }
+.update-note p { margin: 0 0 6px; font-weight: 600; }
+.update-box { display: grid; gap: 8px; padding: 12px 14px; background: var(--accent-soft); border-radius: var(--r-sm); }
+.update-box[hidden] { display: none; }
+.update-title { font-weight: 600; color: var(--accent-text); }
+.update-notes { max-height: 180px; overflow: auto; font-size: 13px; white-space: pre-line; overflow-wrap: anywhere; text-wrap: pretty; }
+
 /* the composer's Pattern (advanced) switch, left of the key hint */
 .composer-foot {
   max-width: 800px;

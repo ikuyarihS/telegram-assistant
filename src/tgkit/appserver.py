@@ -26,7 +26,7 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, account, ai, applog, config, engine, export, intent, setupflow, usage
+from . import __version__, account, ai, applog, config, engine, export, intent, setupflow, updater, usage
 from . import claude as claudemod
 from . import gemini as geminimod
 from .claude import ClaudeRunner
@@ -225,6 +225,8 @@ class App:
         self._status = None
         self.tg = setupflow.TelegramSetup(self.home)  # setup inside the window
         self.last_seen = time.monotonic()
+        self._update_busy = threading.Lock()  # one update download at a time
+        self.quit_hook = None  # app.py: closes the window (Update finishes after it closes)
 
     def store(self) -> Store:
         return Store(self.home)
@@ -746,6 +748,7 @@ class App:
             "max_media_mb": config.max_media_bytes(self.home, cfg) // (1024 * 1024),
             "media": config.media_mode(cfg), "media_modes": list(config.MEDIA_MODES),
             "home": str(self.home),
+            "update_check": updater.enabled(self.home), "version": __version__,
             "account": {"logged_in": config.logged_in(self.home), "name": account.who(self.home),
                         "chats": account.data_summary(self.home)["chats"]},
         }
@@ -800,8 +803,34 @@ class App:
                 if mode not in config.MEDIA_MODES:
                     raise UserError("Pick one of the Files choices.", "Text and small files is the usual one.")
                 cfg["media"] = mode
+            if updater.SETTING in body:
+                cfg[updater.SETTING] = bool(body.get(updater.SETTING))
         config.update(self.home, change)
         return self.settings()
+
+    # ------------------------------------------------------------- Check for updates (0.2.10)
+
+    def update_check(self, quiet: bool = False) -> dict:
+        return updater.check(self.home, quiet=quiet)
+
+    def update_start(self) -> dict:
+        """Download and check the newest release, then close the window: the update
+        finishes in its own window after this one is gone, and opens the new version."""
+        kit = updater.kit_dir()
+        if not kit:
+            raise updater.not_installed()
+        if not self._update_busy.acquire(blocking=False):
+            raise UserError("The update is being downloaded already.", "Wait until it is done.")
+        try:
+            info = updater.newest_or_error()
+            new = updater.download(info, kit)
+            res = updater.start(kit, new)
+        finally:
+            self._update_busy.release()
+        hook = self.quit_hook
+        if hook:
+            threading.Timer(1.5, hook).start()  # after the answer reached the page
+        return {**res, "version": info["version"], "closing": bool(hook)}
 
     def usage(self, conversation: str | None = None) -> dict:
         tot = usage.totals(self.home, conversation)
@@ -1224,6 +1253,9 @@ def make_handler(app: App):
                     q = parse_qs(url.query)
                     flag = (q.get("refresh") or [""])[0].strip().lower()
                     return self._json(app.ai_status(flag in ("1", "true", "yes")))
+                if path == "/api/update/check":
+                    q = parse_qs(url.query)
+                    return self._json(app.update_check((q.get("quiet") or [""])[0] in ("1", "true", "yes")))
                 if path == "/api/usage":
                     q = parse_qs(url.query)
                     return self._json(app.usage((q.get("conversation") or [None])[0]))
@@ -1331,6 +1363,8 @@ def make_handler(app: App):
                     lang = self._lang()
                     return self._json({**res, "message": localize(res.get("message"), lang),
                                        "hint": localize(res.get("hint"), lang)})
+                if path == "/api/update/start":
+                    return self._json(app.update_start())
                 if path == "/api/reveal":
                     return self._json(app.reveal(body))
                 if path == "/api/open-link":

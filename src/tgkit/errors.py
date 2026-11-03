@@ -181,6 +181,38 @@ VI = {
     "Press Install Node.js first.": "Bấm Cài Node.js trước.",
     "Gemini is being installed already.": "Gemini đang được cài.",
     "Wait until it is done.": "Chờ đến khi xong.",
+    # Check for updates (updater.py, 0.2.10)
+    "Nothing was changed. Try again later, or ask whoever gave you Telegram Assistant.":
+        "Không có gì bị thay đổi. Thử lại sau, hoặc hỏi người đã gửi Telegram Assistant cho bạn.",
+    "The download went to a place that is not GitHub, so it was stopped.":
+        "Bản tải về dẫn đến một nơi không phải GitHub, nên đã bị dừng.",
+    "This update has no usable checksum, so its download cannot be checked and was not used.":
+        "Bản cập nhật này không có mã kiểm tra dùng được, nên không kiểm tra được bản tải về và đã không dùng nó.",
+    "The update is much bigger than Telegram Assistant, so it was not used.":
+        "Bản cập nhật lớn hơn Telegram Assistant rất nhiều, nên đã không dùng nó.",
+    "The update zip holds a file outside its folder, so it was not used.":
+        "File zip cập nhật có một file nằm ngoài thư mục của nó, nên đã không dùng nó.",
+    "The update zip is not the Telegram Assistant it says it is, so it was not used.":
+        "File zip cập nhật không đúng là phiên bản Telegram Assistant nó ghi, nên đã không dùng nó.",
+    "This Telegram Assistant is already the newest.": "Telegram Assistant này đã là bản mới nhất.",
+    "There is nothing to update.": "Không có gì để cập nhật.",
+    "This update has no Telegram Assistant zip to download.": "Bản cập nhật này không có file zip Telegram Assistant để tải.",
+    "This update has no checksum file, so its download cannot be checked and was not used.":
+        "Bản cập nhật này không có file mã kiểm tra, nên không kiểm tra được bản tải về và đã không dùng nó.",
+    "The downloaded update does not match its checksum, so it was not used.":
+        "Bản cập nhật tải về không khớp với mã kiểm tra, nên đã không dùng nó.",
+    "Could not download the update: no internet, or GitHub is busy.":
+        "Chưa tải được bản cập nhật: không có mạng, hoặc GitHub đang bận.",
+    "Could not check for updates: no internet, or GitHub is busy.":
+        "Chưa kiểm tra được bản mới: không có mạng, hoặc GitHub đang bận.",
+    "Try again later.": "Thử lại sau.",
+    "The update could not be started.": "Chưa bắt đầu cập nhật được.",
+    "This copy of Telegram Assistant cannot update itself.": "Bản Telegram Assistant này không tự cập nhật được.",
+    "Download the new zip from GitHub, unzip it over the old folder and double-click "
+    "Update-Windows.bat (on a Mac: Install-Mac.command).":
+        "Tải file zip mới từ GitHub, giải nén đè lên thư mục cũ rồi bấm đúp Update-Windows.bat "
+        "(trên Mac: Install-Mac.command).",
+    "The update is being downloaded already.": "Bản cập nhật đang được tải.",
     "Pick Claude, Gemini or Off.": "Chọn Claude, Gemini hoặc Tắt.",
     "Automatic picks Claude first, then Gemini.": "Tự động sẽ chọn Claude trước, rồi đến Gemini.",
     # account

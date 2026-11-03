@@ -12,6 +12,13 @@ import fixture_data  # noqa: E402
 from tgkit import cli  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _no_github(monkeypatch):
+    """No test asks the real GitHub: an address the updater refuses (tests/test_v0210.py has a fake one)."""
+    from tgkit import updater
+    monkeypatch.setattr(updater, "API", "https://127.0.0.1:9/no-network-in-tests")
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     base = tmp_path / "data"

@@ -6,4 +6,4 @@ Everything reads a local copy of the chats you picked. Only `sync`, `add`,
 against the account) talk to Telegram.
 """
 
-__version__ = "0.2.9"
+__version__ = "0.2.10"

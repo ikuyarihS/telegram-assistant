@@ -42,8 +42,10 @@ More:
   tgkit usage                     tokens used by AI answers in the Telegram Assistant window (--json)
   tgkit claude-status             is Claude Code installed and logged in (--json)
   tgkit ai-status                 which AI answers in the window: Claude, Gemini or none (--json)
+  tgkit update --check            is a newer Telegram Assistant out on GitHub (--json)
+  tgkit update                    update Telegram Assistant (your chats and tasks are kept)
   tgkit where                     where your data is kept
-  tgkit guide                     the playbook for Claude Code: "run tgkit guide, then answer"
+  tgkit guide                    the playbook for Claude Code: "run tgkit guide, then answer"
   tgkit                           (nothing else) opens a simple menu
 
 Add --json to today, search, summary or tasks for data that Claude can read.
@@ -548,6 +550,39 @@ def _n(value) -> str:
     return f"{int(value or 0):,}"
 
 
+def cmd_update(args) -> int:
+    """Check for a newer Telegram Assistant on GitHub (--check), or update to it."""
+    from . import updater  # noqa: PLC0415
+
+    if args.check:
+        res = updater.check(config.home())
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        elif not res["ok"]:
+            print("Could not check for updates: no internet, or GitHub is busy. Try again later.")
+        elif res["newer"]:
+            print(f"Version {res['latest']} is ready (this is {res['current']}). To update, type: tgkit update")
+            if res.get("notes"):
+                print("\n" + res["notes"])
+        else:
+            print(f"Telegram Assistant {res['current']} is the newest.")
+        return 0 if res["ok"] else 1
+    kit = updater.kit_dir()
+    if not kit:
+        raise updater.not_installed()
+    info = updater.newest_or_error()
+    if not updater.is_newer(info["version"]):
+        print(f"Telegram Assistant {__version__} is the newest. Nothing to update.")
+        return 0
+    print(f"Downloading Telegram Assistant {info['version']}...", flush=True)
+    new = updater.download(info, kit)
+    print("The download matches its checksum.")
+    updater.start(kit, new)
+    print("The update finishes in a new window as soon as this command ends. "
+          "Close the Telegram Assistant window first if it is open. Your chats and tasks are kept.")
+    return 0
+
+
 def cmd_usage(args) -> int:
     from . import usage  # noqa: PLC0415
 
@@ -689,12 +724,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_today)
 
-    p = sub.add_parser("sync", aliases=["update"])
+    p = sub.add_parser("sync")  # "update" is the app's own update since 0.2.10
     p.add_argument("chat", nargs="?")
     p.add_argument("--chat", dest="chat_opt")
     p.add_argument("--quiet", action="store_true")
     p.add_argument("--dry-run", action="store_true", help="only report what would be fetched")
     p.set_defaults(func=cmd_sync)
+
+    p = sub.add_parser("update", aliases=["upgrade"])
+    p.add_argument("--check", action="store_true", help="only say whether a newer version is out")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("add")
     p.add_argument("chat", nargs="?", help="a word to filter the list, or @username")
@@ -796,7 +836,7 @@ def _writes(func, args) -> bool:
     if func is cmd_tasks:
         return (args.action or "").lower() in TASK_WRITES
     return func in (cmd_setup, cmd_add, cmd_sync, cmd_who, cmd_menu, cmd_app, cmd_logout, cmd_export,
-                    cmd_import_crawl)
+                    cmd_import_crawl, cmd_update)
 
 
 def main(argv=None) -> int:
@@ -822,7 +862,7 @@ def main(argv=None) -> int:
         if os.environ.get(READONLY_ENV) and _writes(func, args):
             raise UserError(
                 "Telegram Assistant is read-only here: it was started by Claude in the Telegram Assistant window, "
-                "so it does not change tasks, sync, add chats, set up, log out or save files.",
+                "so it does not change tasks, sync, add chats, set up, log out, save files or update.",
                 "Use the buttons in the Telegram Assistant window for that.",
             )
         return func(args) or 0

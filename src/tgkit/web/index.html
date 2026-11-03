@@ -55,6 +55,10 @@
         <p id="lockText"></p>
         <button class="btn" id="lockStop" type="button" data-i18n="stopRetry">Stop and retry</button>
       </div>
+      <div class="update-note" id="updateBanner" role="status" hidden>
+        <p id="updateBannerText"></p>
+        <button class="btn" id="updateBannerGo" type="button" data-i18n="updateGo">Update</button>
+      </div>
       <fieldset class="mode-pick">
         <legend data-i18n="answersBy">Answers</legend>
         <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude or Gemini when available</span></label>
@@ -263,6 +267,24 @@
           </table>
         </div>
       </div>
+    </section>
+
+    <section class="set-sec" id="updateSec" aria-labelledby="secUpdate">
+      <h3 id="secUpdate" data-i18n="secUpdate">Updates</h3>
+      <p class="field-help" id="updateThis"></p>
+      <div class="set-actions">
+        <button class="btn" id="updateCheck" type="button" data-i18n="updateCheck">Check for updates</button>
+      </div>
+      <p class="import-note" id="updateNote" aria-live="polite" hidden></p>
+      <div class="update-box" id="updateBox" hidden>
+        <p class="update-title" id="updateTitle"></p>
+        <p class="update-notes" id="updateNotes" hidden></p>
+        <p class="field-help" data-i18n="updateKept">Your chats, tasks and login are kept. Telegram Assistant closes, updates and opens again.</p>
+        <div class="set-actions">
+          <button class="btn btn-primary" id="updateGo" type="button" data-i18n="updateGo">Update</button>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="updateAuto"> <span data-i18n="updateAuto">Check once a day when Telegram Assistant opens</span></label>
     </section>
 
     <section class="set-sec" aria-labelledby="secAccount">

@@ -45,10 +45,10 @@ def call(base, path, body=None, token=TOKEN):
         return exc.code, None
 
 
-def test_version_is_029_everywhere():
-    assert __version__ == "0.2.9"
-    assert tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] == "0.2.9"
-    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == "0.2.9"
+def test_version_is_029_or_later_everywhere():  # 0.2.10 and later keep every 0.2.9 test
+    assert tuple(int(x) for x in __version__.split(".")) >= (0, 2, 9)
+    assert tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] == __version__
+    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == __version__
 
 
 def test_ai_status_cli(home, tg, monkeypatch, tmp_path):

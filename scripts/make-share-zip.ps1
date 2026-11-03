@@ -22,13 +22,17 @@ if ($dirty) {
 $Dist = Join-Path $Kit 'dist'
 New-Item -ItemType Directory -Force $Dist | Out-Null
 $Zip = Join-Path $Dist "TelegramAssistant-$Version.zip"
-if (Test-Path $Zip) {
-    Write-Host "$Zip already exists. Move it away first, or raise the version in pyproject.toml."
+if ((Test-Path $Zip) -or (Test-Path "$Zip.sha256")) {
+    Write-Host "$Zip (or its .sha256) already exists. Move it away first, or raise the version in pyproject.toml."
     exit 1
 }
 git archive --format=zip --prefix="Telegram Assistant/" -o "$Zip" HEAD
 if ($LASTEXITCODE -ne 0) { Write-Host 'git archive failed.'; exit 1 }
+# The checksum the app's Update checks before it uses the zip (sha256sum format: hash, two spaces, name).
+$Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Zip).Hash.ToLowerInvariant()
+[IO.File]::WriteAllText("$Zip.sha256", "$Hash  TelegramAssistant-$Version.zip`n", (New-Object Text.UTF8Encoding $false))
 Write-Host "Made $Zip"
+Write-Host "and $Zip.sha256 (put both in the GitHub release: scripts\release.ps1)"
 Write-Host 'Send it to the other person. They unzip it and double-click Install-Windows.bat'
 Write-Host '(on a Mac: Install-Mac.command). For a later version they unzip the new zip over'
 Write-Host 'the old folder (or next to an old "TG Kit" folder) and double-click Update-Windows.bat;'

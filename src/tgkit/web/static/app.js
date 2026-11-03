@@ -101,6 +101,15 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       aiHelp: "Who writes the answers. Off: Telegram Assistant answers by itself, with its own rules.",
       aiAuto: (name) => `Automatic: Claude first, then Gemini when it is signed in. Now answering: ${name}.`,
       aiNone: "No AI is ready yet: set up Claude or Gemini below. Until then Telegram Assistant answers by itself.",
+      secUpdate: "Updates", updateThis: (v) => `This is Telegram Assistant ${v}.`, updateCheck: "Check for updates",
+      updateNewest: (v) => `${v} is the newest version.`,
+      updateOffline: "Could not check: no internet, or GitHub is busy. Try again later.",
+      updateReady: (v) => `Version ${v} is ready`, updateGo: "Update",
+      updateKept: "Your chats, tasks and login are kept. Telegram Assistant closes, updates and opens again.",
+      updateWorking: "Downloading and checking the update...",
+      updateClosing: "The update is checked. Telegram Assistant closes now and opens again when it is done.",
+      updateCloseIt: "The update is checked. Close Telegram Assistant to finish it.",
+      updateAuto: "Check once a day when Telegram Assistant opens",
       geminiWhat: "For a Google account with a Gemini plan, instead of Claude.",
       gStNoNode: "Gemini: not installed. It needs Node.js first, a free helper program.",
       gStOldNode: (v) => `Gemini: not installed. Node.js ${v} on this computer is too old for it.`,
@@ -286,6 +295,15 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       aiHelp: "Ai viết câu trả lời. Tắt: Telegram Assistant tự trả lời theo quy tắc có sẵn.",
       aiAuto: (name) => `Tự động: Claude trước, rồi đến Gemini khi đã đăng nhập. Đang trả lời: ${name}.`,
       aiNone: "Chưa có AI nào sẵn sàng: cài Claude hoặc Gemini ở dưới. Trong lúc đó Telegram Assistant tự trả lời.",
+      secUpdate: "Cập nhật", updateThis: (v) => `Đây là Telegram Assistant ${v}.`, updateCheck: "Kiểm tra bản mới",
+      updateNewest: (v) => `${v} là bản mới nhất.`,
+      updateOffline: "Chưa kiểm tra được: không có mạng, hoặc GitHub đang bận. Thử lại sau.",
+      updateReady: (v) => `Đã có phiên bản ${v}`, updateGo: "Cập nhật",
+      updateKept: "Tin nhắn, việc cần làm và đăng nhập được giữ nguyên. Telegram Assistant sẽ đóng, cập nhật rồi mở lại.",
+      updateWorking: "Đang tải và kiểm tra bản cập nhật...",
+      updateClosing: "Bản cập nhật đã được kiểm tra. Telegram Assistant đóng ngay bây giờ và mở lại khi xong.",
+      updateCloseIt: "Bản cập nhật đã được kiểm tra. Đóng Telegram Assistant để hoàn tất.",
+      updateAuto: "Kiểm tra mỗi ngày một lần khi mở Telegram Assistant",
       geminiWhat: "Dành cho tài khoản Google có gói Gemini, thay cho Claude.",
       gStNoNode: "Gemini: chưa cài. Cần cài Node.js trước, một chương trình hỗ trợ miễn phí.",
       gStOldNode: (v) => `Gemini: chưa cài. Node.js ${v} trên máy này đã quá cũ.`,
@@ -453,6 +471,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     logoutConfirm: $("logoutConfirm"), logoutYes: $("logoutYes"), logoutNo: $("logoutNo"),
     convExport: $("convExport"), toast: $("toast"), toastText: $("toastText"), toastShow: $("toastShow"),
     toastClose: $("toastClose"),
+    updateBanner: $("updateBanner"), updateBannerText: $("updateBannerText"), updateBannerGo: $("updateBannerGo"),
+    updateSec: $("updateSec"), updateThis: $("updateThis"), updateCheck: $("updateCheck"), updateNote: $("updateNote"),
+    updateBox: $("updateBox"), updateTitle: $("updateTitle"), updateNotes: $("updateNotes"), updateGo: $("updateGo"),
+    updateAuto: $("updateAuto"),
     mediaCap: $("mediaCap"), dataPath: $("dataPath"), addChatsBtn: $("addChatsBtn"), openData: $("openData"),
     setupDlg: $("setupDlg"), suClose: $("suClose"), suSteps: $("suSteps"), suStatus: $("suStatus"),
     suCodes: $("suCodes"), suPhone: $("suPhone"), suCode: $("suCode"), suPassword: $("suPassword"), suChats: $("suChats"),
@@ -1873,6 +1895,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     showMediaCap(s.max_media_mb);
     ui.mediaMode.value = s.media || "small";
     ui.dataPath.textContent = s.home || "";
+    ui.updateAuto.checked = s.update_check !== false;
+    ui.updateThis.textContent = t("updateThis", s.version || "");
     const acc = s.account || {};
     ui.addChatsBtn.hidden = !acc.logged_in;
     ui.accountLine.textContent = acc.logged_in ? t("loggedInAs", acc.name || "") : t("notLoggedIn");
@@ -2205,6 +2229,70 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     setMode();
   }));
 
+  // ------------------------------------------------------------ Check for updates (0.2.10)
+
+  // The quiet check when the window opens (at most once a day, off in Settings) shows a
+  // newer version in the sidebar; offline says nothing. Update downloads and checks it,
+  // then the window closes and the installer finishes the update in its own window.
+  const update = { info: null, busy: false };
+  function showUpdate(r, said) {
+    update.info = r && r.newer ? r : null;
+    ui.updateBanner.hidden = !update.info;
+    ui.updateBox.hidden = !update.info;
+    if (update.info) {
+      ui.updateBannerText.textContent = t("updateReady", r.latest);
+      ui.updateTitle.textContent = t("updateReady", r.latest);
+      ui.updateNotes.textContent = r.notes || "";
+      ui.updateNotes.hidden = !r.notes;
+    }
+    if (said !== undefined) {
+      ui.updateNote.textContent = said;
+      ui.updateNote.hidden = !said;
+    }
+  }
+  async function checkUpdate() {
+    ui.updateCheck.disabled = true;
+    ui.updateNote.classList.remove("bad");
+    showUpdate(update.info, t("checking"));
+    try {
+      const r = await api("/api/update/check");
+      if (r.ok) showUpdate(r, r.newer ? "" : t("updateNewest", r.current));
+      else {
+        ui.updateNote.classList.add("bad");
+        showUpdate(update.info, t("updateOffline"));
+      }
+    } catch (e) {
+      showUpdate(update.info, errText(e));
+    } finally {
+      ui.updateCheck.disabled = false;
+    }
+  }
+  const updateButtons = (off) => { ui.updateGo.disabled = off; ui.updateBannerGo.disabled = off; };
+  async function startUpdate() {
+    if (update.busy) return;
+    update.busy = true;
+    updateButtons(true);
+    ui.updateNote.classList.remove("bad");
+    showUpdate(update.info, t("updateWorking"));
+    try {
+      const r = await api("/api/update/start", {});
+      showUpdate(update.info, r.closing ? t("updateClosing") : t("updateCloseIt"));
+    } catch (e) {
+      ui.updateNote.classList.add("bad");
+      showUpdate(update.info, errText(e));
+      update.busy = false;
+      updateButtons(false);
+    }
+  }
+  ui.updateCheck.addEventListener("click", checkUpdate);
+  ui.updateGo.addEventListener("click", startUpdate);
+  ui.updateAuto.addEventListener("change", () => saveSetting({ update_check: ui.updateAuto.checked }));
+  ui.updateBannerGo.addEventListener("click", async () => {  // the notes first, then Update
+    await openSettings();
+    ui.updateSec.scrollIntoView({ block: "start" });
+    ui.updateGo.focus({ preventScroll: true });
+  });
+
   // Browser mode: tell the server the page is still open.
   setInterval(() => { api("/api/ping").catch(() => {}); }, 20000);
 
@@ -2217,6 +2305,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     else newConversation();
     if (params.get("panel") === "settings") openSettings();
     if (params.get("panel") === "setup") openSetup(params.get("step") || undefined);
+    api("/api/update/check?quiet=1").then((r) => { if (r.ok && r.newer) showUpdate(r); }).catch(() => {});
     // Who is this computer logged in to? Another account than the chats shown
     // switches to that account's chats now, not at the first sync (R15).
     api("/api/account/check", {}).then((r) => {
