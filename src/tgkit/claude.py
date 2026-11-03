@@ -200,8 +200,10 @@ class ClaudeRunner:
     def args(self, home: Path, session: str | None, guide_file: Path | None) -> list[str]:
         a = list(self.cmd) + ["-p", "--output-format", "stream-json", "--verbose"]
         if not self.compat:
+            # No --safe-mode: it also turns off the --mcp-config servers, so Claude had no
+            # tgkit tools at all. The user's settings files are skipped instead.
             a += ["--include-partial-messages", "--tools", "", "--permission-mode", "dontAsk",
-                  "--safe-mode"]
+                  "--setting-sources", ""]
             if guide_file is not None:
                 a += ["--append-system-prompt-file", str(guide_file)]
         a += ["--mcp-config", str(mcp_file(home)), "--strict-mcp-config"]

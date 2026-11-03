@@ -177,8 +177,12 @@ def python_exe() -> str:
 
 
 def server_command(home: Path) -> dict:
-    """The server as the CLIs' config describes it (command + args, no shell)."""
-    return {"command": python_exe(), "args": ["-m", "tgkit.mcp", "--home", str(Path(home))]}
+    """The server as the CLIs' config describes it (command + args, no shell). Its env
+    puts THIS tgkit first: Claude Code starts a server with only a few of its own
+    variables, so without it the python could import an older installed tgkit (or none)."""
+    root = str(Path(__file__).resolve().parent.parent)
+    return {"command": python_exe(), "args": ["-m", "tgkit.mcp", "--home", str(Path(home))],
+            "env": {"PYTHONPATH": root, "TGKIT_READONLY": "1", "PYTHONIOENCODING": "utf-8"}}
 
 
 def run(tool: str, args, home: str | None) -> tuple[bool, str]:

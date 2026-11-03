@@ -97,8 +97,10 @@ def call_server(name, arguments):
         servers = json.load(fh)["mcpServers"]
     allowed = args[args.index("--allowed-mcp-server-names") + 1].split(",")
     server = servers[allowed[0]]
+    # Like the real CLI: the server gets the config's env, not the test's PYTHONPATH.
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"} | server.get("env", {})
     proc = subprocess.Popen([server["command"], *server.get("args", [])], stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, env=dict(os.environ))
+                            stdout=subprocess.PIPE, env=env)
     msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": name, "arguments": arguments}}]

@@ -1,6 +1,7 @@
 """0.2.9: Gemini as a second AI beside Claude (ai-status, Settings, setup buttons, version)."""
 
 import json
+import os
 import re
 import sys
 import threading
@@ -332,8 +333,11 @@ def test_the_server_speaks_mcp_on_stdio(home, src_path):
              "params": {"name": "search", "arguments": {"query": "$(touch pwn) biên bản"}}},
             {"jsonrpc": "2.0", "id": 4, "method": "ping"}]
     cmd = mcp.server_command(home)
+    # Started the way Claude Code starts it: no inherited PYTHONPATH, only the config's env
+    # (an older installed tgkit without tgkit.mcp once made the real server fail here).
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"} | cmd["env"]
     done = subprocess.run([cmd["command"], *cmd["args"]], input="".join(json.dumps(m) + "\n" for m in msgs).encode(),
-                          capture_output=True, timeout=60)
+                          capture_output=True, timeout=60, env=env, cwd=str(home))
     replies = {r["id"]: r for r in map(json.loads, done.stdout.decode("utf-8").splitlines())}
     assert replies[1]["result"]["serverInfo"]["name"] == "tgkit" and replies[1]["result"]["protocolVersion"] == "2025-06-18"
     assert [t["name"] for t in replies[2]["result"]["tools"]] == list(mcp.TOOLS)

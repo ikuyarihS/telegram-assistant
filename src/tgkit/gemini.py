@@ -94,6 +94,13 @@ priority = 999
 denyMessage = "Telegram Assistant gives Gemini no shell. Use the tgkit tools."
 
 [[rule]]
+toolName = "{SHELL_TOOL}"
+commandRegex = ".*"
+decision = "deny"
+priority = 999
+denyMessage = "Telegram Assistant gives Gemini no shell. Use the tgkit tools."
+
+[[rule]]
 toolName = "*"
 mcpName = "{mcp.SERVER}"
 decision = "allow"

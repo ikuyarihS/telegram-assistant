@@ -99,7 +99,9 @@ def test_policy_allows_only_the_tgkit_tools(home):
     assert shell and all(r["decision"] == "deny" and r["priority"] > 500 for r in shell)
     star = [r for r in rules if r.get("toolName") == "*" and "mcpName" not in r]
     assert star and star[0]["decision"] == "deny" and star[0]["priority"] < 500
-    assert not any("commandPrefix" in r or "commandRegex" in r for r in rules)  # no shell text is ever allowed
+    # no shell text is ever allowed: a command rule is only ever a deny of the whole shell
+    assert not any("commandPrefix" in r for r in rules)
+    assert all(r["decision"] == "deny" and r["commandRegex"] == ".*" for r in rules if "commandRegex" in r)
     assert policy_decision("mcp_tgkit_search", "tgkit") == "allow"
     for tool, server in (("run_shell_command", None), ("write_file", None), ("web_fetch", None),
                          ("mcp_evil_search", "evil"), ("mcp_tgkit2_search", "tgkit2"), ("google_web_search", None)):
