@@ -356,15 +356,148 @@ def test_stop_of_a_sync_by_the_stop_file_saves_nothing_halfway(home, monkeypatch
     assert {k: v for k, v in snapshot(home).items()} == before
 
 
-def test_the_copying_note_names_a_stop_button_that_is_shown():
+def test_the_copying_note_names_no_button_and_a_loaded_page_shows_the_stop():
     js = (WEB / "static" / "app.js").read_text(encoding="utf-8")
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    assert "Stop" in " ".join(setupflow.COPYING)
+    # gate BLOCKER 1: COPYING is also said where no Stop is shown (a login step)
+    assert "Stop" not in " ".join(setupflow.COPYING)
     assert "ui.suStop.hidden = !p.running;" in js  # visible the whole time a copy runs
     assert 'id="syncStop"' in html and "ui.syncStop.hidden = false;" in js
+    # a page loaded mid-copy or mid-sync follows it (BLOCKER 1 and 2)
+    assert 'await suCopyRunning()) return;' in js and '"/api/running"' in js
+    assert re.search(r"applyStrings\(\);\s*setBusy\(false\);\s*followRunning\(\);", js)
     assert '"/api/stop"' in js and 'files: suFiles()' in js and 't("progDoneFiles"' in js
     assert 'id="todayBtn"' in html and 'id="todayEmpty"' in html and 'id="mediaMode"' in html
     assert 'name="suFiles"' in html
+
+
+def test_a_running_copy_is_reported_and_a_file_stop_skipped_shows_on_its_row(codes, monkeypatch):
+    # gate BLOCKER 1 (what a page loaded mid-copy asks) and NOTE 1 (a file Stop skipped)
+    home = codes
+    acc = use(monkeypatch, Tele({8401: ("Slides", [Msg(2, size=100), Msg(1)])}, slow={2}))
+    app = _app(home)
+    app.setup_add({"ids": ["-1008401"], "limit": "all", "files": "small"})
+    try:
+        assert wait_for(lambda: rows_by_id(app.tg.add_state())["-1008401"]["state"] == "done")
+        run = app.running()
+        assert run["copy"] and not run["sync"]["running"]
+        assert app.tg.add_state()["running"] and rows_by_id(app.tg.add_state())["-1008401"]["files_pending"] == 1
+        assert app.stop_running()["stopped"]
+    finally:
+        acc.release.set()
+    st = wait_job(app.tg)
+    row = rows_by_id(st)["-1008401"]
+    assert row["state"] == "done" and row["files_skipped"] == 1 and row["files_pending"] == 0
+    first = lines(home, folder_of(home, 8401))[0]
+    assert first["id"] == 2 and first["media_pending"] and not first.get("media_path")  # the next sync gets it
+    assert not app.running()["copy"]
+
+
+_FAKE_SYNC = """
+import sys, time, pathlib
+flag = pathlib.Path(sys.argv[1])
+print("Checking 2 chats", flush=True)
+while not flag.exists():
+    time.sleep(0.05)
+for i in range(4):
+    print(f"Chat {i}: up to date", flush=True)
+    time.sleep(0.05)
+print("Done: 0 new message(s).", flush=True)
+"""
+
+
+def test_a_sync_runs_on_after_its_page_goes_away_and_is_reported(server, tmp_path, monkeypatch):
+    # gate BLOCKER 2: a reload closes the page's stream; the sync must run on (not be
+    # killed at its next line) and a page loaded later sees it, then how it ended
+    import socket
+    import subprocess
+    import sys
+
+    app, base = server
+    flag = tmp_path / "go.flag"
+    real = subprocess.Popen
+
+    def fake(args, **kw):
+        return real([sys.executable, "-c", _FAKE_SYNC, str(flag)], **kw)
+    monkeypatch.setattr(appserver.subprocess, "Popen", fake)
+    host, port = base.split("//")[1].split(":")
+    sock = socket.create_connection((host, int(port)), timeout=20)
+    sock.sendall(f"POST /api/sync HTTP/1.1\r\nHost: {host}:{port}\r\nX-TGKit-Token: test-token\r\n"
+                 "Content-Type: application/json\r\nContent-Length: 2\r\n\r\n{}".encode("ascii"))
+    got = b""
+    while got.count(b"\n{") < 2 or not got.endswith(b"\n"):
+        part = sock.recv(4096)
+        if not part:
+            break
+        got += part
+    assert b"\r\n\r\n" in got, got
+    seen = [json.loads(x) for x in got.split(b"\r\n\r\n", 1)[1].splitlines() if x.strip()]
+    assert [e["type"] for e in seen][:2] == ["start", "running"], seen
+    sock.close()  # the page went away (F5, a closed tab)
+    assert wait_for(lambda: app.running()["sync"]["line"] == "Checking 2 chats")
+    with urllib.request.urlopen(urllib.request.Request(base + "/api/running", headers={"X-TGKit-Token": "test-token"}),
+                                timeout=20) as r:
+        run = json.loads(r.read())
+    assert run["sync"]["running"] and run["sync"]["last"] is None and run["copy"] is False
+    flag.write_text("go", encoding="utf-8")
+    assert wait_for(lambda: not app.running()["sync"]["running"], 20)
+    last = app.running()["sync"]["last"]
+    assert last["type"] == "done" and last["code"] == 0 and last["last"] == "Done: 0 new message(s)."
+
+
+def _ps_exe():
+    import shutil
+    return shutil.which("powershell") or shutil.which("pwsh")
+
+
+def test_update_next_to_an_old_folder_points_the_claude_plugin_at_the_new_one(tmp_path):
+    # gate NOTE 4: the marketplace "tgkit" was added from the old "TG Kit" folder; the update
+    # removes that entry, adds this folder and installs from it. A fake `claude` records it.
+    import subprocess
+
+    import pytest
+    ps = _ps_exe()
+    if not ps:
+        pytest.skip("no PowerShell here")
+    new_kit = tmp_path / "Telegram Assistant"
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($args[0], [ref]$null, [ref]$null)
+$fn = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Register-ClaudePlugin' }, $true)
+if (-not $fn) { 'NO FUNCTION'; exit 3 }
+Invoke-Expression $fn[0].Extent.Text
+function Say($t) { Write-Host "SAY $t" }
+$script:market = @{ tgkit = 'C:\old\TG Kit' }
+$script:installedFrom = $script:market['tgkit']
+function claude {
+    $a = $args -join ' '
+    Write-Host "CALL $a"
+    $global:LASTEXITCODE = 0
+    if ($a -eq 'plugin marketplace remove tgkit') {
+        if ($script:market.ContainsKey('tgkit')) { $script:market.Remove('tgkit') } else { $global:LASTEXITCODE = 1 }
+    } elseif ($a -like 'plugin marketplace add *') {
+        if ($script:market.ContainsKey('tgkit')) { $global:LASTEXITCODE = 1 } else { $script:market['tgkit'] = $args[3] }
+    } elseif ($a -eq 'plugin install tgkit@tgkit') {
+        $script:installedFrom = $script:market['tgkit']
+    }
+}
+$ok = Register-ClaudePlugin $args[1]
+"OK $ok"
+"MARKET $($script:market['tgkit'])"
+"FROM $($script:installedFrom)"
+"""
+    probe = tmp_path / "probe.ps1"
+    probe.write_text(script, encoding="utf-8-sig")
+    out = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(probe),
+                          str(ROOT / "scripts" / "install.ps1"), str(new_kit)],
+                         capture_output=True, text=True, timeout=120)
+    text = out.stdout
+    assert f"MARKET {new_kit}" in text and f"FROM {new_kit}" in text and "OK True" in text, text + out.stderr
+    calls = [ln[5:] for ln in text.splitlines() if ln.startswith("CALL ")]
+    assert calls == ["plugin marketplace remove tgkit", f"plugin marketplace add {new_kit}",
+                     "plugin install tgkit@tgkit"]
+    sh = (ROOT / "install.sh").read_text(encoding="utf-8")
+    assert "claude plugin marketplace remove tgkit" in sh and 'register_claude_plugin "$KIT"' in sh
 
 
 # ------------------------------------------------------------ 3e staging

@@ -590,8 +590,9 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 3px; padd
 .empty .today-empty { justify-self: start; margin-top: 12px; }
 
 /* "What do I need to do today": one card, a short titled block per group. */
-.today-group + .today-group { margin-top: 14px; }
-.today-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.today-group + .today-group { border-top: 1px solid var(--line); }
+/* the same inner edge as the rows below it (.row: 18px) */
+.today-title { margin: 0; padding: 14px 18px 2px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .due-today { font-weight: 600; color: var(--warn); }
 
 .setup-box {

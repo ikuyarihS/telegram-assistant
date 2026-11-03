@@ -31,4 +31,5 @@ if ($LASTEXITCODE -ne 0) { Write-Host 'git archive failed.'; exit 1 }
 Write-Host "Made $Zip"
 Write-Host 'Send it to the other person. They unzip it and double-click Install-Windows.bat'
 Write-Host '(on a Mac: Install-Mac.command). For a later version they unzip the new zip over'
-Write-Host 'the old folder (or next to an old "TG Kit" folder) and double-click Update-Windows.bat.'
+Write-Host 'the old folder (or next to an old "TG Kit" folder) and double-click Update-Windows.bat;'
+Write-Host 'the update points Claude Code at the new folder.'

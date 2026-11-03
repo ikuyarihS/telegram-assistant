@@ -1,4 +1,4 @@
-"""What the user asked in the TG Kit app, kept as JSON in the data folder.
+"""What the user asked in the Telegram Assistant app, kept as JSON in the data folder.
 
     <data>/app/conversations/<id>.json   one conversation: its turns, the mode
                                          that answered, the Claude session id

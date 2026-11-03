@@ -1,4 +1,4 @@
-"""The one Claude Code playbook for TG Kit (playbook.md).
+"""The one Claude Code playbook for Telegram Assistant (playbook.md).
 
 Three readers get this same text, so they cannot drift (tests/test_guide.py):
 `tgkit guide` prints it, skills/telegram/SKILL.md is its frontmatter plus this

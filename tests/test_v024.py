@@ -275,7 +275,7 @@ def test_b2_another_programs_lock_is_reported_never_ended(home, monkeypatch):
         with pytest.raises(UserError) as info:
             app.stop_lock()
         assert "Another Telegram Assistant window" in info.value.message
-        assert child.poll() is None  # still running: TG Kit never stops another program
+        assert child.poll() is None  # still running: Telegram Assistant never stops another program
     finally:
         child.stdin.close()
         child.wait(timeout=20)
@@ -313,7 +313,7 @@ def test_b3_a_copy_cut_short_is_an_error_with_retry_not_added(codes, monkeypatch
     assert st["added"] == 0 and st["failed"] == 1  # never counted as added
     first = next(d for d in Store(home).chat_dirs() if d.name.endswith("5001"))
     assert json.loads((first / "channel.json").read_text(encoding="utf-8"))["partial"]
-    # TG Kit closed and opened again: the picker still offers it, marked, tickable
+    # Telegram Assistant closed and opened again: the picker still offers it, marked, tickable
     entry = next(d for d in setupflow.TelegramSetup(home).dialogs()["dialogs"] if d["id"] == "-1005001")
     assert entry["partial"] and not entry["added"]
     acc.drop.clear()

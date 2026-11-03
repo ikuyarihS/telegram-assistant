@@ -1,4 +1,4 @@
-"""A synthetic TG Kit data folder: fake chats and fake people, no real data.
+"""A synthetic Telegram Assistant data folder: fake chats and fake people, no real data.
 
 Dates are relative to now so "last 7 days" windows keep working. Every
 messages.jsonl is written NEWEST first, like the real thing. One chat folder

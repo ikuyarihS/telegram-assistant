@@ -13,6 +13,16 @@ VENV="$KIT/.venv"
 say() { printf '%s\n' "$*"; }
 fail() { printf '\n%s\n' "$*" >&2; exit 1; }
 
+# Point Claude Code's "tgkit" plugin at THIS folder. An update unzipped next to an older
+# folder (the "TG Kit" folder of 0.2.5 and before) finds the marketplace "tgkit" already
+# added from that old folder: the old entry is removed first (no data is touched), then
+# added again from here and the plugin installed from it.
+register_claude_plugin() {
+  claude plugin marketplace remove tgkit >/dev/null 2>&1 || true  # absent on a first install: fine
+  { claude plugin marketplace add "$1" && claude plugin install tgkit@tgkit; } >/dev/null 2>&1 \
+    || say "Could not add it to Claude automatically. In Claude Code type:  /plugin marketplace add $1   and then:  /plugin install tgkit@tgkit"
+}
+
 say "Installing Telegram Assistant..."
 say ""
 
@@ -63,8 +73,7 @@ if [ -z "${TGKIT_NO_SYSTEM_CHANGES:-}" ]; then
   esac
   if command -v claude >/dev/null 2>&1; then
     say "Adding Telegram Assistant to Claude Code..."
-    { claude plugin marketplace add "$KIT" && claude plugin install tgkit@tgkit; } >/dev/null 2>&1 \
-      || say "Could not add it to Claude automatically. In Claude Code type:  /plugin marketplace add $KIT   and then:  /plugin install tgkit@tgkit"
+    register_claude_plugin "$KIT"
   else
     say "(Claude Code is not installed: skipped. See README, part \"Use with Claude Code\".)"
   fi

@@ -52,7 +52,7 @@ VI = {
     # 0.2.4: copying ticked chats, a hung sync, account switch
     "Telegram Assistant is still copying the chats you ticked.": "Telegram Assistant vẫn đang sao chép các nhóm bạn đã chọn.",
     "Wait until it is done, or press Stop and retry.": "Chờ xong, hoặc bấm Dừng và thử lại.",
-    "Wait until it is done, or press Stop.": "Chờ xong, hoặc bấm Dừng.",
+    "Wait until it is done, then try again.": "Chờ xong rồi thử lại.",
     "Wait until it is done, then press Get new messages again.": "Chờ xong rồi bấm Lấy tin mới lần nữa.",
     "Pick one of the Files choices.": "Chọn một mục trong phần Tệp.",
     "Text and small files is the usual one.": "Thường chọn Tin nhắn và tệp nhỏ.",

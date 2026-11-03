@@ -92,7 +92,7 @@ class TaskList:
     @contextmanager
     def change(self):
         """Every change of tasks.json: take the tasks lock, read the file again (another
-        TG Kit may have changed it since this list was read), apply the change, write
+        Telegram Assistant may have changed it since this list was read), apply the change, write
         it atomically, free the lock. If the change raises, nothing is written."""
         with TasksLock(self.home):
             self.data = self._load()

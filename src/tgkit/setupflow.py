@@ -40,10 +40,10 @@ LIST_WAIT = 10  # seconds listing chats waits for a short holder of the sync loc
 
 BUSY = ("Telegram Assistant is still busy with Telegram (getting new messages or copying chats).",
         "Wait a moment and try again.")
-# Said only where the window shows the Stop button beside it (the copy panel, the
-# sync bar): a text never names a button that is not on screen.
+# Names no button: it can be said where no Stop is on screen (a login step). Add chats
+# and the sync bar show the copy's progress and its Stop whenever the copy runs.
 COPYING = ("Telegram Assistant is still copying the chats you ticked.",
-           "Wait until it is done, or press Stop.")
+           "Wait until it is done, then try again.")
 UNKNOWN = ("Something went wrong while talking to Telegram.",
            "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
            "and send it to whoever gave you Telegram Assistant.")
@@ -337,7 +337,8 @@ class TelegramSetup:
             old = [r for r in (self._job["rows"] if self._job and keep else []) if r["id"] not in wanted]
             names = {r["id"]: r["name"] for r in (self._job["rows"] if self._job else [])}
             rows = old + [{"id": i, "name": names.get(i, ""), "state": "waiting", "count": 0,
-                           "message": None, "hint": None, "files": 0, "files_pending": 0} for i in wanted]
+                           "message": None, "hint": None, "files": 0, "files_pending": 0,
+                           "files_skipped": 0} for i in wanted]
             job = {"running": True, "rows": rows, "wanted": wanted, "error": None, "switch": {},
                    "loop": None, "task": None, "thread": None, "stop": threading.Event(),
                    "media": media if media in config.MEDIA_MODES else None}
@@ -388,7 +389,9 @@ class TelegramSetup:
                                    message=ev.get("message"), hint=ev.get("hint"),
                                    partial=bool(ev.get("partial")),
                                    files=int(ev.get("files") or 0),
-                                   files_pending=int(ev.get("files_pending") or 0))
+                                   files_pending=int(ev.get("files_pending") or 0),
+                                   # files Stop left for the next sync (still media_pending on disk)
+                                   files_skipped=int(ev.get("files_skipped") or 0))
 
         def unfinished(state, message, hint):
             with self._job_lock:

@@ -673,7 +673,7 @@ def test_open_link_api_only_opens_links_of_chats_in_tg_kit(home, server):
     assert opened("tg://privatepost?channel=1001&post=24")["url"] == "tg://privatepost?channel=1001&post=24"
     r = opened("tg://resolve?domain=binh_test")
     assert r["opens"] == "chat" and r["url"] == "tg://resolve?domain=binh_test" and r["note"] is None
-    # Telegram Desktop has no handler for these: refused, even for a chat in TG Kit
+    # Telegram Desktop has no handler for these: refused, even for a chat in Telegram Assistant
     for dead in ("tg://user?id=6006", "tg://openmessage?chat_id=2002&message_id=50", "tg://openmessage?chat_id=2002"):
         code, body = call(base, "/api/open-link", {"url": dead})
         assert refused(code, body), dead
@@ -1050,7 +1050,7 @@ def fresh_server(tmp_path, monkeypatch):
 
 
 def test_setup_in_the_window_starts_with_the_data_folder(fresh_server, monkeypatch):
-    """Gate note 5: keep the folder TG Kit uses now, or pick another, like `tgkit setup`."""
+    """Gate note 5: keep the folder Telegram Assistant uses now, or pick another, like `tgkit setup`."""
     app, base, tmp_path = fresh_server
     st = json.loads(call(base, "/api/setup/state")[1])
     assert st["fresh"] and not st["home_fixed"] and st["home"] == str(config.default_home())

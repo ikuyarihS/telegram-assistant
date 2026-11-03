@@ -185,6 +185,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       filesLabel: "Files", filesSmall: (mb) => `Text and small files (up to ${mb} MB)`,
       filesNone: "Text only (fastest)", filesAll: "Everything (can take long)",
       filesHelp: "Messages are saved first and can be searched at once; files download after them.",
+      filesLater: (f) => `${f} ${plural(f, "file", "files")} not downloaded yet, the next Get new messages gets ${f === 1 ? "it" : "them"}.`,
+      copyRunning: "Copying the chats you ticked. Settings, Add chats shows each chat.",
+      copyEnded: "The copy of the ticked chats has ended. Settings, Add chats shows each chat.",
+      suListLater: "Your chats show here again when the copy has ended.",
     },
     vi: {
       newChat: "Cuộc trò chuyện mới", filter: "Lọc cuộc trò chuyện và nhóm", conversations: "Cuộc trò chuyện",
@@ -319,6 +323,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       filesLabel: "Tệp", filesSmall: (mb) => `Tin nhắn và tệp nhỏ (đến ${mb} MB)`,
       filesNone: "Chỉ tin nhắn (nhanh nhất)", filesAll: "Tất cả (có thể lâu)",
       filesHelp: "Tin nhắn được lưu trước và tìm được ngay; tệp tải về sau.",
+      filesLater: (f) => `Còn ${f} tệp chưa tải, lần Lấy tin mới sau sẽ tải.`,
+      copyRunning: "Đang sao chép các nhóm bạn đã chọn. Xem từng nhóm trong Cài đặt, Thêm nhóm.",
+      copyEnded: "Đã sao chép xong các nhóm bạn đã chọn. Xem từng nhóm trong Cài đặt, Thêm nhóm.",
+      suListLater: "Danh sách nhóm sẽ hiện lại khi sao chép xong.",
     },
   };
   const EXAMPLES = {
@@ -1177,7 +1185,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   });
 
   async function sync() {
-    if (app.syncing) return;
+    if (app.syncing || following) return;
     app.syncing = true;
     ui.syncBtn.disabled = true;
     ui.syncProgress.hidden = false;
@@ -1216,6 +1224,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       ui.syncProgress.hidden = true;
       ui.syncBar.style.width = "6%";
     }
+    syncResult(result, switched);
+  }
+
+  // What a sync ended with, on the sync bar (this page's own stream, or followed).
+  function syncResult(result, switched) {
     ui.syncStatus.replaceChildren();
     if (result && result.lock) showLock(result.lock);
     if (!result || result.type === "error") {
@@ -1233,8 +1246,62 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     else refresh().catch(() => {});
   }
 
-  // Stop on the sync bar: ends this window's own sync cleanly (/api/stop); every chat
-  // already saved is kept and the next Get new messages gets the rest.
+  // A page loaded while a sync or a copy of this window runs (first open, reload, a
+  // reopened tab, the setup closed mid-copy) shows it on the sync bar with its Stop
+  // until it ends: the Stop is on screen the whole time the task runs.
+  let following = false;
+  async function followRunning() {
+    if (following || app.syncing) return;
+    let r;
+    try { r = await api("/api/running"); } catch (e) { return; }
+    if (!r.sync.running && !r.copy) return;
+    following = true;
+    const kind = r.sync.running ? "sync" : "copy";
+    const on = (x) => (kind === "sync" ? x.sync.running : x.copy);
+    ui.syncBtn.disabled = true;
+    ui.syncProgress.hidden = false;
+    ui.syncProgress.classList.add("indeterminate");
+    ui.lockNote.hidden = true;
+    ui.syncStop.hidden = false;
+    ui.syncStop.disabled = false;
+    const show = (x) => {
+      if (ui.syncStop.disabled) return;  // "Stopping..." stays until it has ended
+      if (kind === "copy") { ui.syncStatus.textContent = t("copyRunning"); return; }
+      ui.syncStatus.textContent = (x.sync.line || "").trim() || t("syncing");
+      if (x.sync.chats && x.sync.done) {
+        ui.syncProgress.classList.remove("indeterminate");
+        ui.syncBar.style.width = `${Math.max(6, Math.round((100 * x.sync.done) / x.sync.chats))}%`;
+      }
+    };
+    show(r);
+    watchLock(true);
+    try {
+      while (on(r)) {
+        await new Promise((res) => setTimeout(res, 1000));
+        try { r = await api("/api/running"); } catch (e) { continue; }
+        show(r);
+      }
+    } finally {
+      following = false;
+      watchLock(false);
+      ui.syncStop.hidden = true;
+      ui.syncBtn.disabled = false;
+      ui.syncProgress.hidden = true;
+      ui.syncBar.style.width = "6%";
+    }
+    if (kind === "sync" && r.sync.last) {
+      syncResult(r.sync.last, !!r.sync.last.switched);
+    } else if (kind === "sync") {
+      ui.syncStatus.textContent = "";
+      refresh().catch(() => {});
+    } else {
+      ui.syncStatus.textContent = t("copyEnded");
+      refresh().catch(() => {});
+    }
+  }
+
+  // Stop on the sync bar: ends this window's own sync or copy cleanly (/api/stop); every
+  // chat already saved is kept and the next Get new messages gets the rest.
   ui.syncStop.addEventListener("click", async () => {
     ui.syncStop.disabled = true;
     ui.syncStatus.textContent = t("syncStopping");
@@ -1410,8 +1477,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     suDialogs = [];
     suShown = [];
     syncPickBar();
-    if (!(opts && opts.keepNote)) ui.suProg.hidden = true;  // a fresh pick starts without old rows
     api("/api/settings").then((s) => showMediaCap(s.max_media_mb)).catch(() => {});  // the Files choice names the limit
+    // A copy running now (started before this page loaded, or before the setup was
+    // closed): its rows and its Stop, not the chat list. The list comes back after it.
+    if (!(opts && opts.keepNote) && await suCopyRunning()) return;
+    if (!(opts && opts.keepNote)) ui.suProg.hidden = true;  // a fresh pick starts without old rows
     try {
       const r = await api("/api/setup/dialogs");
       suDialogs = r.dialogs || [];
@@ -1424,10 +1494,25 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
         if (notes.length) ui.suWho.textContent = notes.join(" ");
       }
     } catch (e) {
+      if (await suCopyRunning()) return;  // a copy began meanwhile: show it, with its Stop
       ui.suList.replaceChildren(el("li", { class: "pick-empty" },
         el("button", { class: "link-btn", type: "button", onclick: loadDialogs }, t("suRetry"))));
       suError(e);
     }
+  }
+
+  // Is a copy of ticked chats running? Then show its rows and its Stop and follow it.
+  async function suCopyRunning() {
+    let p;
+    try { p = await api("/api/setup/add-progress"); } catch (e) { return false; }
+    if (!p.running) return false;
+    ui.suList.replaceChildren(el("li", { class: "pick-empty" }, t("suListLater")));
+    ui.suChats.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+    ui.suStop.disabled = false;
+    suNote(t("suAdding"));
+    renderProgress(p);
+    suFollowAdd();
+    return true;
   }
 
   ui.suCodes.addEventListener("submit", async (e) => {
@@ -1466,12 +1551,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   // A copy cut short (partial) is a failure: its own words and a Retry, never "Done".
   function progBad(r) { return r.state === "error" || r.state === "stopped" || (r.state === "done" && !!r.partial); }
 
-  function progText(r) {
+  // `running`: the copy goes on, so files still queued are downloading; once it has
+  // ended, a file Stop skipped (or one left queued) waits for the next sync.
+  function progText(r, running) {
+    const later = (r.files_skipped || 0) + (running ? 0 : r.files_pending || 0);
+    const files = (s) => (later > 0 ? `${s}. ${t("filesLater", later)}` : s);
     if (r.state === "copying") return t("progCopying", r.count || 0);
-    if (r.state === "done" && r.partial) return t("progPartial", r.count || 0);
-    if (r.state === "done" && r.files_pending > 0) return t("progDoneFiles", r.count || 0, r.files_pending);
-    if (r.state === "done") return r.already ? t("progAlready") : t("progDone", r.count || 0);
-    if (r.state === "stopped") return r.count ? t("progStoppedSaved", r.count) : t("progStopped");
+    if (r.state === "done" && r.partial) return files(t("progPartial", r.count || 0).replace(/\.$/, ""));
+    if (r.state === "done" && running && r.files_pending > 0) return files(t("progDoneFiles", r.count || 0, r.files_pending));
+    if (r.state === "done") return r.already ? t("progAlready") : files(t("progDone", r.count || 0));
+    if (r.state === "stopped") return r.count ? files(t("progStoppedSaved", r.count).replace(/\.$/, "")) : t("progStopped");
     if (r.state === "error") return [r.message, r.hint].filter(Boolean).join(" ");
     return t("progWaiting");
   }
@@ -1484,10 +1573,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       const failed = progBad(r);
       return el("li", { class: `prog-row ${r.state}` },
         el("span", { class: "prog-name" }, r.name || names[r.id] || r.id),
-        el("span", { class: failed ? "prog-state bad" : "prog-state" }, progText(r)),
+        el("span", { class: failed ? "prog-state bad" : "prog-state" }, progText(r, p.running)),
         failed && !p.running ? el("button", { class: "link-btn", type: "button", onclick: () => suStartAdd([r.id], true) }, t("progRetry")) : null);
     }));
-    // Stop is shown the whole time a copy runs (the COPYING note names it).
+    // Stop is shown the whole time a copy runs, also on a page loaded mid-copy (suCopyRunning).
     suLast = p;
     ui.suStop.hidden = !p.running;
     ui.suStop.textContent = suHung(p) ? t("stopRetry") : t("stopBtn");
@@ -1597,6 +1686,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     // A login left half done would keep Get new messages waiting: end it.
     if (!ui.suCode.hidden || !ui.suPassword.hidden) api("/api/setup/cancel", {}).catch(() => {});
     refresh().catch(() => {});
+    followRunning();  // a copy still running: the sync bar shows it with its Stop
     if (suAddedAny) ui.input.focus();
   });
 
@@ -1799,6 +1889,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
 
   applyStrings();
   setBusy(false);
+  followRunning();  // a sync or a copy that runs while this page loads: its progress and its Stop
   refresh().then(() => {
     const start = params.get("c");
     if (start) openConversation(start);

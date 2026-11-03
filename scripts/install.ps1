@@ -22,6 +22,25 @@ function Fail($text) {
     exit 1
 }
 
+# Point Claude Code's "tgkit" plugin at THIS folder. An update unzipped next to an older
+# folder (the "TG Kit" folder of 0.2.5 and before) finds the marketplace "tgkit" already
+# added from that old folder, and `marketplace add` would keep it there: so the old entry
+# is removed first (nothing of the user's data is touched), then added again from here
+# and the plugin installed from it. True when Claude took it.
+function Register-ClaudePlugin($KitDir) {
+    try {
+        try { & claude plugin marketplace remove tgkit 2>$null | Out-Null } catch { }  # absent on a first install: fine
+        & claude plugin marketplace add "$KitDir" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'claude could not add the marketplace' }
+        & claude plugin install tgkit@tgkit | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'claude returned an error' }
+        return $true
+    } catch {
+        Say "Could not add it to Claude automatically. In Claude Code type:  /plugin marketplace add $KitDir   and then:  /plugin install tgkit@tgkit"
+        return $false
+    }
+}
+
 function Find-Python {
     foreach ($c in @(@('py', '-3'), @('python'), @('python3'))) {
         $exe = $c[0]
@@ -118,13 +137,7 @@ if (-not $NoSystemChanges) {
     }
     if (Get-Command claude -ErrorAction SilentlyContinue) {
         Say 'Adding Telegram Assistant to Claude Code...'
-        try {
-            & claude plugin marketplace add "$Kit" | Out-Null
-            & claude plugin install tgkit@tgkit | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'claude returned an error' }
-        } catch {
-            Say "Could not add it to Claude automatically. In Claude Code type:  /plugin marketplace add $Kit   and then:  /plugin install tgkit@tgkit"
-        }
+        Register-ClaudePlugin $Kit | Out-Null
     } else {
         Say '(Claude Code is not installed: skipped. See README, part "Use with Claude Code".)'
     }

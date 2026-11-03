@@ -189,6 +189,10 @@ class App:
         self._check_busy = threading.Lock()  # the account check when the window opens
         self._proc = None  # the window's own `tgkit sync`, while it runs
         self._proc_owner = None  # the token that `tgkit sync` writes into the lock file
+        # The window's own sync as a page loaded later sees it (/api/running): its last
+        # progress line while it runs, then its "done" event.
+        self._sync_view: dict = {"line": "", "done": 0, "chats": 0}
+        self._sync_last: dict | None = None
         self._settings_lock = threading.Lock()
         self._status = None
         self.tg = setupflow.TelegramSetup(self.home)  # setup inside the window
@@ -243,6 +247,14 @@ class App:
             self._check_busy.release()
         return {"checked": True, "me": res.get("me"), **setupflow._switch_fields(res),
                 "notes": account.switch_notes(res)}
+
+    def running(self) -> dict:
+        """What of this window runs now, for a page loaded while it runs (first open,
+        reload, a reopened tab): it shows that task's progress and its Stop."""
+        sync_on = self._sync_busy.locked()
+        return {"sync": {"running": sync_on, **(self._sync_view if sync_on else {"line": "", "done": 0, "chats": 0}),
+                         "last": None if sync_on else self._sync_last},
+                "copy": self.tg.adding}
 
     def lock_info(self) -> dict:
         """Who holds the sync lock and whether it looks hung; can_stop when the holder
@@ -469,8 +481,10 @@ class App:
             yield {"type": "error", "message": "A sync is already running.", "hint": ""}
             return
         try:
+            self._sync_view, self._sync_last = {"line": "", "done": 0, "chats": 0}, None
             self._after_check()
             total = len(self.store().chat_dirs())
+            self._sync_view = {"line": "", "done": 0, "chats": total}
             yield {"type": "start", "chats": total}
             owner = secrets.token_hex(8)
             env = dict(os.environ, TGKIT_HOME=str(self.home), PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1",
@@ -501,6 +515,7 @@ class App:
                         done += 1
                     if m and m.group(2).startswith("+"):
                         added += int(re.sub(r"\D", "", m.group(2)))
+                    self._sync_view = {"line": line, "done": min(done, total), "chats": total}
                     yield {"type": "progress", "line": line, "done": min(done, total), "chats": total}
             finally:
                 if proc.poll() is None:
@@ -516,6 +531,7 @@ class App:
                   "last": text[-1] if text else ""}
             if proc.returncode and "already running" in joined:
                 ev["lock"] = self.lock_info()  # who holds it, and whether it looks hung
+            self._sync_last = ev
             yield ev
         finally:
             self._sync_busy.release()
@@ -899,7 +915,10 @@ def make_handler(app: App):
                 return {}
             return data if isinstance(data, dict) else {}
 
-        def _stream(self, events):
+        def _stream(self, events, drain: bool = False):
+            """drain=True (the sync): a page that goes away (reload, closed tab) does not
+            end the task; it runs on, a page loaded later follows it with /api/running
+            and ends it with Stop. Closing the window still ends it (App.close)."""
             lang = self._lang()
             self.send_response(200)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
@@ -911,7 +930,11 @@ def make_handler(app: App):
                     self.wfile.write((json.dumps(ev, ensure_ascii=False) + "\n").encode("utf-8"))
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                pass  # the user pressed Stop or closed the window
+                # the user pressed Stop on an answer, or the page went away
+                if drain:
+                    with contextlib.suppress(Exception):
+                        for _ev in events:
+                            pass
             except UserError as exc:
                 try:
                     self.wfile.write((json.dumps(_error(exc, lang), ensure_ascii=False) + "\n").encode("utf-8"))
@@ -968,6 +991,8 @@ def make_handler(app: App):
                     return self._json({**st, "lock": app.lock_info()})
                 if path == "/api/lock":
                     return self._json(app.lock_info())
+                if path == "/api/running":
+                    return self._json(app.running())
                 if path == "/api/diagnostics":
                     return self._json(app.diagnostics())
                 m = re.fullmatch(r"/api/conversations/([\w-]+)", path)
@@ -1006,7 +1031,7 @@ def make_handler(app: App):
                 if path == "/api/ask":
                     return self._stream(app.ask(body))
                 if path == "/api/sync":
-                    return self._stream(app.sync())
+                    return self._stream(app.sync(), drain=True)
                 if path == "/api/setup":
                     return self._json(app.open_setup())
                 if path == "/api/setup/folder":

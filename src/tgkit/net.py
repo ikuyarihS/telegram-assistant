@@ -344,7 +344,7 @@ class MediaPool:
     def add(self, d: Path, jobs: list, on_change=None) -> None:
         if not jobs:
             return
-        st = self.chats.setdefault(d, {"left": 0, "got": 0, "rows": {}, "on": on_change})
+        st = self.chats.setdefault(d, {"left": 0, "got": 0, "skipped": 0, "rows": {}, "on": on_change})
         st["on"] = on_change or st["on"]
         for msg, row in jobs:
             st["left"] += 1
@@ -369,13 +369,18 @@ class MediaPool:
             d, msg, row = await self.q.get()
             st = self.chats[d]
             try:
-                if not self.ctx.stop():
+                if self.ctx.stop():
+                    st["skipped"] += 1  # left for the next sync: the row stays media_pending
+                else:
                     got = await _download(self.client, msg, row, d / "media", d.name, self.flood,
                                           self.beat, self.ctx)
                     st["got"] += got
                     self.got += got
             except Stopped:
-                pass
+                st["skipped"] += 1
+            except asyncio.CancelledError:
+                st["skipped"] += 1  # Stop cancelled it mid-download: the next sync gets it
+                raise
             except Exception as exc:  # noqa: BLE001
                 applog.caught("files: a download failed", exc, self.ctx.base)
             finally:
@@ -384,7 +389,7 @@ class MediaPool:
                     self._flush(d)
                 if st["on"] is not None:
                     with contextlib.suppress(Exception):
-                        st["on"](st["left"], st["got"])
+                        st["on"](st["left"], st["got"], st["skipped"])
                 self.q.task_done()
 
     async def finish(self) -> None:
@@ -1050,8 +1055,8 @@ async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick, progre
                               hint="Check your internet connection, then press Retry for this chat.")
                 report(ev)
 
-                def on_files(left, done, ev=ev):
-                    report({**ev, "files_pending": left, "files": done})
+                def on_files(left, done, skipped=0, ev=ev):
+                    report({**ev, "files_pending": left, "files": done, "files_skipped": skipped})
                 pool.add(ctx.store.chats / got["folder"], got["jobs"], on_files)
 
             try:
