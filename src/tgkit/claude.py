@@ -39,6 +39,7 @@ SHELLS = ("Bash", "PowerShell")
 TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")  # the same as cli.TASK_WRITES
 READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit tasks *",
                  "tgkit chats*", "tgkit show *", "tgkit media *", "tgkit guide",
+                 "tgkit today", "tgkit today *",
                  "tgkit usage", "tgkit usage *", "tgkit claude-status", "tgkit claude-status *"]
 # export writes a file and logout ends the Telegram login: the user does them, never this session.
 DENIED_COMMANDS = (["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit logout*", "tgkit export*",
@@ -53,9 +54,9 @@ DENIED = (["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Gl
 # The app's session reads the same playbook as every other Claude Code session
 # (playbook.md, also `tgkit guide` and the plugin skill), plus the rules of the app.
 APP_RULES = """
-## In the TG Kit app (this session)
+## In the Telegram Assistant app (this session)
 
-You answer inside the TG Kit window. Here these rules come before the ones above:
+You answer inside the Telegram Assistant window. Here these rules come before the ones above:
 
 - Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell,
   whichever you have). Never read, list or print files.
@@ -64,6 +65,9 @@ You answer inside the TG Kit window. Here these rules come before the ones above
   window's buttons (Get new messages, Mark done, Save as file, Settings). The tgkit you run refuses
   them anyway.
 - If a chat has "stale": true, say its copy may be old and suggest the Get new messages button.
+- "What do I need to do today" (or "hôm nay tôi cần làm gì"): run `tgkit today --json` and
+  answer with a short list, most urgent first (due today, then people waiting for an answer,
+  then the rest), each with who and which chat. Add nothing it does not hold.
 - Answer short and plain; never show commands.
 """
 GUIDE = playbook.text() + APP_RULES
@@ -200,7 +204,7 @@ def status(cmd: list[str] | None = None, home: Path | None = None) -> dict:
         "not_logged_in": ["Open a terminal window and type: claude auth login",
                           "Log in with your Claude account in the browser page that opens.",
                           "Come back and press Check again."],
-        "unknown": ["If answers fall back to TG Kit only, open a terminal, type claude and log in."],
+        "unknown": ["If answers fall back to Telegram Assistant only, open a terminal, type claude and log in."],
     }[out["state"]]
     return out
 
@@ -371,6 +375,6 @@ class ClaudeRunner:
         reason = next((r for k, r in FALLBACK_HINTS if k in low), "failed")
         message = {
             "login": "Claude is not signed in on this computer.",
-            "compat": "This Claude Code is older than TG Kit expects.",
+            "compat": "This Claude Code is older than Telegram Assistant expects.",
         }.get(reason, "Claude could not answer this time.")
         yield {"type": "error", "reason": reason, "message": message, "detail": detail[-400:]}

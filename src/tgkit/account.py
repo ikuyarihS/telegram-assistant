@@ -7,7 +7,7 @@ meanwhile):
   2. removes the login file (tgkit.session) either way, so the next
      `tgkit setup` logs in fresh, with any account;
   3. forgets who was logged in ("me" in config.json). api_id / api_hash stay:
-     they belong to TG Kit, not to an account, and work with any account;
+     they belong to Telegram Assistant, not to an account, and work with any account;
   4. the copied chats stay, unless the user chose "move to a backup folder":
      then chats, tasks and the app's conversations move into
      <data>/old-account-<date>/. Nothing is ever deleted.
@@ -64,7 +64,7 @@ def _remove_session(base: Path) -> list[str]:
                 time.sleep(0.1)
         else:
             raise UserError(f"The login file {p} is in use and could not be removed.",
-                            "Close every TG Kit window and terminal, then log out again.")
+                            "Close every Telegram Assistant window and terminal, then log out again.")
     return gone
 
 
@@ -91,7 +91,7 @@ def _move_set(src: Path, dst: Path) -> list[str]:
     items = [i for i in ACCOUNT_DATA if (src / i).exists()]
     clash = [i for i in items if (dst / i).exists()]
     if clash:
-        raise UserError(f"TG Kit could not switch accounts: {dst / clash[0]} is already there.",
+        raise UserError(f"Telegram Assistant could not switch accounts: {dst / clash[0]} is already there.",
                         "Move it away, then try again.")
     moved: list[str] = []
     try:
@@ -106,9 +106,12 @@ def _move_set(src: Path, dst: Path) -> list[str]:
         for i in reversed(moved):
             with contextlib.suppress(OSError):
                 os.replace(dst / i, src / i)
-        raise UserError(f"TG Kit could not move {src / (items[len(moved)])} "
-                        f"({exc.strerror or type(exc).__name__}). Nothing was deleted.",
-                        "Close any program that has a file of TG Kit open, then try again.") from None
+        from . import applog  # noqa: PLC0415  (the kind of error goes to the log, never the screen)
+
+        applog.caught("account switch: moving a file", exc)
+        raise UserError(f"Telegram Assistant could not move {src / (items[len(moved)])}: "
+                        "the file is in use or the disk is full. Nothing was deleted.",
+                        "Close any program that has a file of Telegram Assistant open, then try again.") from None
     return items
 
 
@@ -128,11 +131,11 @@ def switch(base: Path, me: dict) -> dict:
         comes_back = park.name == str(old["id"])  # a dated folder is not brought back by a login
         if _move_set(base, park):
             atomic_write(park / "READ ME.txt",
-                         f"TG Kit data of {old.get('name') or 'an earlier Telegram account'}, moved here on "
+                         f"Telegram Assistant data of {old.get('name') or 'an earlier Telegram account'}, moved here on "
                          f"{datetime.now():%Y-%m-%d %H:%M} when this computer logged in to another account.\n"
-                         + ("Nothing was deleted. Log in to that account again and TG Kit brings it back.\n"
+                         + ("Nothing was deleted. Log in to that account again and Telegram Assistant brings it back.\n"
                             if comes_back else
-                            "Nothing was deleted. To use it again, log in to that account, close TG Kit and\n"
+                            "Nothing was deleted. To use it again, log in to that account, close Telegram Assistant and\n"
                             "move these folders and files back into the data folder.\n"))
             res["parked"] = str(park)
             res["comes_back"] = comes_back
@@ -194,9 +197,9 @@ def _backup(base: Path, name: str | None) -> Path | None:
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(Path(base) / i, target)
     atomic_write(dest / "READ ME.txt",
-                 f"TG Kit data of {name or 'an earlier Telegram account'}, moved here on "
+                 f"Telegram Assistant data of {name or 'an earlier Telegram account'}, moved here on "
                  f"{datetime.now():%Y-%m-%d %H:%M} when you logged out.\n"
-                 "Nothing was deleted. To use it again, log in to that account, close TG Kit and\n"
+                 "Nothing was deleted. To use it again, log in to that account, close Telegram Assistant and\n"
                  "move these folders and files back into the data folder.\n")
     return dest
 
@@ -222,7 +225,10 @@ def logout(base: Path, data: str = "keep", server=None) -> dict:
             except UserError as exc:
                 result["telegram_note"] = exc.message
             except Exception as exc:  # noqa: BLE001  (offline, revoked, ...: the local log out still happens)
-                result["telegram_note"] = f"Telegram could not be reached ({type(exc).__name__})."
+                from . import applog  # noqa: PLC0415
+
+                applog.caught("log out: telling Telegram", exc, base)
+                result["telegram_note"] = "Telegram could not be reached."
         result["removed"] = _remove_session(base)
         if data == "keep":
             # The kept chats still belong to the account logged out: write it down

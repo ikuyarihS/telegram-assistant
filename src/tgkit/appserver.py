@@ -1,4 +1,4 @@
-"""The TG Kit app's local server: the web UI plus a small JSON API on 127.0.0.1.
+"""The Telegram Assistant app's local server: the web UI plus a small JSON API on 127.0.0.1.
 
 Only this computer can reach it (it binds 127.0.0.1), and every /api call
 must carry the random token written into the page, so another web page open
@@ -12,6 +12,7 @@ rule in docs/MAINTENANCE.md apply unchanged. Log out goes through
 account.logout, under the same sync lock.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -31,10 +32,12 @@ from .claude import ClaudeRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
 from .net import SWITCHED_LINE
-from .store import OWNER_ENV, Store, _ident, _username, is_dead_link, lock_status
+from .store import OWNER_ENV, STOP_FILE, Store, _ident, _username, atomic_write, is_dead_link, lock_status
 
 STATIC = {"app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
-          "icon.svg": "image/svg+xml"}
+          "icon.svg": "image/svg+xml", "favicon.png": "image/png", "icon-256.png": "image/png",
+          "tgkit.ico": "image/x-icon"}
+SYNC_STOP_WAIT = 15  # seconds a sync asked to stop gets to end cleanly before it is ended
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 _SYNC_LINE = re.compile(r"^\s{2}(.+?): (\+\d+ new|up to date)")
 
@@ -120,7 +123,7 @@ def _end_with_server(proc) -> bool:
         return False
 
 
-# The only links /api/open-link opens, each for a chat that is in TG Kit (see
+# The only links /api/open-link opens, each for a chat that is in Telegram Assistant (see
 # store.telegram_link). (pattern, which chats it may name, has a message number)
 _OPEN_FORMS = (
     (re.compile(r"https://t\.me/c/(\d{1,20})/(\d{1,12})"), "channel_id"),
@@ -268,8 +271,13 @@ class App:
         import signal  # noqa: PLC0415
 
         holder = st.get("pid")
+        now = lock_status(self.home)
+        # The holder is ended only while the lock is still HELD under this window's token:
+        # a holder that crashed leaves its pid and token in the file, and that pid may
+        # belong to another program by now (gate 0.2.5 NOTE 1).
         if (holder and holder != proc.pid and self._proc_owner and st.get("owner") == self._proc_owner
-                and lock_status(self.home).get("owner") == self._proc_owner):
+                and now.get("held") and now.get("owner") == self._proc_owner
+                and str(now.get("pid")) == str(holder)):
             try:
                 # SIGTERM is TerminateProcess on Windows (signal 1 there is a Ctrl+Break)
                 os.kill(int(holder), signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
@@ -285,13 +293,54 @@ class App:
         partial: the sync guard is unchanged and every file is written whole or not at
         all (R1); the next sync fetches the rest."""
         proc = self._proc
+        if self.tg.adding:
+            with contextlib.suppress(Exception):
+                self.tg.stop(wait=5)
         if proc is None or proc.poll() is not None:
             return
         try:
-            self._end_own_sync(lock_status(self.home))
+            self._ask_sync_stop(proc, 5)  # first asked: it ends cleanly, keeps what it saved
+            if proc.poll() is None:
+                st = lock_status(self.home)
+                if st.get("held") and self._own_child(st):
+                    self._end_own_sync(st)
+                elif proc.poll() is None:
+                    proc.kill()  # the launcher only: a handle this window holds
             proc.wait(timeout=10)
         except Exception as exc:  # noqa: BLE001
             applog.caught("window close: ending its own sync", exc, self.home)
+
+    def _ask_sync_stop(self, proc, wait: float) -> bool:
+        """Ask the window's own `tgkit sync` to stop (STOP_FILE with its token) and wait
+        for it to end. True when it ended."""
+        if not self._proc_owner:
+            return False
+        atomic_write(self.home / STOP_FILE, self._proc_owner)
+        try:
+            proc.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            return False
+        return True
+
+    def stop_running(self) -> dict:
+        """Stop, the button shown the whole time a copy or a sync runs: ends it cleanly.
+        A copy keeps every chat saved and marks the rest Stopped (Retry continues them);
+        a sync keeps every chat it saved, the guard drops a chat read halfway, and the
+        next Get new messages gets the rest. Never another program."""
+        stopped = False
+        if self.tg.adding:
+            self.tg.stop()
+            stopped = True
+        proc = self._proc
+        if proc is not None and proc.poll() is None:
+            if not self._ask_sync_stop(proc, SYNC_STOP_WAIT) and proc.poll() is None:
+                st = lock_status(self.home)
+                if st.get("held") and self._own_child(st):
+                    self._end_own_sync(st)
+                elif proc.poll() is None:
+                    proc.kill()
+            stopped = True
+        return {"ok": True, "stopped": stopped, "lock": self.lock_info()}
 
     def stop_lock(self) -> dict:
         """Stop and retry: end this window's own hung task so the system frees its
@@ -301,8 +350,8 @@ class App:
         if not st["held"]:
             return {"ok": True, "lock": st}
         if not st["can_stop"]:
-            raise UserError("Another TG Kit window or terminal is using this data folder.",
-                            "Close it, then press Get new messages again. TG Kit never stops another program.")
+            raise UserError("Another Telegram Assistant window or terminal is using this data folder.",
+                            "Close it, then press Get new messages again. Telegram Assistant never stops another program.")
         if self._own_child(st):
             self._end_own_sync(st)  # the window's own `tgkit sync`: the system frees its lock
         else:
@@ -312,8 +361,8 @@ class App:
             time.sleep(0.1)
         st = self.lock_info()
         if st["held"]:
-            raise UserError("TG Kit could not stop the hung task.",
-                            "Close TG Kit and open it again: that always frees it. Nothing was deleted.")
+            raise UserError("Telegram Assistant could not stop the hung task.",
+                            "Close Telegram Assistant and open it again: that always frees it. Nothing was deleted.")
         return {"ok": True, "lock": st}
 
     # ------------------------------------------------------------- ask
@@ -413,8 +462,8 @@ class App:
                    "hint": "Finish it or close the setup, then press Get new messages again."}
             return
         if self.tg.adding:
-            yield {"type": "error", "message": "TG Kit is still copying the chats you ticked.",
-                   "hint": "Wait until it is done, or press Stop and retry."}
+            yield {"type": "error", "message": "Telegram Assistant is still copying the chats you ticked.",
+                   "hint": "Wait until it is done, then press Get new messages again."}
             return
         if not self._sync_busy.acquire(blocking=False):
             yield {"type": "error", "message": "A sync is already running.", "hint": ""}
@@ -435,6 +484,7 @@ class App:
                 return
             _end_with_server(proc)  # ends with this window, even when the window is killed
             self._proc, self._proc_owner = proc, owner
+            yield {"type": "running", "stop": True}  # the Stop button shows from here on
             done, added, text, switched = 0, 0, [], False
             try:
                 for raw in proc.stdout:
@@ -457,8 +507,11 @@ class App:
                     proc.kill()
                 proc.wait()
                 self._proc, self._proc_owner = None, None
+                with contextlib.suppress(OSError):
+                    (self.home / STOP_FILE).unlink()  # a control file, never data
             joined = "\n".join(text)
             ev = {"type": "done", "code": proc.returncode, "added": added, "switched": switched,
+                  "stopped": any(t.startswith("Stopped: ") for t in text),
                   "needs": "setup" if "tgkit setup" in joined else None,
                   "last": text[-1] if text else ""}
             if proc.returncode and "already running" in joined:
@@ -506,6 +559,7 @@ class App:
             "export_dir": str(cfg.get("export_dir") or ""), "export_default": str(export.default_dir()),
             "export_now": str(export.export_dir(self.home)),
             "max_media_mb": config.max_media_bytes(self.home, cfg) // (1024 * 1024),
+            "media": config.media_mode(cfg), "media_modes": list(config.MEDIA_MODES),
             "home": str(self.home),
             "account": {"logged_in": config.logged_in(self.home), "name": account.who(self.home),
                         "chats": account.data_summary(self.home)["chats"]},
@@ -521,7 +575,7 @@ class App:
                 model = str(body.get("model") or "").strip()
                 allowed = set(st.get("models") or claudemod.BASE_MODELS)
                 if model and model not in allowed:
-                    raise UserError(f"'{model}' is not a model TG Kit can choose.", "Pick one from the list.")
+                    raise UserError(f"'{model}' is not a model Telegram Assistant can choose.", "Pick one from the list.")
                 cfg["claude_model"] = model
             if "effort" in body:
                 effort = str(body.get("effort") or "").strip()
@@ -541,7 +595,7 @@ class App:
             if "export_dir" in body:
                 folder = str(body.get("export_dir") or "").strip().strip('"')
                 if folder and not Path(folder).expanduser().is_absolute():
-                    raise UserError("Type the full path of the folder.", r"For example: D:\Reports\TG Kit")
+                    raise UserError("Type the full path of the folder.", r"For example: D:\Reports\Telegram Assistant")
                 cfg["export_dir"] = folder
             if "max_media_mb" in body:
                 try:
@@ -551,6 +605,11 @@ class App:
                 if not 1 <= mb <= 4000:
                     raise UserError("The file size limit must be between 1 and 4000 MB.", "For example: 50")
                 cfg["max_media_mb"] = mb
+            if "media" in body:
+                mode = str(body.get("media") or "")
+                if mode not in config.MEDIA_MODES:
+                    raise UserError("Pick one of the Files choices.", "Text and small files is the usual one.")
+                cfg["media"] = mode
         config.update(self.home, change)
         return self.settings()
 
@@ -579,7 +638,7 @@ class App:
         if self._sync_busy.locked():
             raise UserError("New messages are being fetched right now.", "Wait until it is done, then log out.")
         if self.tg.adding:
-            raise UserError("TG Kit is still copying the chats you ticked.", "Wait until it is done, then log out.")
+            raise UserError("Telegram Assistant is still copying the chats you ticked.", "Wait until it is done, then log out.")
         res = account.logout(self.home, str(body.get("data") or "keep"))
         return {"ok": True, **res}
 
@@ -619,7 +678,7 @@ class App:
     def open_link(self, body: dict, lang: str | None = None) -> dict:
         """Open a message or a chat in Telegram: the Telegram app when it is installed,
         else the browser. Only the link forms of store.telegram_link, and only for a
-        chat that is in TG Kit; the link opened is rebuilt from that chat's own data."""
+        chat that is in Telegram Assistant; the link opened is rebuilt from that chat's own data."""
         url = str(body.get("url") or "")
         if is_dead_link(url):  # never opened: Telegram Desktop has no handler for these
             raise UserError("Telegram Desktop cannot open this kind of link.",
@@ -633,7 +692,7 @@ class App:
         post = m.group(2) if m and m.re.groups >= 2 else None
         meta = _known_chat(self.store(), key, m.group(1), post) if m else None
         if meta is None:
-            raise UserError("That is not a link to a chat in TG Kit.", "Open it from a result in this window.")
+            raise UserError("That is not a link to a chat in Telegram Assistant.", "Open it from a result in this window.")
         user, ident = _username(meta), _ident(meta)
         web = None  # the same place on t.me, for a computer without Telegram Desktop
         if meta.get("type") == "Channel" and post:
@@ -720,18 +779,21 @@ class App:
 
     def setup_dialogs(self) -> dict:
         if self._sync_busy.locked():
-            raise UserError("TG Kit is still getting new messages.", "Wait until it is done, then open Add chats again.")
+            raise UserError("Telegram Assistant is still getting new messages.", "Wait until it is done, then open Add chats again.")
         self._after_check()
         return self.tg.dialogs()
 
     def setup_add(self, body: dict) -> dict:
         if self._sync_busy.locked():
-            raise UserError("TG Kit is still getting new messages.", "Wait until it is done, then press Add again.")
+            raise UserError("Telegram Assistant is still getting new messages.", "Wait until it is done, then press Add again.")
         self._after_check()
-        return self.tg.add(body.get("ids"), body.get("limit", 1000), keep=bool(body.get("keep")))
+        media = body.get("files")
+        if media is not None and media not in config.MEDIA_MODES:
+            raise UserError("Pick one of the Files choices.", "Text and small files is the usual one.")
+        return self.tg.add(body.get("ids"), body.get("limit", 1000), keep=bool(body.get("keep")), media=media)
 
     def setup_folder(self, body: dict) -> dict:
-        """The first setup step: keep the data folder TG Kit uses now, or pick another.
+        """The first setup step: keep the data folder Telegram Assistant uses now, or pick another.
         The choice is saved like `tgkit setup` saves it (~/.tgkit-home)."""
         if os.environ.get("TGKIT_HOME"):
             raise UserError("The data folder is set by TGKIT_HOME, so it cannot be changed here.",
@@ -739,7 +801,7 @@ class App:
         if self.tg.step:
             raise UserError("A login is under way.", "Finish it or close the setup, then change the folder.")
         if self.tg.adding:
-            raise UserError("TG Kit is still copying the chats you ticked.",
+            raise UserError("Telegram Assistant is still copying the chats you ticked.",
                             "Wait until it is done, then change the folder.")
         if self._sync_busy.locked():
             raise UserError("New messages are being fetched right now.", "Wait until it is done, then change the folder.")
@@ -748,7 +810,7 @@ class App:
         else:
             raw = str(body.get("path") or "").strip().strip('"')
             if not raw or not Path(raw).expanduser().is_absolute():
-                raise UserError("Type the full path of the folder.", r"For example: D:\TG Kit")
+                raise UserError("Type the full path of the folder.", r"For example: D:\Telegram Assistant")
             target = Path(raw).expanduser()
         if target.exists() and not target.is_dir():
             raise UserError("That is a file, not a folder.", "Pick a folder.")
@@ -929,9 +991,9 @@ def make_handler(app: App):
             """An error nobody planned for: logged with its traceback, shown in plain words."""
             applog.caught(f"window {self.command} {path}", exc, app.home)
             return self._json(_error(UserError(
-                "Something went wrong in TG Kit.",
+                "Something went wrong in Telegram Assistant.",
                 "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
-                "and send it to whoever gave you TG Kit."), self._lang()))
+                "and send it to whoever gave you Telegram Assistant."), self._lang()))
 
         def do_POST(self):
             path = urlparse(self.path).path
@@ -956,6 +1018,8 @@ def make_handler(app: App):
                     return self._json(app.setup_add(body))
                 if path == "/api/sync/stop":  # Stop and retry: whatever of this window holds the sync lock
                     return self._json(app.stop_lock())
+                if path == "/api/stop":  # Stop: the copy or the sync running now, ended cleanly
+                    return self._json(app.stop_running())
                 if path == "/api/account/check":
                     return self._json(app.account_check())
                 if path == "/api/setup/open-site":

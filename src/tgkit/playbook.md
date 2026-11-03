@@ -1,6 +1,6 @@
-# Telegram chats (TG Kit)
+# Telegram chats (Telegram Assistant)
 
-TG Kit keeps a local copy of the Telegram chats the user picked, and the
+Telegram Assistant keeps a local copy of the Telegram chats the user picked, and the
 `tgkit` command reads it. Use it whenever the user asks what was said or
 decided in a Telegram chat or group, wants a summary of recent Telegram
 messages, asks about tasks, to-dos or requests from Telegram, or wants a file
@@ -18,14 +18,18 @@ it first: "run tgkit guide, then answer".
 
 - Never run `tgkit setup`, `tgkit login`, `tgkit add` or a bare `tgkit`
   yourself. They ask questions, and a Telegram login code that only the user
-  may type. If TG Kit is not set up (an error says "tgkit setup"), tell the
-  user to open TG Kit from its desktop icon, or type `tgkit setup` in a
+  may type. If Telegram Assistant is not set up (an error says "tgkit setup"), tell the
+  user to open Telegram Assistant from its desktop icon, or type `tgkit setup` in a
   terminal window, and come back when it is done.
 - Never run `tgkit logout` yourself. To log out or use another Telegram
-  account, the user opens Settings in the TG Kit window (or types
+  account, the user opens Settings in the Telegram Assistant window (or types
   `tgkit logout` in a terminal) and then connects again.
-- Add `--json` to `search`, `summary`, `tasks`, `chats-log`, `usage`,
+- Add `--json` to `today`, `search`, `summary`, `tasks`, `chats-log`, `usage`,
   `claude-status` and `export`, and read the JSON.
+- "What do I need to do today" (Vietnamese: "hôm nay tôi cần làm gì"): run
+  `tgkit today --json` and answer with a short list, most urgent first: tasks
+  due today, then people waiting for the user's answer, then the rest. Each
+  with who, which chat and when; add the `link` so the user can open it.
 - Freshness: every chat in the summary has `synced_at` and `stale`. If a chat
   is stale, or the user asks about today, run `tgkit sync` first (it only
   fetches new messages and never changes old ones), then answer.
@@ -46,6 +50,7 @@ it first: "run tgkit guide, then answer".
 
 | The user asks | Run |
 |---|---|
+| "what do I need to do today", "hôm nay tôi cần làm gì" | `tgkit today --json` (add `--lang vi` for Vietnamese group titles) |
 | "find / did anyone mention X" | `tgkit search "X" --json` (add `--chat "name"`, `--since 30d`) |
 | "not in my chats? search Telegram" | `tgkit search "X" --online` |
 | "what happened this week", "summarize" | `tgkit summary --json` (default: last 7 days) |
@@ -62,12 +67,12 @@ it first: "run tgkit guide, then answer".
 | "what files were sent in Y" | `tgkit media "Y"` |
 | "which chats do you have" | `tgkit chats` |
 | "get the latest messages" | `tgkit sync` |
-| "what did I ask in the TG Kit app", "continue what I asked there" | `tgkit chats-log --json` |
+| "what did I ask in the Telegram Assistant app", "continue what I asked there" | `tgkit chats-log --json` |
 | "save / send me that as a file" | `tgkit export search "X" --json` (also `summary`, `tasks`, `conversation <id>`) |
 | "the tasks as an Excel sheet" | `tgkit export tasks --format xlsx --json` |
 | "save the file X sent in chat Y" | `tgkit export file "Y" <message id> --json` |
-| "how many tokens did the TG Kit app use" | `tgkit usage --json` |
-| "is Claude connected in the TG Kit app" | `tgkit claude-status --json` |
+| "how many tokens did the Telegram Assistant app use" | `tgkit usage --json` |
+| "is Claude connected in the Telegram Assistant app" | `tgkit claude-status --json` |
 
 Chat names can be typed partly and without accents: `--chat "ke toan"`
 matches "Phòng Kế toán". Search also ignores accents when the words are typed
@@ -100,15 +105,25 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
   `source` (`message` or `manual`). `--chat` keeps only tasks from those
   chats, `--since` only tasks from that period. Listing tasks also saves
   newly found ones.
+- `today --json`: `{"kind": "today", "date", "me", "known_me", "total",
+  "counts", "stale", "groups": [...]}`. The groups, in this order: `tasks`
+  (open tasks for the user, due today first; `due_today`, `task` is the task
+  number), `asks` (questions and requests to the user from the last 24 hours
+  with no later message from the user in that chat), `today` (messages that
+  name today, today's date, or "tomorrow" written yesterday). Each group has
+  `title`, `total`, `items` (at most 8; each `chat`, `sender`, `time`, `text`,
+  `link`, `link_kind`) and `more` (how many were left out). It only reads:
+  it saves nothing, not even newly found tasks. If `known_me` is false, the
+  user's account is not known yet, so `asks` is empty: say so.
 - `chats-log --json`: `{"conversations": [...]}`, newest first; each has
   `id`, `title`, `created`, `updated` and `turns` (see below).
 - `export ... --json`: `{"path", "name", "folder"}` of the file it saved
   (Word `.docx` unless `--format xlsx|csv|md`; never overwrites a file).
-- `usage --json`: tokens used by Claude answers in the TG Kit window:
+- `usage --json`: tokens used by Claude answers in the Telegram Assistant window:
   `today`, `month`, `days`, `all` (each `answers`, `tokens`, `input`,
   `output`, `cache_read`, `cache_write`, and `cost_usd` only when Claude Code
   reported it, as its own estimate) and the daily `limit` the user set.
-  Search, summary, tasks and sync use no tokens.
+  Today, search, summary, tasks and sync use no tokens.
 - `claude-status --json`: `state` (`connected`, `not_logged_in`, `missing`,
   `unknown`), `version`, `account`, `plan`, the `model` and `effort` chosen
   for the app, and `fix` (steps in plain words).
@@ -118,7 +133,7 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
 
 ## Inside other work (reports, notes, drafts)
 
-TG Kit is a plain command, so any task can pull from it: a weekly report, a
+Telegram Assistant is a plain command, so any task can pull from it: a weekly report, a
 meeting prep note, a status update. Run the `--json` form of `summary`,
 `search` or `tasks` for the period the work covers, quote messages with their
 chat, sender and date, and check the `stale` flag first: when a chat is stale,
@@ -129,9 +144,9 @@ Telegram. When the user wants the result as a file to share, write it as a
 Word document (`.docx`), never Markdown: `tgkit export` makes one from a
 search, a summary or the task list, and tells you where it saved it.
 
-## The TG Kit app (what the user asked there)
+## The Telegram Assistant app (what the user asked there)
 
-The user may also ask questions in the TG Kit window (`tgkit app`, the
+The user may also ask questions in the Telegram Assistant window (`tgkit app`, the
 desktop icon). Each conversation there is saved in the data folder, and
 `tgkit chats-log --json` prints them, newest first: every question the user
 typed, the answer, which mode answered (`claude` or `offline`), the parsed
@@ -144,7 +159,8 @@ It is read-only; never edit the files under `app/` in the data folder.
 
 ## If `tgkit` is not found
 
-TG Kit is not installed on this computer, or the terminal was opened before
-it was installed. Ask the user to open a new terminal window; if that does not
-help, to run the installer again from the TG Kit folder (`Install-Windows.bat`
+Telegram Assistant (the `tgkit` command; called TG Kit up to version 0.2.5)
+is not installed on this computer, or the terminal was opened before it was
+installed. Ask the user to open a new terminal window; if that does not
+help, to run the installer again from the Telegram Assistant folder (`Install-Windows.bat`
 on Windows, `Install-Mac.command` on a Mac, `bash install.sh` on Linux).

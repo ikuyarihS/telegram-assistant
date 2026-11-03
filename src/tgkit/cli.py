@@ -12,19 +12,20 @@ from . import tasks as taskmod
 from .errors import UserError
 from .store import Store, atomic_write, local_time, matcher, parse_date, parse_since
 
-HELP = """TG Kit - search, summarize and track tasks from your Telegram chats.
+HELP = """Telegram Assistant - search, summarize and track tasks from your Telegram chats.
 
 Everyday:
+  tgkit today                     what do I need to do today (--lang vi, --json for Claude)
   tgkit search "words"            find messages in your chats (accents optional)
   tgkit summary                   what happened in the last 7 days
   tgkit summary "chat" --since 30d
   tgkit tasks                     your open tasks, found in your messages
   tgkit tasks done 3              mark task 3 done
   tgkit sync                      get new messages from Telegram
-  tgkit app                       open the TG Kit window: ask in your own words
+  tgkit app                       open the Telegram Assistant window: ask in your own words
 
 More:
-  tgkit chats-log                 what you asked in the TG Kit window (--json for Claude)
+  tgkit chats-log                 what you asked in the Telegram Assistant window (--json for Claude)
   tgkit tasks note 3 "text"       add a note to task 3   (also: add, drop, undo, mine, all)
   tgkit show "chat"               read the latest messages of a chat
   tgkit chats                     your chats and when they were last updated
@@ -36,13 +37,13 @@ More:
   tgkit logout                    log out of Telegram here (to stop, or to use another account)
   tgkit export search "words"     save results as a Word file (also: summary, tasks, conversation <id>,
                                   file "chat" <message id>; --format docx|xlsx|csv|md, --to folder)
-  tgkit usage                     tokens used by Claude answers in the TG Kit window (--json)
+  tgkit usage                     tokens used by Claude answers in the Telegram Assistant window (--json)
   tgkit claude-status             is Claude Code installed and logged in (--json)
   tgkit where                     where your data is kept
   tgkit guide                     the playbook for Claude Code: "run tgkit guide, then answer"
   tgkit                           (nothing else) opens a simple menu
 
-Add --json to search, summary or tasks for data that Claude can read.
+Add --json to today, search, summary or tasks for data that Claude can read.
 """
 
 
@@ -50,7 +51,7 @@ class Parser(argparse.ArgumentParser):
     def error(self, message):
         if "invalid choice" in message:
             bad = message.split("invalid choice:", 1)[1].split("(", 1)[0].strip()
-            message = f"{bad} is not a TG Kit command."
+            message = f"{bad} is not a Telegram Assistant command."
         print(f"Sorry, I did not understand that: {message}\nType: tgkit help", file=sys.stderr)
         raise SystemExit(2)
 
@@ -110,7 +111,7 @@ def cmd_where(args) -> int:
     print(f"Chats followed: {len(store.chat_dirs())}")
     print(f"Telegram codes saved: {'yes' if config.has_credentials(base, cfg) else 'no'}")
     print(f"Logged in on this computer: {'yes' if config.logged_in(base) else 'no'}")
-    print(f"TG Kit version {__version__}")
+    print(f"Telegram Assistant version {__version__}")
     return 0
 
 
@@ -297,8 +298,39 @@ def cmd_tasks(args) -> int:
     return 0
 
 
+def cmd_today(args) -> int:
+    """What do I need to do today. Read-only (never writes tasks.json), so Claude may run it."""
+    store = _store()
+    lang = "vi" if str(args.lang or "").lower().startswith("vi") else "en"
+    data = engine.today(store.home, store, lang)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+    print(engine.today_text(data, lang))
+    for g in data["groups"]:
+        if not g["total"]:
+            continue
+        print(f"\n{g['title']} ({g['total']})")
+        for i in g["items"]:
+            who = " ".join(x for x in [i.get("sender"), ("trong" if lang == "vi" else "in"), i.get("chat")]
+                           if x) if i.get("chat") else (i.get("sender") or "")
+            due = f"   ({'hạn' if lang == 'vi' else 'due'}: {i['due']})" if i.get("due") else ""
+            num = f"#{i['task']} " if i.get("task") else ""
+            print(f"  - {num}{i.get('time') or ''}  {who}: {i.get('text')}{due}".replace("  :", ":"))
+            if i.get("link"):
+                print(f"      {i['link']}")
+        if g["more"]:
+            print(f"  ... {'và' if lang == 'vi' else 'and'} {g['more']} "
+                  f"{'mục nữa' if lang == 'vi' else 'more'}")
+    return 0
+
+
 def cmd_sync(args) -> int:
+    from .store import OWNER_ENV, stop_check  # noqa: PLC0415
+
     net, ctx = _ctx()
+    # Started by the window: its Stop button asks this sync to end cleanly (store.STOP_FILE).
+    ctx.stop = stop_check(ctx.store.home, os.environ.get(OWNER_ENV))
     dirs = ctx.store.match(args.chat)
     return net.run(net.sync_chats(ctx, dirs, args.quiet, args.dry_run))
 
@@ -353,16 +385,16 @@ def cmd_chats_log(args) -> int:
                          ensure_ascii=False, indent=2))
         return 0
     if not items:
-        print("No conversations in the TG Kit app yet. Open it with: tgkit app")
+        print("No conversations in the Telegram Assistant app yet. Open it with: tgkit app")
         return 0
     if args.id:
         c = items[0]
         print(f"{c.get('title')}  ({local_time(c.get('created'))})")
         for t in c.get("turns") or []:
-            who = "You" if t.get("role") == "user" else f"TG Kit ({t.get('mode') or 'offline'})"
+            who = "You" if t.get("role") == "user" else f"Telegram Assistant ({t.get('mode') or 'offline'})"
             print(f"\n[{local_time(t.get('at'))}] {who}:\n{t.get('text') or ''}")
         return 0
-    print(f"Conversations in the TG Kit app ({len(items)}), newest first:")
+    print(f"Conversations in the Telegram Assistant app ({len(items)}), newest first:")
     for c in items:
         print(f"  {c['id']}  {local_time(c.get('updated'))}  {len(c.get('turns') or [])} turn(s)  "
               f"{c.get('title')}")
@@ -385,7 +417,7 @@ def cmd_logout(args) -> int:
         return 0
     ask = wizard.asker(input)
     print(f"Logged in to Telegram as {name}." if name else "This computer has a Telegram login.")
-    print("Logging out ends TG Kit's login here, on this computer only. Your Telegram app and your\n"
+    print("Logging out ends Telegram Assistant's login here, on this computer only. Your Telegram app and your\n"
           "messages on Telegram are not touched. Your api_id and api_hash stay saved: they work\n"
           "with any account.")
     if not args.yes and not _yes(ask("Log out now? Type yes, or press Enter to cancel: ")):
@@ -395,17 +427,17 @@ def cmd_logout(args) -> int:
     if not (args.keep_data or args.backup_data or args.yes):
         n = account.data_summary(base)["chats"]
         if n:
-            print(f"\nTG Kit has a copy of {n} chat(s) from this account. What should happen to it?\n"
+            print(f"\nTelegram Assistant has a copy of {n} chat(s) from this account. What should happen to it?\n"
                   "  1  Keep it (you can still search it; it gets new messages again only\n"
                   "     when you log in to this same account)\n"
-                  "  2  Move it to a backup folder inside your data folder, so TG Kit starts\n"
+                  "  2  Move it to a backup folder inside your data folder, so Telegram Assistant starts\n"
                   "     empty for another account. Nothing is deleted.")
             data = "backup" if ask("Type 1 or 2 (Enter = 1): ").strip() == "2" else "keep"
     res = account.logout(base, data)
     print("\nLogged out." if res["telegram"] else "\nLogged out on this computer.")
     if res["telegram_note"]:
         print(f"{res['telegram_note']} The login file was removed anyway. To be sure, open Telegram >\n"
-              "Settings > Devices and end the TG Kit session there.")
+              "Settings > Devices and end the Telegram Assistant session there.")
     if res["backup"]:
         print(f"Your chats, tasks and app conversations were moved to:\n  {res['backup']}")
     print("To log in again, with this or another account: tgkit setup")
@@ -429,7 +461,7 @@ def cmd_claude_status(args) -> int:
     if st["account"]:
         plan = f" ({st['plan']} plan)" if st["plan"] else ""
         print(f"  account {st['account']}{plan}")
-    print(f"  model for TG Kit answers: {st['model'] or 'Claude Code default'}"
+    print(f"  model for Telegram Assistant answers: {st['model'] or 'Claude Code default'}"
           + (f", effort {st['effort']}" if st["effort"] else ""))
     for i, step in enumerate(st.get("fix") or [], 1):
         print(f"  {i}. {step}")
@@ -463,7 +495,7 @@ def cmd_usage(args) -> int:
     if lim["limit"]:
         print(f"  Daily limit you set: {_n(lim['limit'])} tokens"
               + (" (reached)" if lim["reached"] else "")
-              + (", then TG Kit answers without Claude" if lim["hard"] else ", a warning only"))
+              + (", then Telegram Assistant answers without Claude" if lim["hard"] else ", a warning only"))
     return 0
 
 
@@ -482,7 +514,7 @@ def cmd_export(args) -> int:
         path = export.save_attachment(base, dirs[0].name, rest[1], args.to)
     else:
         if what not in ("search", "summary", "tasks", "conversation"):
-            raise UserError(f"TG Kit cannot export '{what}'.",
+            raise UserError(f"Telegram Assistant cannot export '{what}'.",
                             'Try: tgkit export search "words", tgkit export summary, tgkit export tasks, '
                             "tgkit export conversation <id>")
         kw = {"chat": args.chat, "since": args.since, "lang": args.lang}
@@ -574,6 +606,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_tasks)
 
+    p = sub.add_parser("today", aliases=["hom-nay"])
+    p.add_argument("--lang", default="en", help="en or vi")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_today)
+
     p = sub.add_parser("sync", aliases=["update"])
     p.add_argument("chat", nargs="?")
     p.add_argument("--chat", dest="chat_opt")
@@ -623,7 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--chat")
     p.add_argument("--since")
     p.add_argument("--format", default="docx", help="docx (default), xlsx, csv or md")
-    p.add_argument("--to", help="the folder to save in (default: the one set in the app, or Documents/TG Kit)")
+    p.add_argument("--to", help="the folder to save in (default: the one set in the app, or Documents/Telegram Assistant)")
     p.add_argument("--lang", default="en", help="en or vi: the language of the headings")
     p.add_argument("--no-reveal", action="store_true", help="do not open the folder afterwards")
     p.add_argument("--json", action="store_true")
@@ -643,7 +680,7 @@ def _crash_log(exc: BaseException) -> str | None:
 
 
 _FRIENDLY = {
-    "FloodWaitError": ("Telegram asked TG Kit to slow down.", "Please wait a few minutes and try again."),
+    "FloodWaitError": ("Telegram asked Telegram Assistant to slow down.", "Please wait a few minutes and try again."),
     "AuthKeyUnregisteredError": ("Your Telegram login on this computer has ended.", "Run: tgkit setup"),
     "SessionRevokedError": ("Your Telegram login on this computer was closed.", "Run: tgkit setup"),
     "AuthKeyDuplicatedError": ("Your Telegram login file was used on two computers at once.", "Run: tgkit setup"),
@@ -653,8 +690,8 @@ _FRIENDLY = {
     "PhoneCodeInvalidError": ("That login code was not right.", "Run tgkit setup again."),
     "PhoneCodeExpiredError": ("That login code has expired.", "Run tgkit setup again to get a new one."),
     "PasswordHashInvalidError": ("That two-step password was not right.", "Run tgkit setup again."),
-    # sqlite3 "database is locked": another TG Kit client had the login file open
-    "OperationalError": ("TG Kit is still busy with Telegram (getting new messages or copying chats).",
+    # sqlite3 "database is locked": another Telegram Assistant client had the login file open
+    "OperationalError": ("Telegram Assistant is still busy with Telegram (getting new messages or copying chats).",
                          "Wait a moment and try again."),
 }
 
@@ -693,9 +730,9 @@ def main(argv=None) -> int:
     try:
         if os.environ.get(READONLY_ENV) and _writes(func, args):
             raise UserError(
-                "TG Kit is read-only here: it was started by Claude in the TG Kit window, "
+                "Telegram Assistant is read-only here: it was started by Claude in the Telegram Assistant window, "
                 "so it does not change tasks, sync, add chats, set up, log out or save files.",
-                "Use the buttons in the TG Kit window for that.",
+                "Use the buttons in the Telegram Assistant window for that.",
             )
         return func(args) or 0
     except UserError as exc:
@@ -712,10 +749,10 @@ def main(argv=None) -> int:
         if friendly:
             print("\n".join(friendly), file=sys.stderr)
             return 1
-        log = _crash_log(exc)
-        print(f"Sorry, something went wrong: {type(exc).__name__}: {exc}", file=sys.stderr)
+        log = _crash_log(exc)  # the kind of error and its detail go to the file, never the screen
+        print("Sorry, something went wrong.", file=sys.stderr)
         if log:
-            print(f"The details were saved in {log}. Send that file to whoever gave you TG Kit.",
+            print(f"The details were saved in {log}. Send that file to whoever gave you Telegram Assistant.",
                   file=sys.stderr)
         return 1
 

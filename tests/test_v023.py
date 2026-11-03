@@ -440,7 +440,7 @@ def test_save_attachment_copies_only_local_files(home, tg, tmp_path):
 
 def test_safe_names():
     assert export.safe_name('Tìm kiếm: "biên bản" 2026-11-02') == "Tìm kiếm biên bản 2026-11-02"
-    assert export.safe_name("CON") == "TG Kit CON"
+    assert export.safe_name("CON") == "Telegram Assistant CON"
     assert export.safe_name("a/b\\c?.") == "a b c"
 
 
@@ -982,7 +982,7 @@ def test_wrong_login_code_is_a_handled_answer_in_the_window_language(home, serve
     code, body = call_lang(base, "/api/setup/code", {"code": "11111"}, "en")
     assert json.loads(body)["message"] == "That login code was not right."
     code, body = call_lang(base, "/api/settings", {"model": "gpt-9"}, "vi")
-    assert json.loads(body)["message"] == "'gpt-9' không phải mô hình TG Kit chọn được."
+    assert json.loads(body)["message"] == "'gpt-9' không phải mô hình Telegram Assistant chọn được."
     assert call(base, "/api/setup/cancel", {})[0] == 200
 
 

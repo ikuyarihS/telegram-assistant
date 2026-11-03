@@ -1,4 +1,4 @@
-"""TG Kit's log file: <data folder>/app/logs/tgkit.log, rotated (1 MB, 3 old files kept).
+"""Telegram Assistant's log file: <data folder>/app/logs/tgkit.log, rotated (1 MB, 3 old files kept).
 
 Every caught error that is not a plain UserError is written here with its full
 traceback, by the window, the setup in the window, a sync and the CLI, so a
@@ -112,8 +112,8 @@ def diagnostics(home, facts: dict) -> str:
         tele = telethon.__version__
     except Exception:  # noqa: BLE001
         tele = "not installed"
-    out = ["TG Kit diagnostics",
-           f"TG Kit {__version__}, Python {platform.python_version()}, Telethon {tele}",
+    out = ["Telegram Assistant diagnostics",
+           f"Telegram Assistant {__version__}, Python {platform.python_version()}, Telethon {tele}",
            f"System: {platform.platform()} ({sys.platform}, pid {os.getpid()})",
            f"Data folder: {home}",
            f"Log file: {log_path(home)}"]

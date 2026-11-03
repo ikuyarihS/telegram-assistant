@@ -9,13 +9,14 @@ in the user's language plus result cards the UI draws.
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config, digest
 from . import tasks as taskmod
 from .errors import UserError
 from .intent import Intent
-from .store import Store, local_time, matcher, parse_date, parse_since, thread_of
+from .store import Store, fold, local_time, matcher, parse_date, parse_since, thread_of
 
 SEARCH_LIMIT = 30
 CARD_LIST_MAX = 8
@@ -156,6 +157,172 @@ def set_task(base: Path, ident, status: str) -> dict:
     return t
 
 
+# ------------------------------------------------------------------ today
+
+TODAY_MAX = 8  # items shown per group; the rest is counted ("and N more"), never dropped silently
+ASK_HOURS = 24  # how far back "people waiting for your answer" looks
+_TODAY_CUE = re.compile(r"\b(hom nay|hnay|today|tonight|toi nay|sang nay|chieu nay|trua nay|trong ngay|"
+                        r"cuoi ngay|eod|end of (?:the )?day)\b")
+_TOMORROW_CUE = re.compile(r"\b(ngay mai|mai nhe|sang mai|chieu mai|toi mai|tomorrow)\b")
+_QUESTION = re.compile(r"\?|\b(khong|ko|chua|duoc khong|the nao|bao gio|luc nao|o dau|can you|could you|"
+                       r"would you|please|pls|nho|giup|gui|check)\b")
+_TODAY_GROUPS = {
+    "tasks": ("Việc của bạn", "Your open tasks"),
+    "asks": ("Đang chờ bạn trả lời", "Waiting for your answer"),
+    "today": ("Nhắc đến hôm nay", "Mentioned for today"),
+}
+
+
+def _today_date_cue(local_day) -> re.Pattern:
+    """Today's date written the Vietnamese way (day first): 3/11, 03/11, 3-11-2026."""
+    return re.compile(rf"(?<![\d/.-])0?{local_day.day}[/.-]0?{local_day.month}(?!\d)")
+
+
+def _item(store: Store, d: Path, r: dict, why: str) -> dict:
+    text = (r.get("text") or "").replace("\n", " ")
+    return {"chat": store.title(d), "folder": d.name, "id": r.get("id"), "date": r.get("date"),
+            "time": local_time(r.get("date")), "sender": store.sender_name(r.get("sender_id")),
+            "text": text[:240] + ("..." if len(text) > 240 else ""), "why": why,
+            **store.link_info(d, r.get("id"))}
+
+
+def today(base: Path, store: Store, lang: str = "en", now: datetime | None = None) -> dict:
+    """What do I need to do today. Only READS: tasks.json and the chats are never written
+    (a task-like message not in the list yet is shown, not saved). Three groups, each
+    filtered first and only then cut to TODAY_MAX, with `more` saying how many were left out:
+
+      tasks  open tasks for me (tasks.json), and task-like messages to me from the last
+             2 days not in the list yet; due today first
+      asks   questions and requests to me from the last 24 hours with no later message
+             from me in that chat (a private chat, a reply to me, or an @mention of me)
+      today  messages that name today: "hôm nay", "today", today's date, or "ngày mai" /
+             "tomorrow" written yesterday
+    """
+    now = now or datetime.now(timezone.utc)
+    local_now = now.astimezone()
+    day = local_now.date()
+    start_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_yesterday = start_today - timedelta(days=1)
+    cfg = config.load(base) if config.config_path(base).exists() else {}
+    me = cfg.get("me") or {}
+    my_id, my_user = me.get("id"), (me.get("username") or "").lower()
+    date_cue = _today_date_cue(day)
+    dirs = store.chat_dirs()
+    seen: set = set()
+
+    def mentions_today(text: str, when) -> bool:
+        f = fold(text)
+        if when is not None and when >= start_today and _TODAY_CUE.search(f):
+            return True
+        if when is not None and start_yesterday <= when < start_today and _TOMORROW_CUE.search(f):
+            return True
+        return bool(when is not None and when >= start_today - timedelta(days=7) and date_cue.search(text))
+
+    # tasks: the list as saved, plus what a scan would add (read only)
+    tl = taskmod.TaskList(base)
+    task_items = []
+    for t in tl.select("mine"):
+        when = parse_date(t.get("date"))
+        due_today = bool(t.get("due") and mentions_today(t.get("due") or "", now)) or bool(
+            when and mentions_today(t.get("text") or "", when))
+        item = {"chat": t.get("chat"), "folder": t.get("folder"), "id": t.get("msg_id"), "task": t.get("id"),
+                "date": t.get("date"), "time": local_time(t.get("date")) if t.get("date") else None,
+                "sender": t.get("sender"), "text": (t.get("text") or "")[:240], "due": t.get("due"),
+                "due_today": due_today, "why": "task", "link": None, "link_kind": "none"}
+        if t.get("folder") and (store.chats / t["folder"]).is_dir() and t.get("msg_id") is not None:
+            item.update(store.link_info(store.chats / t["folder"], t.get("msg_id")))
+        task_items.append(item)
+        seen.add((t.get("folder"), t.get("msg_id")))
+    for t in tl.find(store, dirs, now - timedelta(days=2), me):
+        if not t.get("for_me") or (t["folder"], t["msg_id"]) in seen:
+            continue
+        d = store.chats / t["folder"]
+        when = parse_date(t.get("date"))
+        task_items.append({**_item(store, d, {"id": t["msg_id"], "date": t["date"], "text": t["text"],
+                                               "sender_id": None}, "task-new"),
+                           "sender": t.get("sender"), "due": t.get("due"),
+                           "due_today": bool(when and mentions_today(t.get("text") or "", when))})
+        seen.add((t["folder"], t["msg_id"]))
+    task_items.sort(key=lambda i: (not i.get("due_today"), -(parse_date(i.get("date")) or now).timestamp()))
+
+    asks, mentioned = [], []
+    since_ask = now - timedelta(hours=ASK_HOURS)
+    for d in dirs:
+        rs = store.rows(d)
+        dm = store.meta(d).get("type") == "User"
+        by_id = {r.get("id"): r for r in rs}
+        my_last = max((parse_date(r.get("date")) for r in rs
+                       if my_id is not None and r.get("sender_id") == my_id and parse_date(r.get("date"))),
+                      default=None)
+        for r in rs:
+            when = parse_date(r.get("date"))
+            if when is None or when < start_yesterday - timedelta(days=6):
+                continue
+            key = (d.name, r.get("id"))
+            if key in seen:
+                continue
+            text = r.get("text") or ""
+            mine = my_id is not None and r.get("sender_id") == my_id
+            if (not mine and my_id is not None and when >= since_ask and (my_last is None or my_last < when)
+                    and _QUESTION.search(fold(text))):
+                parent = by_id.get(r.get("reply_to_msg_id")) or {}
+                to_me = (dm or parent.get("sender_id") == my_id
+                         or bool(my_user and f"@{my_user}" in text.lower()))
+                if to_me:
+                    asks.append(_item(store, d, r, "ask"))
+                    seen.add(key)
+                    continue
+            if text and mentions_today(text, when):
+                mentioned.append(_item(store, d, r, "today"))
+                seen.add(key)
+    newest = lambda i: -(parse_date(i.get("date")) or now).timestamp()  # noqa: E731
+    asks.sort(key=newest)
+    mentioned.sort(key=newest)
+
+    groups = []
+    for key, items in (("tasks", task_items), ("asks", asks), ("today", mentioned)):
+        vi, en = _TODAY_GROUPS[key]
+        groups.append({"key": key, "title": vi if lang == "vi" else en, "total": len(items),
+                       "items": [i for i in items[:TODAY_MAX]], "more": max(0, len(items) - TODAY_MAX)})
+    state = store.sync_state()
+    stale = [store.title(d) for d in dirs if store.is_stale(store.synced_at(d, state))]
+    return {"kind": "today", "date": day.isoformat(), "me": me.get("name"), "known_me": my_id is not None,
+            "groups": groups, "counts": {g["key"]: g["total"] for g in groups},
+            "total": sum(g["total"] for g in groups), "stale": stale}
+
+
+def today_card(data: dict) -> dict:
+    return {"type": "today", "date": data.get("date"), "groups": data.get("groups") or [],
+            "total": data.get("total", 0), "stale": data.get("stale") or []}
+
+
+def today_text(data: dict, lang: str) -> str:
+    c = data.get("counts") or {}
+    t, a, m = c.get("tasks", 0), c.get("asks", 0), c.get("today", 0)
+    if not data.get("total"):
+        text = _t(lang, "Hôm nay chưa thấy việc nào cần bạn làm trong các nhóm đã sao chép.",
+                  "Nothing for you to do today in the chats copied so far.")
+    else:
+        parts_vi, parts_en = [], []
+        if t:
+            parts_vi.append(f"{t} việc của bạn")
+            parts_en.append(f"{t} open task{'s' if t != 1 else ''}")
+        if a:
+            parts_vi.append(f"{a} tin đang chờ bạn trả lời")
+            parts_en.append(f"{a} message{'s' if a != 1 else ''} waiting for your answer")
+        if m:
+            parts_vi.append(f"{m} tin nhắc đến hôm nay")
+            parts_en.append(f"{m} mentioned for today")
+        text = _t(lang, "Hôm nay: " + ", ".join(parts_vi) + ".", "Today: " + ", ".join(parts_en) + ".")
+    if not data.get("known_me"):
+        text += _t(lang, " Chưa biết tài khoản của bạn, nên chưa thể biết ai đang chờ bạn trả lời.",
+                   " Your account is not known yet, so messages waiting for your answer cannot be found.")
+    if data.get("stale"):
+        text += _t(lang, " Vài nhóm chưa cập nhật hơn 12 giờ; bấm Lấy tin mới.",
+                   " Some chats were last updated more than 12 hours ago; press Get new messages.")
+    return text
+
+
 # ------------------------------------------------------------------ thread
 
 
@@ -163,7 +330,7 @@ def thread(store: Store, folder: str, msg_id: int, around: int = 3) -> list[dict
     """The reply thread of one message; when it has no replies, the messages around it."""
     d = store.chats / folder
     if folder not in {x.name for x in store.chat_dirs()}:
-        raise UserError("That chat is not in TG Kit.", "Pick a message from the results again.")
+        raise UserError("That chat is not in Telegram Assistant.", "Pick a message from the results again.")
     rs = store.rows(d)
     picked = thread_of(rs, msg_id)
     if len(picked) < 2:
@@ -278,6 +445,8 @@ def card_from_json(command: str, data) -> dict | None:
         card = hits_card(data)
     elif "chats" in data and "window" in data:
         card = summary_card(data)
+    elif data.get("kind") == "today" and isinstance(data.get("groups"), list):
+        card = today_card(data)
     elif isinstance(data.get("tasks"), list):
         which = "mine" if " mine" in command else "all" if " all" in command else "open"
         card = tasks_card(data["tasks"], which)
@@ -390,6 +559,11 @@ def answer(base: Path, store: Store, it: Intent) -> dict:
         cards = [{**tasks_card(rows, it.which),
                   "source": {"kind": "tasks", "which": it.which, "chat": it.chat, "since": it.since}}] if rows else []
         return {"text": head, "cards": cards, "action": None}
+
+    if it.kind == "today":  # offline, zero tokens: the same data `tgkit today --json` prints
+        data = today(base, store, lang)
+        return {"text": today_text(data, lang), "cards": [today_card(data)] if data["total"] else [],
+                "action": None}
 
     if it.kind == "chats":
         items = chat_list(store)

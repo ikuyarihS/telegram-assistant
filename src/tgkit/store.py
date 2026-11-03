@@ -122,7 +122,7 @@ class SyncLock:
 
     def _busy(self) -> UserError:
         return UserError(
-            "Another TG Kit sync is already running for this data folder.",
+            "Another Telegram Assistant sync is already running for this data folder.",
             "Wait for it to finish, then try again.",
         )
 
@@ -204,6 +204,28 @@ STUCK_AFTER = 180
 # so the window knows its own sync even when a launcher put a process in between.
 OWNER_ENV = "TGKIT_LOCK_OWNER"
 LOGIN_STUCK_AFTER = 15 * 60
+# Stop for a running `tgkit sync` the window started: the window writes its token
+# into this file; that sync (and only it: the token must match) ends cleanly.
+STOP_FILE = "sync.stop"
+
+
+def stop_check(home: Path, owner: str | None, every: float = 0.5):
+    """A stop() for net.Ctx: True once STOP_FILE holds `owner`. Looks at most every
+    `every` seconds, so asking for every message costs nothing."""
+    if not owner:
+        return lambda: False
+    path, seen = Path(home) / STOP_FILE, {"at": 0.0, "stop": False}
+
+    def stop() -> bool:
+        now = time.monotonic()
+        if not seen["stop"] and now - seen["at"] >= every:
+            seen["at"] = now
+            try:
+                seen["stop"] = path.read_text(encoding="utf-8").strip() == owner
+            except OSError:
+                pass
+        return seen["stop"]
+    return stop
 
 
 def pid_alive(pid) -> bool:
@@ -294,7 +316,7 @@ class TasksLock(SyncLock):
 
     def _busy(self) -> UserError:
         return UserError(
-            "The task list is busy: another TG Kit is changing it.",
+            "The task list is busy: another Telegram Assistant is changing it.",
             "Try again in a moment.",
         )
 
@@ -315,7 +337,7 @@ class SessionLock(SyncLock):
 
     def _busy(self) -> UserError:
         return UserError(
-            "TG Kit is still busy with Telegram (getting new messages or copying chats).",
+            "Telegram Assistant is still busy with Telegram (getting new messages or copying chats).",
             "Wait a moment and try again.",
         )
 
@@ -327,8 +349,12 @@ def read_json(path: Path, default):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        # plain words only (the kind of error goes to the log file)
+        from . import applog  # noqa: PLC0415
+
+        applog.caught(f"reading {path.name}", exc)
         raise UserError(
-            f"The file {path} could not be read ({type(exc).__name__}). Nothing was changed.",
+            f"The file {path} could not be read: it is damaged or in use. Nothing was changed.",
             f"Rename or fix {path.name} and try again.",
         ) from None
 
@@ -446,9 +472,9 @@ def describe_since(text: str | None, default: str | None = None) -> str:
 #                                            (channels and supergroups only)
 #   tg://resolve?domain=<username>           every app, the chat of that username
 # tg://user?id= and tg://openmessage have no handler in Telegram Desktop (they fall
-# to its unknown-link prompt), so TG Kit never makes them. Private chats and basic
+# to its unknown-link prompt), so Telegram Assistant never makes them. Private chats and basic
 # groups have no message links in Telegram at all; one without a username has no
-# link TG Kit can give: the window and the exports say to find it in Telegram.
+# link Telegram Assistant can give: the window and the exports say to find it in Telegram.
 
 USERNAME_RE = re.compile(r"[A-Za-z0-9_]{4,64}")
 # kind of a link: "message" opens that message, "chat" opens only the chat,
@@ -566,7 +592,7 @@ class Store:
         dirs = self.chat_dirs()
         if not dirs:
             raise UserError(
-                "You have no chats in TG Kit yet.",
+                "You have no chats in Telegram Assistant yet.",
                 "Run: tgkit setup   (or: tgkit add) to pick the chats to follow.",
             )
         if not pattern:

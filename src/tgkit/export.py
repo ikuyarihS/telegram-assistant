@@ -5,7 +5,7 @@ Formats: .docx (the default: files people share go out as Word documents),
 plain Python (zip + XML), so nothing extra has to be installed, and every
 string stays Unicode end to end: Vietnamese diacritics come out intact.
 
-Files go to the folder chosen in the app's Settings, or Documents/TG Kit. A
+Files go to the folder chosen in the app's Settings, or Documents/Telegram Assistant. A
 file is never overwritten: a second export gets " (2)" in its name.
 
 It only READS the local copy: no export changes a chat, a task or a setting.
@@ -39,7 +39,7 @@ _L = {
         "file": "File", "no": "No.", "task": "Task", "status": "Status", "due": "Due",
         "for_you": "For you", "notes": "Notes", "time": "Time", "who": "Who", "text": "Text",
         "kind": "Kind", "you": "You", "yes": "yes", "messages": "messages", "words": "every word, in any order",
-        "exported": "Exported from TG Kit on", "in_chat": "Chats matching", "period": "Period",
+        "exported": "Exported from Telegram Assistant on", "in_chat": "Chats matching", "period": "Period",
         "people": "People", "threads": "Busiest conversations", "questions": "Questions",
         "decisions": "Possible decisions (check what each one replies to)", "requests": "Requests and to-dos",
         "links": "Links", "files": "Files", "replying": "replying to", "not_local": "a message not in the local copy",
@@ -55,7 +55,7 @@ _L = {
         "file": "Tệp", "no": "Số", "task": "Việc", "status": "Trạng thái", "due": "Hạn",
         "for_you": "Của bạn", "notes": "Ghi chú", "time": "Thời gian", "who": "Ai", "text": "Nội dung",
         "kind": "Loại", "you": "Bạn", "yes": "có", "messages": "tin nhắn", "words": "đủ các từ, không theo thứ tự",
-        "exported": "Xuất từ TG Kit lúc", "in_chat": "Nhóm khớp với", "period": "Khoảng thời gian",
+        "exported": "Xuất từ Telegram Assistant lúc", "in_chat": "Nhóm khớp với", "period": "Khoảng thời gian",
         "people": "Người nhắn", "threads": "Trao đổi nhiều nhất", "questions": "Câu hỏi",
         "decisions": "Có thể đã chốt (xem tin được trả lời trước khi dùng)", "requests": "Yêu cầu và việc cần làm",
         "links": "Liên kết", "files": "Tệp", "replying": "trả lời", "not_local": "một tin không có trong bản sao",
@@ -109,7 +109,7 @@ def _link(url, L: dict, kind: str | None = None, name: str | None = None) -> dic
 
 
 def _row_link(store: Store | None, folder, msg_id, L: dict, have=None, kind=None, name=None):
-    """The link cell of one row. A chat still in TG Kit: its link as it is now (a
+    """The link cell of one row. A chat still in Telegram Assistant: its link as it is now (a
     saved card can hold a link an earlier build made); else the row's own link,
     never a form Telegram Desktop cannot open."""
     d = store.chats / str(folder) if store is not None and folder else None
@@ -309,7 +309,7 @@ def conversation_doc(base: Path, ident: str, lang="en") -> dict:
         if turn.get("role") == "user":
             who = L["you"]
         else:
-            who = "TG Kit (" + ("Claude" if turn.get("mode") == "claude" else "offline") + ")"
+            who = "Telegram Assistant (" + ("Claude" if turn.get("mode") == "claude" else "offline") + ")"
             if turn.get("model"):
                 who += f", {turn['model']}"
         when = _lt(turn.get("at"))
@@ -343,7 +343,7 @@ def build(base: Path, kind: str, *, query=None, chat=None, since=None, which="op
         return tasks_doc(base, store, which, chat, since, lang)
     if kind == "conversation":
         return conversation_doc(base, conversation or "", lang)
-    raise UserError(f"TG Kit cannot export '{kind}'.", "Export a conversation, a search, a summary or the tasks.")
+    raise UserError(f"Telegram Assistant cannot export '{kind}'.", "Export a conversation, a search, a summary or the tasks.")
 
 
 # ------------------------------------------------------------------ writers
@@ -434,7 +434,7 @@ _STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:pPr><w:spacing w:after="60"/><w:ind w:left="360" w:hanging="240"/></w:pPr></w:style>
 <w:style w:type="paragraph" w:styleId="TableText"><w:name w:val="Table Text"/><w:basedOn w:val="Normal"/>
 <w:pPr><w:spacing w:after="0" w:line="252" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr></w:style>
-<w:style w:type="table" w:styleId="TGTable"><w:name w:val="TG Kit Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/></w:tblPr></w:style>
+<w:style w:type="table" w:styleId="TGTable"><w:name w:val="Telegram Assistant Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/></w:tblPr></w:style>
 </w:styles>"""
 
 
@@ -499,7 +499,7 @@ def to_docx(doc: dict) -> bytes:
             '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
             'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
             'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-            f'<dc:title>{_x(doc["title"])}</dc:title><dc:creator>TG Kit</dc:creator>'
+            f'<dc:title>{_x(doc["title"])}</dc:title><dc:creator>Telegram Assistant</dc:creator>'
             f'<dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created></cp:coreProperties>'),
     }
     return _zip(files)
@@ -548,7 +548,7 @@ def to_xlsx(doc: dict) -> bytes:
              'state="frozen"/></sheetView></sheetViews>'
              f'<cols>{cols}</cols><sheetData>{"".join(sheet_rows)}</sheetData>'
              f'<autoFilter ref="A1:{last}"/></worksheet>')
-    name = re.sub(r"[\[\]:*?/\\]", " ", doc.get("title") or "TG Kit").strip()[:31] or "TG Kit"
+    name = re.sub(r"[\[\]:*?/\\]", " ", doc.get("title") or "Telegram Assistant").strip()[:31] or "Telegram Assistant"
     files = {
         "[Content_Types].xml": (
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -686,7 +686,7 @@ def documents() -> Path:
 
 
 def default_dir() -> Path:
-    return documents() / "TG Kit"
+    return documents() / "Telegram Assistant"
 
 
 def export_dir(base: Path) -> Path:
@@ -706,7 +706,7 @@ def safe_name(text: str, limit: int = 80) -> str:
     name = re.sub(r"\s+", " ", name).strip().strip(".")
     name = name[:limit].rstrip(" .")
     if not name or name.split(".")[0].upper() in _RESERVED:
-        name = f"TG Kit {name}".strip()
+        name = f"Telegram Assistant {name}".strip()
     return name
 
 
@@ -728,14 +728,14 @@ def _write_new(folder: Path, stem: str, ext: str, data: bytes) -> Path:
 def _folder(base: Path, folder) -> Path:
     target = Path(folder).expanduser() if folder else export_dir(base)
     if not target.is_absolute():
-        raise UserError(f"'{folder}' is not a full folder path.", r"Use a full path, like C:\Users\you\Documents\TG Kit")
+        raise UserError(f"'{folder}' is not a full folder path.", r"Use a full path, like C:\Users\you\Documents\Telegram Assistant")
     return target
 
 
 def save(base: Path, doc: dict, fmt: str = "docx", folder=None) -> Path:
     fmt = (fmt or "docx").lower().lstrip(".")
     if fmt not in WRITERS:
-        raise UserError(f"TG Kit cannot save .{fmt} files.", "Choose docx (Word), xlsx (Excel), csv or md.")
+        raise UserError(f"Telegram Assistant cannot save .{fmt} files.", "Choose docx (Word), xlsx (Excel), csv or md.")
     stem = safe_name(f"{doc['title']} {datetime.now().strftime('%Y-%m-%d')}")
     try:
         return _write_new(_folder(base, folder), stem, fmt, WRITERS[fmt](doc))
@@ -749,7 +749,7 @@ def save_attachment(base: Path, folder: str, msg_id, dest=None) -> Path:
     store = Store(base)
     names = {d.name for d in store.chat_dirs()}
     if folder not in names:
-        raise UserError("That chat is not in TG Kit.", "Pick the file from the results again.")
+        raise UserError("That chat is not in Telegram Assistant.", "Pick the file from the results again.")
     try:
         ident = int(msg_id)
     except (TypeError, ValueError):
@@ -763,7 +763,7 @@ def save_attachment(base: Path, folder: str, msg_id, dest=None) -> Path:
     if not src or not src.is_relative_to(root) or not src.is_file():
         name = (row.get("media") or {}).get("file_name") or "this file"
         raise UserError(f"{name} is not on this computer.",
-                        "TG Kit only copies files it got during sync (big files are skipped). "
+                        "Telegram Assistant only copies files it got during sync (big files are skipped). "
                         "Open the message in Telegram to download it.")
     target = _folder(base, dest)
     target.mkdir(parents=True, exist_ok=True)

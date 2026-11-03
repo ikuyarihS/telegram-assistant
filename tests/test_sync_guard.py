@@ -194,7 +194,7 @@ def test_add_refuses_existing_folder(home, monkeypatch):
     client = FakeClient({"x": [Msg(1)]})
     with pytest.raises(UserError) as exc:
         asyncio.run(net.add_chat(client, ctx, entity, "Du an Alpha", 100))
-    assert "already in TG Kit" in exc.value.message
+    assert "already in Telegram Assistant" in exc.value.message
     assert path.read_bytes() == before
 
 

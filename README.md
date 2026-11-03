@@ -1,6 +1,7 @@
-# TG Kit
+# Telegram Assistant
 
-TG Kit is a small helper for your own Telegram chats. It:
+Telegram Assistant (called TG Kit up to version 0.2.5; the command is still
+`tgkit`) is a small helper for your own Telegram chats. It:
 
 - **searches** your chats, even when you type without Vietnamese accents
   ("bien ban" finds "Biên bản");
@@ -28,49 +29,49 @@ you can simply ask Claude about your chats in your own words.
 
 ## Install on Windows
 
-1. Download TG Kit and unzip it into a folder you will keep, for example
-   `Documents\TG Kit`. (Do not run it from inside the zip file.)
+1. Download Telegram Assistant and unzip it into a folder you will keep, for example
+   `Documents\Telegram Assistant`. (Do not run it from inside the zip file.)
 2. Open that folder and double-click **`Install-Windows.bat`**.
 3. If Windows shows a blue "Windows protected your PC" window, click
    **More info**, then **Run anyway**.
-4. If TG Kit says Python is missing, type `Y` and press Enter to install it
+4. If Telegram Assistant says Python is missing, type `Y` and press Enter to install it
    (or install it from https://www.python.org/downloads/ and tick
    **Add python.exe to PATH** on the first screen, then double-click
    `Install-Windows.bat` again).
 5. Wait about a minute while it installs. The first-time setup then starts by
    itself: go on with [First-time setup](#first-time-setup) below.
 
-When it is done you have a **TG Kit** icon on your desktop and in the Start
-menu. It opens the TG Kit window (see [The TG Kit window](#the-tg-kit-window)).
+When it is done you have a **Telegram Assistant** icon on your desktop and in the Start
+menu. It opens the Telegram Assistant window (see [The Telegram Assistant window](#the-telegram-assistant-window)).
 
 ## Install on a Mac
 
-1. Download TG Kit and unzip it into a folder you will keep, for example
-   `Documents/TG Kit`.
+1. Download Telegram Assistant and unzip it into a folder you will keep, for example
+   `Documents/Telegram Assistant`.
 2. If you do not have Python yet: open https://www.python.org/downloads/ ,
    click the big yellow download button and install it like any other app.
-3. In the TG Kit folder, **right-click** `Install-Mac.command` and choose
+3. In the Telegram Assistant folder, **right-click** `Install-Mac.command` and choose
    **Open** (the first time a Mac asks you to confirm files from the internet;
    click **Open** again).
    If the Mac says the file cannot be opened, open **Terminal**, type `bash `
-   (with a space), drag `install.sh` from the TG Kit folder into the window,
+   (with a space), drag `install.sh` from the Telegram Assistant folder into the window,
    and press Enter.
 4. Wait about a minute while it installs. The first-time setup then starts by
    itself: go on with [First-time setup](#first-time-setup) below.
 
 ## Install on Linux
 
-1. Download TG Kit and unzip it into a folder you will keep.
+1. Download Telegram Assistant and unzip it into a folder you will keep.
 2. Make sure Python 3.10 or newer is installed (on Ubuntu or Debian:
    `sudo apt install python3 python3-venv`).
-3. Open a terminal in the TG Kit folder and type: `bash install.sh`
+3. Open a terminal in the Telegram Assistant folder and type: `bash install.sh`
 4. The first-time setup then starts by itself.
 
 ---
 
 ## First-time setup
 
-**The easy way: in the TG Kit window.** Open TG Kit and press **Connect to
+**The easy way: in the Telegram Assistant window.** Open Telegram Assistant and press **Connect to
 Telegram**. The same steps as below appear in the window, one at a time: a
 button opens my.telegram.org, you paste the two codes, type your phone number,
 the login code (and your two-step password, if you have one), then tick the
@@ -82,32 +83,32 @@ and start again later with `tgkit setup` (or option 7 in the menu).
 
 1. **Where to keep your data.** Press Enter to use the suggested folder, or
    type another folder (for example on a bigger drive).
-2. **Connect TG Kit to Telegram.** Telegram gives every user two free codes,
+2. **Connect Telegram Assistant to Telegram.** Telegram gives every user two free codes,
    called `api_id` and `api_hash`. To get yours:
    1. Open https://my.telegram.org in your web browser.
    2. Type your phone number. Telegram sends a code to your Telegram app;
       type it on the web page.
    3. Click **API development tools**.
    4. If it asks you to create an app, type any App title (for example
-      `My TG Kit`) and any Short name (for example `mytgkit`), then click
+      `My Assistant`) and any Short name (for example `mytgkit`), then click
       **Create application**.
    5. Copy **App api_id** (a number) and **App api_hash** (a long code) into
-      TG Kit when it asks.
+      Telegram Assistant when it asks.
 
    Keep these two codes private, like a password.
 3. **Log in.** Type your phone number with the country code (for example
    `+84 912 345 678`). Telegram sends a login code to your Telegram app; type
-   it in TG Kit. If your account has a two-step password, TG Kit asks for it
+   it in Telegram Assistant. If your account has a two-step password, Telegram Assistant asks for it
    (what you type stays hidden).
-4. **Pick your chats.** TG Kit shows your Telegram chats as a numbered list.
+4. **Pick your chats.** Telegram Assistant shows your Telegram chats as a numbered list.
    Type the numbers you want, for example `1, 3-5`, or type a word to search
    the list. Only these chats are copied. You can add more later.
 
 ---
 
-## The TG Kit window
+## The Telegram Assistant window
 
-Double-click the **TG Kit** icon (Windows), or type `tgkit app` in a terminal
+Double-click the **Telegram Assistant** icon (Windows), or type `tgkit app` in a terminal
 (Mac, Linux). A window opens with one box at the bottom: type a question in
 Vietnamese or English, with or without accents, and press **Enter**.
 
@@ -116,9 +117,26 @@ Vietnamese or English, with or without accents, and press **Enter**.
   under a result shows the messages around it;
 - "Việc của tôi", "my open tasks" lists your tasks, each with a **Mark done**
   (and **Undo**) button;
+- **What do I need to do today?** (top left, and on the empty page), or typing
+  "hôm nay tôi cần làm gì" / "what do I need to do today", lists in one card:
+  your open tasks, what is due or mentioned for today, and questions or
+  requests to you from the last day that nobody answered yet. Each item shows
+  the chat, who wrote it, when, and **Open in Telegram**. It runs on this
+  computer and uses no Claude tokens (`tgkit today` in a terminal);
 - **Get new messages** (bottom left) fetches what is new from Telegram, with
-  a progress bar. In the list of chats, a green dot means the copy is fresh;
-  an amber dot means it was last updated more than 12 hours ago.
+  a progress bar and a **Stop** button the whole time it runs. Stop keeps
+  every chat already saved; the next Get new messages gets the rest. In the
+  list of chats, a green dot means the copy is fresh; an amber dot means it
+  was last updated more than 12 hours ago.
+
+**Copying is quick.** 3 chats are copied at a time. Messages are saved first
+and can be searched at once; attached files download after them. A chat row says, for
+example, "Done: 1000 messages, 12 files still downloading". A file that fails
+is noted and tried again on the next Get new messages. Pick **Files** when you
+add chats (and in Settings): text and small files (the default, up to the
+size set in Settings), text only (fastest), or everything. **Stop** stays on
+screen while chats are copied: what was copied is kept, and **Retry** on a
+stopped chat copies the rest.
 
 On the left are your past conversations and your chats; the box above them
 filters both. Click a chat to get its summary for this week.
@@ -127,14 +145,14 @@ new conversation, **Esc** stops an answer.
 
 **Who answers.** If Claude Code is installed and signed in on the computer,
 Claude answers ("Claude" at the top right): it decides what to search, runs
-TG Kit, and writes the answer; click "Ran 2 TG Kit commands" to see what it
-ran. Claude may only run TG Kit's read commands (search, summary, task
+Telegram Assistant, and writes the answer; click "Ran 2 Telegram Assistant commands" to see what it
+ran. Claude may only run Telegram Assistant's read commands (search, summary, task
 lists, chats); its other tools are switched off, so it cannot change files.
-The TG Kit that Claude starts is read-only: it refuses to mark, reopen, drop,
+The Telegram Assistant that Claude starts is read-only: it refuses to mark, reopen, drop,
 note or add a task, to get new messages or to set up, however the command is
 written. Listing tasks still saves newly found ones, as the window itself
-does. Without Claude, TG Kit answers by itself
-with simple rules ("Offline"). You can choose **TG Kit only** at the bottom
+does. Without Claude, Telegram Assistant answers by itself
+with simple rules ("Offline"). You can choose **Telegram Assistant only** at the bottom
 left to never use Claude.
 
 **Open in Telegram.** Under a message found in a group or channel, **Open in
@@ -146,9 +164,9 @@ no message links in Telegram, so they show no such link.
 whole conversation (top right) has a **Save as file** button: a Word document
 by default, or an Excel sheet, a CSV table or Markdown. Vietnamese letters stay
 intact, links to the messages are included, and an existing file is never
-overwritten. Files go to **Documents\TG Kit** unless you choose another folder
+overwritten. Files go to **Documents\Telegram Assistant** unless you choose another folder
 in Settings; the folder opens with the file selected. Under a result that has
-a file, **Save file** copies that attachment there (only files TG Kit already
+a file, **Save file** copies that attachment there (only files Telegram Assistant already
 copied during Get new messages; it never downloads anything by itself).
 
 **Settings** (bottom left) has five parts:
@@ -165,16 +183,16 @@ copied during Get new messages; it never downloads anything by itself).
   tokens of today, this month and this conversation (input, output and
   cache), and a cost only when Claude Code reports one, as its own estimate:
   on a Claude plan you are not billed per answer. You can set a daily number
-  of tokens to be warned at; tick the box under it to make TG Kit answer
+  of tokens to be warned at; tick the box under it to make Telegram Assistant answer
   without Claude for the rest of that day instead.
 - **Saved files**: the folder for Save as file.
 - **Copied chats**: the largest attached file to keep (50 MB unless you change
   it; bigger files stay on Telegram), where the copies are stored with an
   **Open folder** button, and **Add chats** to copy more chats.
-- **Telegram account**: **Log out of Telegram** ends TG Kit's login on this
+- **Telegram account**: **Log out of Telegram** ends Telegram Assistant's login on this
   computer (your Telegram app and your messages are not touched). It asks
   first, and asks what to do with the copied chats: keep them, or move them to
-  a backup folder inside your data folder so TG Kit starts empty for another
+  a backup folder inside your data folder so Telegram Assistant starts empty for another
   account. Nothing is deleted. Then press **Connect to Telegram** to log in,
   right in the window, with any account. Your api_id and api_hash stay saved: they work with any
   account.
@@ -182,7 +200,7 @@ copied during Get new messages; it never downloads anything by itself).
 The window follows the light or dark theme of your computer. Your questions
 are kept in your data folder; Claude Code can read them with
 `tgkit chats-log --json` (see [Use with Claude Code](#use-with-claude-code)). If
-the window part could not be installed, TG Kit opens the same screen in your
+the window part could not be installed, Telegram Assistant opens the same screen in your
 web browser.
 
 ## Everyday use in a terminal
@@ -210,6 +228,7 @@ If you prefer typing commands, these need no extra options:
 | Find messages | `tgkit search "biên bản"` |
 | What happened in the last 7 days | `tgkit summary` |
 | The same for one chat and a longer period | `tgkit summary "Team" --since 30d` |
+| What do I need to do today | `tgkit today` (`--json` for Claude) |
 | Your open tasks | `tgkit tasks` |
 | Only tasks meant for you | `tgkit tasks mine` |
 | Mark task 3 done | `tgkit tasks done 3` |
@@ -244,8 +263,8 @@ Tips:
 
 ## Use with Claude Code
 
-**With the TG Kit plugin it just works.** If you use Claude Code, the
-installer adds TG Kit to Claude for you. Then just ask, in English or
+**With the Telegram Assistant plugin it just works.** If you use Claude Code, the
+installer adds Telegram Assistant to Claude for you. Then just ask, in English or
 Vietnamese, for example:
 
 - "What did the team decide this week in Telegram?"
@@ -254,15 +273,15 @@ Vietnamese, for example:
 - "Find the file with the meeting minutes someone sent"
 - "Mark task 3 as done"
 
-Claude runs TG Kit for you and answers with dates, names and quotes. Claude
-never logs in for you: if TG Kit is not set up yet, it asks you to run the
+Claude runs Telegram Assistant for you and answers with dates, names and quotes. Claude
+never logs in for you: if Telegram Assistant is not set up yet, it asks you to run the
 setup yourself.
 
 If the installer could not add it (or you installed Claude later), type this
-in Claude Code, replacing the path with your TG Kit folder:
+in Claude Code, replacing the path with your Telegram Assistant folder:
 
 ```
-/plugin marketplace add C:\path\to\TG Kit
+/plugin marketplace add C:\path\to\Telegram Assistant
 /plugin install tgkit@tgkit
 ```
 
@@ -277,20 +296,20 @@ question:
 run tgkit guide, then answer: what did the team decide this week?
 ```
 
-`tgkit guide` prints the TG Kit instructions for Claude (the same ones the
+`tgkit guide` prints the Telegram Assistant instructions for Claude (the same ones the
 plugin gives it), so Claude knows how to read your chats before it answers.
 
-Claude Code can also see what you asked in the TG Kit window: ask it, for
-example, "continue the search I did in the TG Kit app". It reads your saved
+Claude Code can also see what you asked in the Telegram Assistant window: ask it, for
+example, "continue the search I did in the Telegram Assistant app". It reads your saved
 conversations with `tgkit chats-log --json` and runs the search again.
 
 Claude Code can write reports from your chats too ("make a Word report of
 what the team decided this month"): it reads the summary and search results,
 adds a link to each quoted message, and can save a Word file with
-`tgkit export`. Inside the TG Kit window Claude only reads: it cannot save
+`tgkit export`. Inside the Telegram Assistant window Claude only reads: it cannot save
 files, log out or change settings there; use the window's buttons for that.
 
-### Connecting Claude to the TG Kit window
+### Connecting Claude to the Telegram Assistant window
 
 The window uses the Claude Code on your computer, with your own Claude login
 (a Claude Pro or Max plan; no separate key). To check it, open **Settings** in
@@ -302,7 +321,7 @@ the window, or type `tgkit claude-status`:
    `claude auth login` in a terminal) and log in with your Claude account.
 3. Press **Check again**. It says "Connected as ..." when it is ready.
 
-Until then TG Kit answers by itself, and nothing breaks.
+Until then Telegram Assistant answers by itself, and nothing breaks.
 
 ---
 
@@ -316,31 +335,37 @@ Until then TG Kit answers by itself, and nothing breaks.
 - **Never share `config.json` or `tgkit.session`**: together they give access
   to your Telegram account. If you think someone got them, open Telegram,
   go to Settings, Devices, and end that session.
-- TG Kit only copies the chats you picked. It never changes or deletes
+- Telegram Assistant only copies the chats you picked. It never changes or deletes
   anything in Telegram.
 
 ## Updating and removing
 
-- **Update:** unzip the new TG Kit over the old folder (or into a new one) and
+- **Update:** unzip the new Telegram Assistant over the old folder (or into a new one) and
   double-click **`Update-Windows.bat`** (on a Mac, `Install-Mac.command`
   again). Your chats, tasks and login are kept, and the setup is skipped
   because you are already logged in. The icons and the `tgkit` command move
-  to the new version by themselves.
-- **Remove:** delete the TG Kit folder and the TG Kit icons (desktop and Start
+  to the new version by themselves. Up to version 0.2.5 this tool was called
+  TG Kit: the update replaces the old "TG Kit" icons with "Telegram Assistant"
+  ones and keeps your data folder (`TGKit` in your home folder) as it is.
+- **Remove:** delete the Telegram Assistant folder and the Telegram Assistant icons (desktop and Start
   menu). Your data folder stays until you delete it yourself.
 
-## Share TG Kit with someone
+## Share Telegram Assistant with someone
 
-TG Kit is shared as a zip file. In the TG Kit folder (a git copy), run:
+Telegram Assistant is shared as a zip file. In the Telegram Assistant folder (a git copy), run:
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\make-share-zip.ps1
 ```
 
-It makes `dist\TGKit-<version>.zip` from the committed files only: never your
+It makes `dist\TelegramAssistant-<version>.zip` (one folder inside, named
+`Telegram Assistant`) from the committed files only: never your
 data folder, your login, `.venv` or anything in `.gitignore`. Send that zip.
 The other person unzips it and double-clicks `Install-Windows.bat` (on a Mac,
 `Install-Mac.command`); each person logs in with their own Telegram account.
+The app icon is a simple picture drawn by `scripts/make-icons.py`
+(`assets/icon.svg` is the same design); `docs/MAINTENANCE.md` says how to
+replace it.
 For a new version, raise `version` in `pyproject.toml`, commit, make a new
 zip and send it; they unzip it over the old folder and double-click
 `Update-Windows.bat`.
@@ -349,12 +374,12 @@ zip and send it; they unzip it over the old folder and double-click
 
 | What you see | What to do |
 |---|---|
-| "TG Kit is not connected to Telegram yet" | Run `tgkit setup` (menu option 7). |
+| "Telegram Assistant is not connected to Telegram yet" | Run `tgkit setup` (menu option 7). |
 | "You are not logged in to Telegram on this computer yet" | Run `tgkit setup`. |
 | "Could not reach Telegram" | Check your internet connection and try again. |
-| "Telegram asked TG Kit to slow down" | Wait a few minutes and try again. |
+| "Telegram asked Telegram Assistant to slow down" | Wait a few minutes and try again. |
 | `tgkit` is not recognized | Open a **new** terminal window. If it still fails, run the installer again. |
-| "Sorry, something went wrong" | The message says where the details were saved. Send that file to whoever gave you TG Kit. |
+| "Sorry, something went wrong" | The message says where the details were saved. Send that file to whoever gave you Telegram Assistant. |
 | A chat is missing from the summary | It had no messages in that period, or it is not one of your picked chats (`tgkit chats`). |
 
 ---

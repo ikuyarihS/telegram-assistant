@@ -1,4 +1,4 @@
-/* TG Kit app. Operate surface: a calm Windows 11 style tool that follows the OS theme.
+/* Telegram Assistant app. Operate surface: a calm Windows 11 style tool that follows the OS theme.
    One family (the platform UI face, which carries Vietnamese diacritics well), one accent
    for actions and selection, a second neutral layer for the sidebar. */
 
@@ -113,6 +113,7 @@ body {
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
 
 h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4 { text-wrap: balance; }
 
 /* Layout classes set display; the hidden attribute must still win. */
 [hidden] { display: none !important; }
@@ -586,6 +587,12 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 3px; padd
 .empty h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; text-wrap: balance; }
 .empty > p { color: var(--muted); font-size: 15px; max-width: 58ch; text-wrap: pretty; }
 .empty .examples { margin-top: 18px; }
+.empty .today-empty { justify-self: start; margin-top: 12px; }
+
+/* "What do I need to do today": one card, a short titled block per group. */
+.today-group + .today-group { margin-top: 14px; }
+.today-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.due-today { font-weight: 600; color: var(--warn); }
 
 .setup-box {
   margin-top: 12px;

@@ -1,4 +1,4 @@
-"""Turn what the user typed in the app into a TG Kit query. Rules only, no AI.
+"""Turn what the user typed in the app into a Telegram Assistant query. Rules only, no AI.
 
     "tuần này nhóm Beta bàn gì?"   -> summary, chat Beta, last 7 days
     "my open tasks"                -> tasks, mine
@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 
 from .store import fold, has_accents
 
-KINDS = ("search", "summary", "tasks", "sync", "chats", "help")
+KINDS = ("search", "summary", "tasks", "today", "sync", "chats", "help")
 
 
 @dataclass
@@ -74,6 +74,17 @@ _HELP = _p("help", "huong dan", "lam duoc gi", "what can you do", "how do i", "g
 _MINE = _p("my", "mine", "for me", "cua toi", "cua em", "cua minh", "cho toi", "cho em", "toi phai",
            "em phai", "minh phai", "giao cho toi")
 _ALL = _p("all", "tat ca", "everything", "ca da xong", "done ones")
+# "What do I need to do today": whole words in a row, after folding, so a search like
+# "bank today" or a word that only contains "today" never becomes it.
+_TODAY = _p("hom nay toi can lam gi", "hom nay em can lam gi", "hom nay minh can lam gi",
+            "hom nay can lam gi", "hom nay lam gi", "hom nay co viec gi", "hom nay phai lam gi",
+            "hom nay toi phai lam gi", "viec hom nay", "viec can lam hom nay", "can lam gi hom nay",
+            "lam gi hom nay", "hnay lam gi", "hnay can lam gi",
+            "what do i need to do today", "what do i have to do today", "what should i do today",
+            "what to do today", "what's on today", "whats on today", "what's on for today",
+            "my day", "plan for today", "today's plan", "todays plan", "what needs doing today")
+_TODAY_WORDS = _p("hom nay", "hnay", "today")
+_TODAY_DO = _p("can lam", "phai lam", "lam gi", "need to do", "have to do", "should i do", "to do today")
 
 # Words that carry no search meaning on their own.
 _STOP = set("""
@@ -232,6 +243,8 @@ def parse(text: str, chats: list[tuple[str, str]] | None = None) -> Intent:
 
     if quoted:
         return make("search", query=quoted.group(1).strip())
+    if _has(ft, _TODAY, set()) or (_has(ft, _TODAY_WORDS, set()) and _has(ft, _TODAY_DO, set())):
+        return Intent(kind="today", since="today", lang=lang)
     if _take(ft, _SEARCH, used):
         return make("search", query=_query(toks, used) or None)
     if _take(ft, _SYNC, used):

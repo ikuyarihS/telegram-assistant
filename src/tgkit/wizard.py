@@ -12,14 +12,14 @@ from .store import Store, matcher
 LINK = "https://my.telegram.org"
 
 API_HELP = f"""
-TG Kit needs two codes from Telegram, called api_id and api_hash.
+Telegram Assistant needs two codes from Telegram, called api_id and api_hash.
 You get them once, for free, in about 2 minutes:
 
   1. Open {LINK} in your web browser.
   2. Type your phone number. Telegram sends a code to your Telegram app;
      type that code on the web page.
   3. Click "API development tools".
-  4. If it asks you to create an app: type any App title (for example My TG Kit)
+  4. If it asks you to create an app: type any App title (for example My Assistant)
      and any Short name (for example mytgkit), then click "Create application".
   5. The page now shows "App api_id" (a number) and "App api_hash" (a long code).
 
@@ -96,7 +96,7 @@ def choose_home(ask, say) -> Path:
     if os.environ.get("TGKIT_HOME"):
         say(f"Your data folder is {current} (set by TGKIT_HOME).")
         return current
-    say("TG Kit keeps a copy of your chosen chats on this computer.")
+    say("Telegram Assistant keeps a copy of your chosen chats on this computer.")
     answer = ask(f"Press Enter to keep it in {current}\nor type another folder: ").strip().strip('"')
     chosen = Path(answer).expanduser() if answer else current
     if not chosen.is_absolute():
@@ -156,7 +156,7 @@ def run_setup(ask=None, say=print, secret=None) -> int:
 
     ask = asker(ask)
     secret = secret or getpass.getpass
-    say("Welcome to TG Kit! This takes about 5 minutes, one step at a time.")
+    say("Welcome to Telegram Assistant! This takes about 5 minutes, one step at a time.")
     say("You can stop any time with Ctrl+C and start again with: tgkit setup\n")
 
     say("Step 1 of 4: where to keep your data")
@@ -164,9 +164,9 @@ def run_setup(ask=None, say=print, secret=None) -> int:
     base.mkdir(parents=True, exist_ok=True)
     cfg = config.load(base)
 
-    say("\nStep 2 of 4: connect TG Kit to Telegram")
+    say("\nStep 2 of 4: connect Telegram Assistant to Telegram")
     if config.has_credentials(base, cfg):
-        say("Your api_id and api_hash are saved. They belong to TG Kit, not to one account: they\n"
+        say("Your api_id and api_hash are saved. They belong to Telegram Assistant, not to one account: they\n"
             "work with any Telegram account. To use another account, keep them and choose\n"
             "switch in the next step.")
         again = ask("Press Enter to keep them, or type new to enter new ones: ").strip().lower()
@@ -189,7 +189,7 @@ def run_setup(ask=None, say=print, secret=None) -> int:
             data = "keep"
             n = account.data_summary(base)["chats"]
             if n:
-                say(f"TG Kit has a copy of {n} chat(s) from {name}.\n"
+                say(f"Telegram Assistant has a copy of {n} chat(s) from {name}.\n"
                     "  1  Keep it (still searchable; it updates only when you log in to that account again)\n"
                     "  2  Move it to a backup folder inside your data folder (nothing is deleted)")
                 data = "backup" if ask("Type 1 or 2 (Enter = 1): ").strip() == "2" else "keep"
@@ -221,7 +221,7 @@ def run_setup(ask=None, say=print, secret=None) -> int:
     cfg = config.load(base)
     say(f"Logged in as {me.get('name') or me.get('username') or 'you'}.")
 
-    say("\nStep 4 of 4: pick the chats TG Kit should follow")
+    say("\nStep 4 of 4: pick the chats Telegram Assistant should follow")
     say("Only the chats you pick are copied. You can add more later with: tgkit add")
     limit = ask_limit(ask, say)
     net.run(net.add_chats(ctx, None, limit, lambda dialogs, q: pick_dialogs(dialogs, q, ask, say)))
@@ -239,7 +239,7 @@ def run_setup(ask=None, say=print, secret=None) -> int:
 
 
 MENU = """
-TG Kit - your Telegram helper
+Telegram Assistant - your Telegram helper
   1  Search messages
   2  Summary of the last 7 days
   3  My tasks

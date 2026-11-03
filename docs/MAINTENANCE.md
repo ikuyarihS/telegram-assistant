@@ -1,6 +1,6 @@
-# TG Kit - maintenance rules
+# Telegram Assistant - maintenance rules
 
-`README.md` explains how to **use** TG Kit. This file is for **changing** it.
+`README.md` explains how to **use** Telegram Assistant. This file is for **changing** it.
 Read it before editing any code that writes data: the user's copy of their
 chats cannot always be fetched again.
 
@@ -19,11 +19,11 @@ chats cannot always be fetched again.
 | `conversations.py` | the app's saved conversations, read by `tgkit chats-log` | only `app/conversations/*.json` |
 | `claude.py` | the app's Claude mode: a headless `claude -p` limited to tgkit read commands | only `app/claude/tgkit-guide.md` |
 | `playbook.md`, `playbook.py` | the one Claude Code playbook: `tgkit guide` prints it, `skills/telegram/SKILL.md` is its frontmatter plus this text, the app's guide is this text plus `claude.APP_RULES`. Edit `playbook.md`, copy it under the SKILL.md frontmatter; `tests/test_guide.py` fails when they differ | no |
-| `appserver.py`, `app.py`, `web/` | the TG Kit window: a local server on 127.0.0.1 and its HTML/CSS/JS | no chat data; sync runs `tgkit sync` |
+| `appserver.py`, `app.py`, `web/` | the Telegram Assistant window: a local server on 127.0.0.1 and its HTML/CSS/JS | no chat data; sync runs `tgkit sync` |
 
 ## 1. The rules that produced this design
 
-Each was paid for by a real defect in the tool TG Kit grew from. Do not relax
+Each was paid for by a real defect in the tool Telegram Assistant grew from. Do not relax
 one without re-earning it.
 
 ### R1 - Never open a data file in "w" mode
@@ -88,8 +88,9 @@ risk a message.
 
 `add_chat` resolves the entity once, computes the folder name, and refuses if
 that folder exists at all. It builds the chat in a hidden `.adding-<name>`
-folder and renames it into place only when complete; an older half-built
-staging folder is moved aside, never deleted.
+folder and renames it into place only when complete. A staging folder is
+never a chat, so the next add removes old `.adding-*` folders under the sync
+lock (R17); a committed chat is never touched.
 
 ### R7 - `summary.json`'s `channel` column must be a usable ADDRESS
 
@@ -147,11 +148,11 @@ its login) offers Stop and retry: the child is ended or the task cancelled,
 the system frees the lock, and the action runs again. It never ends another
 program and never deletes a file; an interrupted write leaves the old file or
 the new one (R1), an interrupted add leaves a `.adding-*` folder that the next
-add moves aside.
+add removes (R17).
 
 ### R12 - The app never writes a chat
 
-The TG Kit window (`appserver.py`) reads through `engine`, the same code the
+The Telegram Assistant window (`appserver.py`) reads through `engine`, the same code the
 CLI runs. Its sync button starts `tgkit sync` as a child process, so R1 to
 R11 apply unchanged. Its only writes are `tasks.json` (the task buttons, via
 `TaskList`) and its own files under `app/`. Its API listens on 127.0.0.1 and
@@ -213,6 +214,37 @@ In the window, Add runs `net.add_chats` in the background (`setupflow.add`);
 done, or a plain error with Retry for that chat alone. One chat failing never
 stops the others, and the window keeps every failed chat's error on screen.
 
+### R17 - Text first, files after, a few chats at once, Stop at any time
+
+`net.add_chats` and `net.sync_chats` read text only (`net.read_text`) and
+write each chat's rows as soon as its text is in, so it is searchable at once.
+Files go to `net.MediaPool` (`FILES_AT_ONCE` workers) and land through
+`net.apply_media`, which rewrites only the media keys of a row (`media_path`,
+`media_pending`, `media_skipped`, `media_error`, `media_tries`) with
+`atomic_write`, under the same lock. A row says `media_pending` until its file
+is in; a failed file keeps `media_error` and is queued again by the next sync
+(`queue_retries`, at most `RETRY_FILES_MAX` per chat, `MEDIA_TRIES` per file).
+The Files choice (`config.media_mode`: `small` up to `max_media_mb`, `none`,
+`all`) decides what is queued; a file left out is marked `media_skipped`, and
+a later sync with a wider choice fetches it.
+
+Up to `CHATS_AT_ONCE` (3) chats run at once, on the ONE client of R14
+(`asyncio.Semaphore`, never a second client). A FloodWait is waited out
+(`net._flood_wait`, up to `FLOOD_MAX_WAIT` seconds, a few times, beating the
+lock so it is never taken for a hang) and the read resumes from the lowest id
+it holds (`offset_id`); a longer wait ends that chat in plain words. The R4
+guard is unchanged: a sync that reads a chat only in part commits nothing for
+it.
+
+Stop is on screen the whole time a copy or a sync runs (`/api/stop`). A copy
+checks `ctx.stop` between pages: a chat with rows becomes the flagged partial
+seed of R4 (row "Stopped", Retry copies the rest), the others stay untouched.
+A sync started by the window is asked through `sync.stop` (holding the
+window's token, `store.stop_check`) and ends cleanly; after `SYNC_STOP_WAIT`
+seconds the token-proved end of R11 applies. Each add first removes old
+`chats/.adding-*` staging folders (`net.clean_staging`, under the sync lock:
+real folders only, never a link, never a committed chat).
+
 Every caught error that is not a `UserError` goes to
 `<data>/app/logs/tgkit.log` (rotated) with its traceback, never message text,
 codes, phone numbers or passwords (`applog`). Settings has Copy diagnostics.
@@ -237,7 +269,6 @@ codes, phone numbers or passwords (`applog`). Settings has Copy diagnostics.
 - `thread_of()` is O(n^2) in its fixpoint loop; fine for chats of a few
   thousand messages, index children if one grows far beyond that.
 - Sync reads each `messages.jsonl` twice (watermark, then prepend).
-- No command re-fetches missing attachments for rows already on disk.
 - No `tgkit remove`: to stop following a chat, move its folder out of
   `chats/`.
 - Task detection is keyword based (Vietnamese and English cues); it finds
@@ -246,14 +277,29 @@ codes, phone numbers or passwords (`applog`). Settings has Copy diagnostics.
   `config.lock` (threads and processes) and write atomically, so a Settings
   change and a login finishing at the same moment both stay.
 - `/api/open-link` opens only the link forms of `store.telegram_link`, and only
-  for a chat that is in TG Kit; the link opened is rebuilt from that chat's data.
+  for a chat that is in Telegram Assistant; the link opened is rebuilt from that chat's data.
   It refuses `tg://user` and `tg://openmessage`: Telegram Desktop has no handler
   for them (tdesktop `core/local_url_handlers.cpp` knows only `resolve` and
-  `privatepost`), so TG Kit never makes them. A private chat or basic group
+  `privatepost`), so Telegram Assistant never makes them. A private chat or basic group
   without a username gets no link; the window and the exports say "Open
   Telegram and find <chat name>" (the window adds a Copy name button).
 
-## 4. Security
+## 4. The icon
+
+One source picture makes every icon: `assets/icon-source.png` (square, 512 px
+or more). To change it, replace that file and run
+
+```
+python scripts/make-icons.py
+```
+
+It writes `src/tgkit/web/static/tgkit.ico` (16 to 256 px: the shortcuts, the
+window and the taskbar), `icon-256.png` and `favicon.png` (the page icon).
+Commit the four files. `python scripts/make-icons.py --draw` draws the
+built-in picture into `assets/icon-source.png` again; `assets/icon.svg` and
+`web/static/icon.svg` are the same design as a vector.
+
+## 5. Security
 
 - Copy only chats the user picks. Sync never expands scope on its own.
 - Never print `config.json`, `.env`, `TG_API_ID`, `TG_API_HASH`, or copy a

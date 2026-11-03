@@ -274,7 +274,7 @@ def test_b2_another_programs_lock_is_reported_never_ended(home, monkeypatch):
         assert ev["type"] == "done" and ev["code"] and ev["lock"]["held"] and not ev["lock"]["can_stop"]
         with pytest.raises(UserError) as info:
             app.stop_lock()
-        assert "Another TG Kit window" in info.value.message
+        assert "Another Telegram Assistant window" in info.value.message
         assert child.poll() is None  # still running: TG Kit never stops another program
     finally:
         child.stdin.close()
@@ -382,13 +382,15 @@ def test_b4_progress_row_per_chat_while_the_first_copy_runs(codes, monkeypatch):
     end = time.monotonic() + 10
     while time.monotonic() < end:
         rows = rows_by_id(tg.add_state())
-        if rows["-1005001"]["state"] == "copying" and rows["-1005001"]["count"] >= 1:
+        if (rows["-1005001"]["state"] == "copying" and rows["-1005001"]["count"] >= 1
+                and rows["-1005003"]["state"] == "done"):
             break
         time.sleep(0.02)
+    # 0.2.6: chats are copied a few at once, so a slow chat never holds up the next one
     assert rows["-1005001"]["state"] == "copying" and rows["-1005001"]["count"] == 1
-    assert rows["-1005001"]["name"] == "B one" and rows["-1005003"]["state"] == "waiting"
+    assert rows["-1005001"]["name"] == "B one" and rows["-1005003"]["state"] == "done"
     lock = lock_status(home)
-    assert lock["held"] and lock["what"] == "add: B one"  # the heartbeat says what it does
+    assert lock["held"] and lock["what"].startswith("add: B ")  # the heartbeat says what it does
     acc.release.set()
     rows = rows_by_id(wait_job(tg))
     assert rows["-1005001"] == {**rows["-1005001"], "state": "done", "count": 3}

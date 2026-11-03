@@ -1,4 +1,4 @@
-"""Where TG Kit keeps your data, and your Telegram app credentials.
+"""Where Telegram Assistant keeps your data, and your Telegram app credentials.
 
 The data folder is, in order:
   1. the TGKIT_HOME environment variable;
@@ -65,7 +65,7 @@ def load(base: Path) -> dict:
 
 
 def save(base: Path, cfg: dict) -> None:
-    """Write the whole file (atomic: tmp then replace). TG Kit itself changes
+    """Write the whole file (atomic: tmp then replace). Telegram Assistant itself changes
     config.json only through update() / put(), which hold the config lock."""
     write_json(config_path(base), cfg)
 
@@ -81,7 +81,7 @@ class ConfigLock(SyncLock):
     wait = 15.0
 
     def _busy(self) -> UserError:
-        return UserError("The settings file is busy: another TG Kit is changing it.", "Try again in a moment.")
+        return UserError("The settings file is busy: another Telegram Assistant is changing it.", "Try again in a moment.")
 
 
 _CONFIG_MUTEX = threading.Lock()
@@ -141,7 +141,7 @@ def credentials(base: Path, cfg: dict) -> tuple[int, str]:
     api_hash = _setting(base, cfg, "api_hash", "TGKIT_API_HASH", "TG_API_HASH")
     if not api_id or not api_hash:
         raise UserError(
-            "TG Kit is not connected to Telegram yet.",
+            "Telegram Assistant is not connected to Telegram yet.",
             "Run: tgkit setup   (it walks you through it, about 3 minutes).",
         )
     if not valid_api_id(str(api_id)) or not valid_api_hash(str(api_hash)):
@@ -167,6 +167,17 @@ def max_media_bytes(base: Path, cfg: dict) -> int:
     except ValueError:
         mb = 50
     return mb * 1024 * 1024
+
+
+# Which attachments a copy or sync downloads (Settings and the copy step):
+# "small" text and files up to max_media_mb (the default), "none" text only,
+# "all" every file. Text always comes first; files follow in the background.
+MEDIA_MODES = ("small", "none", "all")
+
+
+def media_mode(cfg: dict) -> str:
+    mode = str((cfg or {}).get("media") or "small")
+    return mode if mode in MEDIA_MODES else "small"
 
 
 def valid_api_id(text: str) -> bool:

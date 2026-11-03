@@ -1,5 +1,5 @@
 ---
-description: Get the newest messages from Telegram into TG Kit
+description: Get the newest messages from Telegram into Telegram Assistant
 argument-hint: [chat name]
 ---
 

@@ -1,4 +1,4 @@
-"""Setup inside the TG Kit window: Telegram codes, login, and picking chats.
+"""Setup inside the Telegram Assistant window: Telegram codes, login, and picking chats.
 
 The same steps as `tgkit setup`, one HTTP call per step, for people who never
 open a terminal:
@@ -38,13 +38,15 @@ LOGIN_TIMEOUT = 15 * 60  # an unfinished login is dropped after this many second
 LIST_WAIT = 10  # seconds listing chats waits for a short holder of the sync lock
 
 
-BUSY = ("TG Kit is still busy with Telegram (getting new messages or copying chats).",
+BUSY = ("Telegram Assistant is still busy with Telegram (getting new messages or copying chats).",
         "Wait a moment and try again.")
-COPYING = ("TG Kit is still copying the chats you ticked.",
-           "Wait until it is done, or press Stop and retry.")
+# Said only where the window shows the Stop button beside it (the copy panel, the
+# sync bar): a text never names a button that is not on screen.
+COPYING = ("Telegram Assistant is still copying the chats you ticked.",
+           "Wait until it is done, or press Stop.")
 UNKNOWN = ("Something went wrong while talking to Telegram.",
            "Try again in a moment. If it keeps happening, press Copy diagnostics in Settings "
-           "and send it to whoever gave you TG Kit.")
+           "and send it to whoever gave you Telegram Assistant.")
 
 
 # Plain words for what went wrong, never a bare error class name. Every error that
@@ -69,8 +71,8 @@ def _friendly(exc: BaseException, home=None) -> UserError:
     if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError, socket.gaierror)):
         return UserError("Could not reach Telegram.", "Check your internet connection and try again.")
     if isinstance(exc, OSError):  # a file of the data folder, not the network
-        return UserError("TG Kit could not read or write a file in its data folder.",
-                         "Close any program that has a file of TG Kit open, then try again.")
+        return UserError("Telegram Assistant could not read or write a file in its data folder.",
+                         "Close any program that has a file of Telegram Assistant open, then try again.")
     return UserError(*UNKNOWN)
 
 
@@ -313,15 +315,16 @@ class TelegramSetup:
         job = self._job
         return bool(job and job["running"])
 
-    def add(self, ids, limit, keep: bool = False) -> dict:
+    def add(self, ids, limit, keep: bool = False, media: str | None = None) -> dict:
         """Start copying the ticked chats in the background; add_state() follows it.
-        keep=True (a Retry of one chat) keeps the rows of the chats copied before."""
+        keep=True (a Retry of one chat) keeps the rows of the chats copied before.
+        `media` is the Files choice for this copy (config.MEDIA_MODES; None: Settings)."""
         wanted: list[str] = []
         for i in ids or []:
             if str(i) not in wanted:
                 wanted.append(str(i))
         if not wanted:
-            raise UserError("Pick at least one chat.", "Tick the chats TG Kit should follow.")
+            raise UserError("Pick at least one chat.", "Tick the chats Telegram Assistant should follow.")
         try:
             limit = None if limit in (0, "0", "all", None) else max(1, int(limit))
         except (TypeError, ValueError):
@@ -334,9 +337,10 @@ class TelegramSetup:
             old = [r for r in (self._job["rows"] if self._job and keep else []) if r["id"] not in wanted]
             names = {r["id"]: r["name"] for r in (self._job["rows"] if self._job else [])}
             rows = old + [{"id": i, "name": names.get(i, ""), "state": "waiting", "count": 0,
-                           "message": None, "hint": None} for i in wanted]
+                           "message": None, "hint": None, "files": 0, "files_pending": 0} for i in wanted]
             job = {"running": True, "rows": rows, "wanted": wanted, "error": None, "switch": {},
-                   "loop": None, "task": None, "thread": None}
+                   "loop": None, "task": None, "thread": None, "stop": threading.Event(),
+                   "media": media if media in config.MEDIA_MODES else None}
             self._job = job
         th = threading.Thread(target=self._run_job, args=(job, limit), daemon=True, name="tgkit-add")
         job["thread"] = th
@@ -349,7 +353,8 @@ class TelegramSetup:
     def _run_job(self, job: dict, limit) -> None:
         from . import net  # noqa: PLC0415
 
-        ctx = net.Ctx(self.home, Store(self.home), self._cfg())
+        ctx = net.Ctx(self.home, Store(self.home), self._cfg(), media=job.get("media"),
+                      stop=job["stop"].is_set)
         wanted = set(job["wanted"])
 
         def pick(dialogs, _query):
@@ -381,7 +386,9 @@ class TelegramSetup:
                     if row is not None:
                         row.update(state=ev["state"], count=ev.get("count", row["count"]),
                                    message=ev.get("message"), hint=ev.get("hint"),
-                                   partial=bool(ev.get("partial")))
+                                   partial=bool(ev.get("partial")),
+                                   files=int(ev.get("files") or 0),
+                                   files_pending=int(ev.get("files_pending") or 0))
 
         def unfinished(state, message, hint):
             with self._job_lock:
@@ -395,6 +402,8 @@ class TelegramSetup:
             job["loop"], job["task"] = loop, task
             with contextlib.redirect_stdout(io.StringIO()):
                 loop.run_until_complete(task)
+            if job["stop"].is_set():
+                unfinished("stopped", "Stopped before this chat was copied.", "Press Retry for this chat.")
             unfinished("error", "This chat was not copied.", "Press Retry for this chat.")
         except asyncio.CancelledError:
             unfinished("stopped", "Stopped before this chat was copied.", "Press Retry for this chat.")
@@ -414,7 +423,8 @@ class TelegramSetup:
             return {"running": False, "rows": [], "added": 0, "failed": 0, "error": None, "switched": False}
         with self._job_lock:
             rows = [dict(r) for r in job["rows"]]
-            out = {"running": job["running"], "rows": rows,
+            out = {"running": job["running"], "rows": rows, "stopping": job["stop"].is_set(),
+                   "files_pending": sum(r.get("files_pending") or 0 for r in rows),
                    # a copy cut short ("partial") is a failure with a Retry, never "added"
                    "added": sum(1 for r in rows if r["state"] == "done" and not r.get("already")
                                 and not r.get("partial")),
@@ -423,16 +433,22 @@ class TelegramSetup:
             out.update(_switch_fields(job["switch"]))
         return out
 
-    def stop(self, wait: float = 15.0) -> bool:
-        """Cancel the copy of ticked chats (or end a login): its locks are freed.
+    def stop(self, wait: float = 15.0, grace: float = 3.0) -> bool:
+        """Stop the copy of ticked chats (or end a login): its locks are freed.
+        First asked nicely (the Stop event): every chat already read is saved, a chat
+        being read is saved as a flagged partial copy, unread ones say Stopped, files
+        not fetched stay recorded. Cancelled after `grace` seconds if still running.
         True when nothing of this window holds the sync lock any more."""
         job = self._job
         if job and job["running"]:
+            job["stop"].set()
+            th = job.get("thread")
+            if th is not None:
+                th.join(grace)
             loop, task = job.get("loop"), job.get("task")
-            if loop is not None and task is not None:
+            if job["running"] and loop is not None and task is not None:
                 with contextlib.suppress(RuntimeError):
                     loop.call_soon_threadsafe(task.cancel)
-            th = job.get("thread")
             if th is not None:
                 th.join(wait)
         if self.step:

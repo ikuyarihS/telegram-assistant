@@ -41,8 +41,8 @@ def _reap(*procs):
         p.wait(timeout=20)
 
 
-def test_version_is_025():
-    assert __version__ == "0.2.5"
+def test_version_is_025():  # 0.2.6 and later keep every 0.2.5 test
+    assert tuple(int(x) for x in __version__.split(".")) >= (0, 2, 5)
 
 
 # ------------------------------------------------------------------ NOTE 1
@@ -221,6 +221,8 @@ class _Launcher:
 def _end(monkeypatch, home, st, mine, now=None):
     """Run _end_own_sync with a launcher stand-in; returns (pids it ended, launcher)."""
     ended = []
+    st = {"held": True, **st}  # lock_status always says whether the lock is held (0.2.6 checks it)
+    now = None if now is None else {"held": True, **now}
     monkeypatch.setattr(appserver.os, "kill", lambda pid, sig: ended.append(pid))
     monkeypatch.setattr(appserver, "lock_status", lambda h: now if now is not None else st)
     app = _app(home)

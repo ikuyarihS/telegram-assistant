@@ -243,7 +243,7 @@ def test_diagnostics_and_log_folder(home, server):
     _, base = server
     code, body = call(base, "/api/diagnostics")
     text = json.loads(body)["text"]
-    assert code == 200 and "TG Kit diagnostics" in text and "RuntimeError: boom" in text
+    assert code == 200 and "Telegram Assistant diagnostics" in text and "RuntimeError: boom" in text
     assert "ab" * 16 not in text  # never the secret code
     code, body = call(base, "/api/open-logs", {})
     assert code == 200 and json.loads(body)["folder"].endswith("logs")

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <meta name="tgkit-token" content="__TGKIT_TOKEN__">
-<title>TG Kit</title>
+<title>Telegram Assistant</title>
+<link rel="icon" href="static/favicon.png" type="image/png" sizes="64x64">
 <link rel="icon" href="static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="static/app.css">
 </head>
@@ -14,13 +15,16 @@
   <aside class="side" id="side" aria-label="Conversations and chats">
     <div class="brand">
       <img class="logo" src="static/icon.svg" alt="" width="28" height="28">
-      <span class="brand-name">TG Kit</span>
+      <span class="brand-name">Telegram Assistant</span>
       <span class="version" id="version"></span>
     </div>
 
     <button class="btn btn-primary wide" id="newChat" type="button">
       <span class="btn-label" data-i18n="newChat">New conversation</span>
       <kbd>Ctrl K</kbd>
+    </button>
+    <button class="btn wide today-btn" id="todayBtn" type="button">
+      <span class="btn-label" data-i18n="todayBtn">What do I need to do today?</span>
     </button>
 
     <label class="search-field">
@@ -46,6 +50,7 @@
         <span class="btn-label" data-i18n="sync">Get new messages</span>
       </button>
       <div class="progress" id="syncProgress" hidden><div class="progress-bar" id="syncBar"></div></div>
+      <button class="btn wide" id="syncStop" type="button" data-i18n="stopBtn" hidden>Stop</button>
       <p class="sync-status" id="syncStatus" aria-live="polite"></p>
       <div class="lock-note" id="lockNote" role="status" hidden>
         <p id="lockText"></p>
@@ -54,7 +59,7 @@
       <fieldset class="mode-pick">
         <legend data-i18n="answersBy">Answers</legend>
         <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude when available</span></label>
-        <label><input type="radio" name="mode" value="offline"> <span data-i18n="offline">TG Kit only</span></label>
+        <label><input type="radio" name="mode" value="offline"> <span data-i18n="offline">Telegram Assistant only</span></label>
       </fieldset>
       <p class="mode-note" id="modeNote"></p>
       <button class="btn wide" id="settingsBtn" type="button" aria-haspopup="dialog">
@@ -81,10 +86,11 @@
         <h2 id="emptyTitle" data-i18n="emptyTitle">Ask about your Telegram chats</h2>
         <p data-i18n="emptyBody">Search messages, get a summary of what happened, or see your tasks. Type in Vietnamese or English, accents optional.</p>
         <div class="setup-box" id="setupBox" hidden>
-          <h3 data-i18n="notConnected">TG Kit is not connected to Telegram yet</h3>
+          <h3 data-i18n="notConnected">Telegram Assistant is not connected to Telegram yet</h3>
           <p data-i18n="notConnectedBody">Connect once, right here: about 3 minutes, then pick the chats to follow.</p>
           <button class="btn btn-primary" id="setupBtn" type="button" data-i18n="connect">Connect to Telegram</button>
         </div>
+        <button class="btn btn-primary today-empty" id="todayEmpty" type="button" data-i18n="todayBtn">What do I need to do today?</button>
         <ul class="examples" id="examples"></ul>
       </section>
     </div>
@@ -162,7 +168,7 @@
         <input id="exportDir" type="text" spellcheck="false" autocomplete="off">
       </label>
       <div class="set-actions">
-        <button class="btn" id="exportDefault" type="button" data-i18n="useDefault">Use Documents\TG Kit</button>
+        <button class="btn" id="exportDefault" type="button" data-i18n="useDefault">Use Documents\Telegram Assistant</button>
         <button class="btn" id="openExport" type="button" data-i18n="openFolder">Open folder</button>
       </div>
     </section>
@@ -174,14 +180,19 @@
           <span class="field-label" data-i18n="mediaCap">Keep attached files up to (MB)</span>
           <input id="mediaCap" type="number" min="1" max="4000" step="10" inputmode="numeric">
         </label>
+        <label class="field">
+          <span class="field-label" data-i18n="filesLabel">Files</span>
+          <select id="mediaMode"></select>
+        </label>
       </div>
+      <p class="field-help" data-i18n="filesHelp">Messages are saved first and can be searched at once; files download after them.</p>
       <p class="field-help" data-i18n="mediaHelp">Bigger files stay on Telegram only; the message still says they exist. Applies to new messages.</p>
       <p class="field-help"><span data-i18n="dataAt">Stored in</span> <span class="path" id="dataPath"></span></p>
       <div class="set-actions">
         <button class="btn" id="addChatsBtn" type="button" data-i18n="addChats">Add chats</button>
         <button class="btn" id="openData" type="button" data-i18n="openFolder">Open folder</button>
       </div>
-      <p class="field-help" data-i18n="logHelp">When something goes wrong, TG Kit writes the details in a log file. Copy diagnostics and send it to whoever gave you TG Kit. It holds no messages, codes or passwords.</p>
+      <p class="field-help" data-i18n="logHelp">When something goes wrong, Telegram Assistant writes the details in a log file. Copy diagnostics and send it to whoever gave you Telegram Assistant. It holds no messages, codes or passwords.</p>
       <div class="set-actions">
         <button class="btn" id="copyDiag" type="button" data-i18n="copyDiag">Copy diagnostics</button>
         <button class="btn" id="openLogs" type="button" data-i18n="openLogs">Open log folder</button>
@@ -201,7 +212,7 @@
         <fieldset class="choice">
           <legend id="keepLegend" data-i18n="keepLegend">Your copied chats</legend>
           <label><input type="radio" name="keep" value="keep" checked> <span data-i18n="keepData">Keep them here (you can still search them)</span></label>
-          <label><input type="radio" name="keep" value="backup"> <span data-i18n="backupData">Move them to a backup folder, so TG Kit starts empty (nothing is deleted)</span></label>
+          <label><input type="radio" name="keep" value="backup"> <span data-i18n="backupData">Move them to a backup folder, so Telegram Assistant starts empty (nothing is deleted)</span></label>
         </fieldset>
         <div class="set-actions">
           <button class="btn btn-danger" id="logoutYes" type="button" data-i18n="logoutYes">Log out</button>
@@ -228,7 +239,7 @@
   </ol>
   <div class="settings-body">
     <form class="su-pane" id="suFolder" hidden>
-      <p data-i18n="suFolderWhy">TG Kit keeps a copy of the chats you pick on this computer. Choose where.</p>
+      <p data-i18n="suFolderWhy">Telegram Assistant keeps a copy of the chats you pick on this computer. Choose where.</p>
       <fieldset class="choice">
         <legend class="sr-only" data-i18n="suStep0">Data folder</legend>
         <label><input type="radio" name="suHome" value="keep" checked> <span id="suKeepText" class="path-choice">Keep them in the current folder</span></label>
@@ -238,17 +249,17 @@
         <span class="field-label" data-i18n="suFolderPath">Full path of the folder</span>
         <input id="suFolderPathIn" type="text" spellcheck="false" autocomplete="off">
       </label>
-      <p class="field-help" data-i18n="suFolderHelp">For example D:\TG Kit. TG Kit makes the folder if it is not there yet.</p>
+      <p class="field-help" data-i18n="suFolderHelp">For example D:\Telegram Assistant. Telegram Assistant makes the folder if it is not there yet.</p>
       <div class="set-actions">
         <button class="btn btn-primary" type="submit" data-i18n="suNext">Next</button>
       </div>
     </form>
 
     <form class="su-pane" id="suCodes" hidden>
-      <p data-i18n="suCodesWhy">TG Kit reads your chats with two codes from Telegram. You make them once, on Telegram's own website.</p>
+      <p data-i18n="suCodesWhy">Telegram Assistant reads your chats with two codes from Telegram. You make them once, on Telegram's own website.</p>
       <ol class="fix-steps">
         <li data-i18n="suCodes1">Press Open my.telegram.org and log in with your phone number. Telegram sends the code to your Telegram app.</li>
-        <li data-i18n="suCodes2">Click API development tools. If it asks, type any App title (TG Kit) and Short name (tgkit), then Create application.</li>
+        <li data-i18n="suCodes2">Click API development tools. If it asks, type any App title (My Assistant) and Short name (tgkit), then Create application.</li>
         <li data-i18n="suCodes3">Copy App api_id and App api_hash into the boxes below.</li>
       </ol>
       <div class="set-actions">
@@ -288,7 +299,7 @@
         <span class="field-label" data-i18n="suCode">Login code</span>
         <input id="suCodeIn" type="text" inputmode="numeric" autocomplete="one-time-code" required>
       </label>
-      <p class="field-help" data-i18n="suCodeSafe">Never give this code to anyone. TG Kit uses it only to log in on this computer.</p>
+      <p class="field-help" data-i18n="suCodeSafe">Never give this code to anyone. Telegram Assistant uses it only to log in on this computer.</p>
       <div class="set-actions">
         <button class="btn btn-primary" type="submit" data-i18n="suLogin">Log in</button>
         <button class="btn" id="suResend" type="button" data-i18n="suResend">Send a new code</button>
@@ -308,7 +319,7 @@
 
     <form class="su-pane" id="suChats" hidden>
       <p id="suWho"></p>
-      <p data-i18n="suChatsWhy">Tick the chats TG Kit should copy to this computer. Only these are searched and summarized.</p>
+      <p data-i18n="suChatsWhy">Tick the chats Telegram Assistant should copy to this computer. Only these are searched and summarized.</p>
       <label class="field">
         <span class="sr-only" data-i18n="suFilter">Find a chat</span>
         <input id="suFilter" type="search" data-i18n-ph="suFilter" placeholder="Find a chat" autocomplete="off">
@@ -333,10 +344,17 @@
         <label><input type="radio" name="suLimit" value="1000" checked> <span data-i18n="suRecent">The last 1000 messages of each chat (quick)</span></label>
         <label><input type="radio" name="suLimit" value="all"> <span data-i18n="suAll">Everything (can take a while for big groups)</span></label>
       </fieldset>
+      <fieldset class="choice">
+        <legend data-i18n="filesLabel">Files</legend>
+        <label><input type="radio" name="suFiles" value="small" checked> <span id="suFilesSmallText">Text and small files</span></label>
+        <label><input type="radio" name="suFiles" value="none"> <span data-i18n="filesNone">Text only (fastest)</span></label>
+        <label><input type="radio" name="suFiles" value="all"> <span data-i18n="filesAll">Everything (can take long)</span></label>
+        <p class="field-help" data-i18n="filesHelp">Messages are saved first and can be searched at once; files download after them.</p>
+      </fieldset>
       <section class="add-prog" id="suProg" aria-labelledby="suProgHead" hidden>
         <h3 class="add-prog-head" id="suProgHead" data-i18n="progList">Copying the ticked chats</h3>
         <ul class="add-prog-list" id="suProgList" aria-live="polite"></ul>
-        <button class="btn" id="suStop" type="button" data-i18n="stopRetry" hidden>Stop and retry</button>
+        <button class="btn" id="suStop" type="button" data-i18n="stopBtn" hidden>Stop</button>
       </section>
       <div class="set-actions">
         <button class="btn btn-primary" id="suAdd" type="submit" data-i18n="suAdd">Add the ticked chats</button>

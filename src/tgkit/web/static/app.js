@@ -1,4 +1,4 @@
-/* TG Kit app: chat UI over the local API. Every piece of chat data is put on the
+/* Telegram Assistant app: chat UI over the local API. Every piece of chat data is put on the
    page with textContent or text nodes, never parsed as HTML. */
 
 /* The chat picker's rules, kept free of the page so tests can load them with node.
@@ -56,16 +56,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       sync: "Get new messages", syncing: "Getting new messages...",
       syncDone: (n) => (n ? `${n} new ${plural(n, "message", "messages")}.` : "Everything is up to date."),
       syncFail: "Some chats could not be updated.", syncBusy: "A sync is already running.",
-      connect: "Connect to Telegram", answersBy: "Answers", auto: "Claude when available", offline: "TG Kit only",
+      connect: "Connect to Telegram", answersBy: "Answers", auto: "Claude when available", offline: "Telegram Assistant only",
       modeClaude: "Claude", modeOffline: "Offline",
       claudeOn: "Claude Code is on this computer: it plans each search and writes the answer.",
-      claudeOff: "Claude Code is not on this computer: TG Kit answers with its own rules.",
-      offlineOn: "TG Kit answers with its own rules, without Claude.",
+      claudeOff: "Claude Code is not on this computer: Telegram Assistant answers with its own rules.",
+      offlineOn: "Telegram Assistant answers with its own rules, without Claude.",
       emptyTitle: "Ask about your Telegram chats",
       emptyBody: "Search messages, get a summary of what happened, or see your tasks. Type in Vietnamese or English, accents optional.",
       inputPh: "Ask about your chats", hint: "Enter to send · Shift+Enter for a new line · Esc to stop",
       send: "Send", stop: "Stop", thinking: "Looking through your chats...", stopped: "Stopped.",
-      steps: (n) => `Ran ${n} TG Kit ${plural(n, "command", "commands")}`, stepOk: "done", stepBad: "failed",
+      steps: (n) => `Ran ${n} Telegram Assistant ${plural(n, "command", "commands")}`, stepOk: "done", stepBad: "failed",
       showCtx: "Show conversation", hideCtx: "Hide conversation",
       messagesN: (n) => `${n} ${plural(n, "message", "messages")}`,
       tasksN: (n) => `${n} ${plural(n, "task", "tasks")}`,
@@ -76,10 +76,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       decisionsNote: "Check what each one replies to before relying on it.", requests: "Requests and to-dos",
       links: "Links", files: "Files", replyingTo: "Replying to", notLocal: "a message not in the local copy",
       quiet: "No messages in this period", remove: "Remove conversation", in: "in",
-      notConnected: "TG Kit is not connected to Telegram yet",
+      notConnected: "Telegram Assistant is not connected to Telegram yet",
       notConnectedBody: "Connect once, right here: about 3 minutes, then pick the chats to follow.",
       setupOpened: "The setup window is open. Come back here when it is done.",
-      errGeneric: "Something went wrong. Try again.", errOffline: "TG Kit stopped responding. Close this window and open TG Kit again.",
+      errGeneric: "Something went wrong. Try again.", errOffline: "Telegram Assistant stopped responding. Close this window and open Telegram Assistant again.",
       wordsMatch: "Every word, in any order", messagesFor: (q) => `“${q}”`, menu: "Show conversations",
       updated: "updated", never: "never", you: "You", summaryOf: (l) => `Summary: ${l}`, yourTasks: "Tasks",
       allChats: "Your chats", file: "File", examplesHead: "Try asking",
@@ -87,7 +87,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       installClaude: "Get Claude Code", loginClaude: "Open a window to log in", checkAgain: "Check again",
       model: "Model for answers", effort: "Effort", modelDefault: "Claude Code default", effortDefault: "Claude Code default",
       modelHelp: "Claude Code default is a good choice. Opus thinks more and uses more of your plan; Haiku is quickest and uses the least.",
-      stMissing: "Claude Code is not on this computer. TG Kit answers by itself until it is.",
+      stMissing: "Claude Code is not on this computer. Telegram Assistant answers by itself until it is.",
       stNotLogged: "Claude Code is installed but not logged in.",
       stConnected: (acct, plan) => `Connected${acct ? ` as ${acct}` : ""}${plan ? ` (${plan} plan)` : ""}.`,
       stUnknown: "Claude Code is installed. Its login could not be checked here.",
@@ -111,7 +111,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       accountHelp: "To use another Telegram account, log out here, then press Connect to Telegram. Your messages on Telegram are never touched.",
       logout: "Log out of Telegram", logoutAsk: "Log out of Telegram on this computer?", keepLegend: "Your copied chats",
       keepData: "Keep them here (you can still search them)",
-      backupData: "Move them to a backup folder, so TG Kit starts empty (nothing is deleted)",
+      backupData: "Move them to a backup folder, so Telegram Assistant starts empty (nothing is deleted)",
       logoutYes: "Log out", cancel: "Cancel", loggedInAs: (n) => `Logged in to Telegram as ${n}.`,
       notLoggedIn: "Not logged in to Telegram on this computer.", loggedOut: "Logged out of Telegram.",
       movedTo: (p) => `Your chats were moved to ${p}.`, saved: "Saved.",
@@ -122,24 +122,24 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       secData: "Copied chats", mediaCap: "Keep attached files up to (MB)",
       mediaHelp: "Bigger files stay on Telegram only; the message still says they exist. Applies to new messages.",
       dataAt: "Stored in", addChats: "Add chats",
-      logHelp: "When something goes wrong, TG Kit writes the details in a log file. Copy diagnostics and send it to whoever gave you TG Kit. It holds no messages, codes or passwords.",
+      logHelp: "When something goes wrong, Telegram Assistant writes the details in a log file. Copy diagnostics and send it to whoever gave you Telegram Assistant. It holds no messages, codes or passwords.",
       copyDiag: "Copy diagnostics", openLogs: "Open log folder", diagCopied: "Diagnostics copied. Paste them in a message.",
       suRetry: "Load the chats again", suSwitched: "This is another Telegram account: the chats of the earlier one were moved aside and come back when you log in to it again.",
       suTitle: "Connect to Telegram", suStep1: "Telegram codes", suStep2: "Log in", suStep3: "Pick chats",
-      suCodesWhy: "TG Kit reads your chats with two codes from Telegram. You make them once, on Telegram's own website.",
+      suCodesWhy: "Telegram Assistant reads your chats with two codes from Telegram. You make them once, on Telegram's own website.",
       suCodes1: "Press Open my.telegram.org and log in with your phone number. Telegram sends the code to your Telegram app.",
-      suCodes2: "Click API development tools. If it asks, type any App title (TG Kit) and Short name (tgkit), then Create application.",
+      suCodes2: "Click API development tools. If it asks, type any App title (My Assistant) and Short name (tgkit), then Create application.",
       suCodes3: "Copy App api_id and App api_hash into the boxes below.",
       suOpenSite: "Open my.telegram.org", suCodesSafe: "The codes stay on this computer. Any Telegram account can use them.",
       suNext: "Next",
       suPhoneWhy: "Type the phone number of your Telegram account. Telegram sends a login code to your Telegram app.",
       suPhone: "Phone number, with country code", suSendCode: "Send code", suChangeCodes: "Change the Telegram codes",
       suCodeWhy: "Telegram sent a login code to your Telegram app (on your phone or computer). Type it here.",
-      suCode: "Login code", suCodeSafe: "Never give this code to anyone. TG Kit uses it only to log in on this computer.",
+      suCode: "Login code", suCodeSafe: "Never give this code to anyone. Telegram Assistant uses it only to log in on this computer.",
       suLogin: "Log in", suResend: "Send a new code",
       suPwWhy: "Your account has two-step verification. Type the extra password you set in Telegram.",
       suPw: "Two-step password",
-      suChatsWhy: "Tick the chats TG Kit should copy to this computer. Only these are searched and summarized.",
+      suChatsWhy: "Tick the chats Telegram Assistant should copy to this computer. Only these are searched and summarized.",
       suFilter: "Find a chat", suHow: "How much history",
       suRecent: "The last 1000 messages of each chat (quick)", suAll: "Everything (can take a while for big groups)",
       suAdd: "Add the ticked chats", suFinish: "Done", suTerminal: "Use the setup window in a terminal instead",
@@ -159,12 +159,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       findTg: (n) => `Open Telegram and find ${n}`, copyName: "Copy name", nameCopied: (n) => `Copied: ${n}`,
       findTgTip: "This chat has no Telegram link. Copy its name and paste it in Telegram's search.",
       suStep0: "Data folder",
-      suFolderWhy: "TG Kit keeps a copy of the chats you pick on this computer. Choose where.",
+      suFolderWhy: "Telegram Assistant keeps a copy of the chats you pick on this computer. Choose where.",
       suKeep: (p) => `Keep them in ${p}`, suOther: "Use another folder",
       suFolderPath: "Full path of the folder",
-      suFolderHelp: "For example D:\\TG Kit. TG Kit makes the folder if it is not there yet.",
+      suFolderHelp: "For example D:\\Telegram Assistant. Telegram Assistant makes the folder if it is not there yet.",
       progWaiting: "Waiting", progCopying: (n) => `Copying: ${n} ${plural(n, "message", "messages")} so far`,
-      progDone: (n) => `Done: ${n} ${plural(n, "message", "messages")}`, progAlready: "Already in TG Kit",
+      progDone: (n) => `Done: ${n} ${plural(n, "message", "messages")}`, progAlready: "Already in Telegram Assistant",
       progPartial: (n) => `Stopped early: only ${n} ${plural(n, "message", "messages")} copied, older ones are missing. Check your internet connection, then press Retry.`,
       progStopped: "Stopped", progRetry: "Retry", progList: "Copying the ticked chats",
       suAddedSome: (n, f) => `Added ${n} ${plural(n, "chat", "chats")}. ${f} could not be fully copied: see the list, and press Retry there.`,
@@ -172,8 +172,19 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       stopRetry: "Stop and retry", stopping: "Stopping...",
       lockStuck: (m) => `Getting new messages has made no progress for ${m} minutes.`,
       lockGone: "The program that was getting new messages ended without finishing.",
-      lockBusy: "Another TG Kit window or terminal is getting new messages for this data folder.",
-      switchedTo: (n) => `This computer is logged in to ${n}: TG Kit now shows that account's chats.`,
+      lockBusy: "Another Telegram Assistant window or terminal is getting new messages for this data folder.",
+      switchedTo: (n) => `This computer is logged in to ${n}: Telegram Assistant now shows that account's chats.`,
+      todayBtn: "What do I need to do today?", todayAsk: "What do I need to do today?",
+      todayHead: "Today", itemsN: (n) => `${n} ${plural(n, "item", "items")}`,
+      todayGroup_tasks: "Your open tasks", todayGroup_asks: "Waiting for your answer",
+      todayGroup_today: "Mentioned for today", andMore: (n) => `And ${n} more.`,
+      stopBtn: "Stop", syncStopping: "Stopping. Everything already saved is kept.",
+      syncStopped: "Stopped. What was saved is kept; press Get new messages to get the rest.",
+      progDoneFiles: (n, f) => `Done: ${n} ${plural(n, "message", "messages")}, ${f} ${plural(f, "file", "files")} still downloading`,
+      progStoppedSaved: (n) => `Stopped: ${n} ${plural(n, "message", "messages")} saved, older ones not copied yet. Press Retry to copy the rest.`,
+      filesLabel: "Files", filesSmall: (mb) => `Text and small files (up to ${mb} MB)`,
+      filesNone: "Text only (fastest)", filesAll: "Everything (can take long)",
+      filesHelp: "Messages are saved first and can be searched at once; files download after them.",
     },
     vi: {
       newChat: "Cuộc trò chuyện mới", filter: "Lọc cuộc trò chuyện và nhóm", conversations: "Cuộc trò chuyện",
@@ -182,16 +193,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       sync: "Lấy tin mới", syncing: "Đang lấy tin mới...",
       syncDone: (n) => (n ? `Có ${n} tin nhắn mới.` : "Đã cập nhật đầy đủ."),
       syncFail: "Một số nhóm chưa cập nhật được.", syncBusy: "Đang có một lượt lấy tin khác.",
-      connect: "Kết nối Telegram", answersBy: "Trả lời bằng", auto: "Claude nếu có", offline: "Chỉ TG Kit",
+      connect: "Kết nối Telegram", answersBy: "Trả lời bằng", auto: "Claude nếu có", offline: "Chỉ Telegram Assistant",
       modeClaude: "Claude", modeOffline: "Ngoại tuyến",
       claudeOn: "Máy này có Claude Code: Claude lên kế hoạch tìm kiếm và viết câu trả lời.",
-      claudeOff: "Máy này chưa có Claude Code: TG Kit tự trả lời theo quy tắc có sẵn.",
-      offlineOn: "TG Kit tự trả lời theo quy tắc có sẵn, không dùng Claude.",
+      claudeOff: "Máy này chưa có Claude Code: Telegram Assistant tự trả lời theo quy tắc có sẵn.",
+      offlineOn: "Telegram Assistant tự trả lời theo quy tắc có sẵn, không dùng Claude.",
       emptyTitle: "Hỏi về các nhóm Telegram của bạn",
       emptyBody: "Tìm tin nhắn, tóm tắt những gì đã diễn ra, hoặc xem việc cần làm. Gõ tiếng Việt hay tiếng Anh, có dấu hay không dấu đều được.",
       inputPh: "Hỏi về các nhóm của bạn", hint: "Enter để gửi · Shift+Enter để xuống dòng · Esc để dừng",
       send: "Gửi", stop: "Dừng", thinking: "Đang xem các nhóm của bạn...", stopped: "Đã dừng.",
-      steps: (n) => `Đã chạy ${n} lệnh TG Kit`, stepOk: "xong", stepBad: "lỗi",
+      steps: (n) => `Đã chạy ${n} lệnh Telegram Assistant`, stepOk: "xong", stepBad: "lỗi",
       showCtx: "Xem cả đoạn", hideCtx: "Ẩn đoạn",
       messagesN: (n) => `${n} tin nhắn`, tasksN: (n) => `${n} việc`, chatsN: (n) => `${n} nhóm`,
       markDone: "Xong", undo: "Hoàn tác", forYou: "Của bạn", due: "Hạn",
@@ -200,10 +211,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       decisionsNote: "Xem tin được trả lời trước khi coi là đã đồng ý.", requests: "Yêu cầu và việc cần làm",
       links: "Liên kết", files: "Tệp", replyingTo: "Trả lời", notLocal: "một tin không có trong bản sao",
       quiet: "Không có tin trong khoảng này", remove: "Xóa cuộc trò chuyện", in: "trong",
-      notConnected: "TG Kit chưa kết nối với Telegram",
+      notConnected: "Telegram Assistant chưa kết nối với Telegram",
       notConnectedBody: "Kết nối một lần ngay tại đây: khoảng 3 phút, rồi chọn các nhóm cần theo dõi.",
       setupOpened: "Cửa sổ cài đặt đã mở. Xong thì quay lại đây.",
-      errGeneric: "Có lỗi xảy ra. Thử lại nhé.", errOffline: "TG Kit không phản hồi. Đóng cửa sổ này và mở lại TG Kit.",
+      errGeneric: "Có lỗi xảy ra. Thử lại nhé.", errOffline: "Telegram Assistant không phản hồi. Đóng cửa sổ này và mở lại Telegram Assistant.",
       wordsMatch: "Đủ các từ, không theo thứ tự", messagesFor: (q) => `“${q}”`, menu: "Hiện danh sách",
       updated: "cập nhật", never: "chưa bao giờ", you: "Bạn", summaryOf: (l) => `Tóm tắt: ${l}`, yourTasks: "Việc cần làm",
       allChats: "Nhóm của bạn", file: "Tệp", examplesHead: "Thử hỏi",
@@ -211,7 +222,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       installClaude: "Tải Claude Code", loginClaude: "Mở cửa sổ đăng nhập", checkAgain: "Kiểm tra lại",
       model: "Mô hình trả lời", effort: "Mức suy nghĩ", modelDefault: "Mặc định của Claude Code", effortDefault: "Mặc định của Claude Code",
       modelHelp: "Mặc định của Claude Code là lựa chọn tốt. Opus suy nghĩ kỹ hơn và dùng nhiều hạn mức hơn; Haiku nhanh nhất và dùng ít nhất.",
-      stMissing: "Máy này chưa có Claude Code. Trong lúc đó TG Kit tự trả lời.",
+      stMissing: "Máy này chưa có Claude Code. Trong lúc đó Telegram Assistant tự trả lời.",
       stNotLogged: "Đã cài Claude Code nhưng chưa đăng nhập.",
       stConnected: (acct, plan) => `Đã kết nối${acct ? ` với ${acct}` : ""}${plan ? ` (gói ${plan})` : ""}.`,
       stUnknown: "Đã cài Claude Code. Không kiểm tra được trạng thái đăng nhập ở đây.",
@@ -234,7 +245,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       accountHelp: "Để dùng tài khoản Telegram khác, đăng xuất ở đây rồi bấm Kết nối Telegram. Tin nhắn trên Telegram không bị ảnh hưởng.",
       logout: "Đăng xuất Telegram", logoutAsk: "Đăng xuất Telegram trên máy này?", keepLegend: "Bản sao các nhóm",
       keepData: "Giữ lại ở đây (vẫn tìm kiếm được)",
-      backupData: "Chuyển vào thư mục sao lưu để TG Kit bắt đầu trống (không xóa gì)",
+      backupData: "Chuyển vào thư mục sao lưu để Telegram Assistant bắt đầu trống (không xóa gì)",
       logoutYes: "Đăng xuất", cancel: "Hủy", loggedInAs: (n) => `Đang đăng nhập Telegram với ${n}.`,
       notLoggedIn: "Máy này chưa đăng nhập Telegram.", loggedOut: "Đã đăng xuất Telegram.",
       movedTo: (p) => `Các nhóm đã được chuyển vào ${p}.`, saved: "Đã lưu.",
@@ -245,24 +256,24 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       secData: "Bản sao các nhóm", mediaCap: "Giữ tệp đính kèm đến (MB)",
       mediaHelp: "Tệp lớn hơn chỉ nằm trên Telegram; tin nhắn vẫn ghi là có tệp. Áp dụng cho tin mới.",
       dataAt: "Lưu tại", addChats: "Thêm nhóm",
-      logHelp: "Khi có lỗi, TG Kit ghi chi tiết vào một tệp nhật ký. Bấm Chép thông tin chẩn đoán rồi gửi cho người đã đưa bạn TG Kit. Trong đó không có tin nhắn, mã hay mật khẩu.",
+      logHelp: "Khi có lỗi, Telegram Assistant ghi chi tiết vào một tệp nhật ký. Bấm Chép thông tin chẩn đoán rồi gửi cho người đã đưa bạn Telegram Assistant. Trong đó không có tin nhắn, mã hay mật khẩu.",
       copyDiag: "Chép thông tin chẩn đoán", openLogs: "Mở thư mục nhật ký", diagCopied: "Đã chép thông tin chẩn đoán. Dán vào tin nhắn để gửi.",
       suRetry: "Tải lại danh sách nhóm", suSwitched: "Đây là tài khoản Telegram khác: các nhóm của tài khoản trước đã được cất riêng và sẽ trở lại khi bạn đăng nhập lại tài khoản đó.",
       suTitle: "Kết nối Telegram", suStep1: "Mã Telegram", suStep2: "Đăng nhập", suStep3: "Chọn nhóm",
-      suCodesWhy: "TG Kit đọc các nhóm của bạn bằng hai mã của Telegram. Bạn tạo chúng một lần trên trang web của Telegram.",
+      suCodesWhy: "Telegram Assistant đọc các nhóm của bạn bằng hai mã của Telegram. Bạn tạo chúng một lần trên trang web của Telegram.",
       suCodes1: "Bấm Mở my.telegram.org và đăng nhập bằng số điện thoại. Telegram gửi mã vào ứng dụng Telegram của bạn.",
-      suCodes2: "Bấm API development tools. Nếu được hỏi, gõ App title bất kỳ (TG Kit) và Short name (tgkit), rồi bấm Create application.",
+      suCodes2: "Bấm API development tools. Nếu được hỏi, gõ App title bất kỳ (My Assistant) và Short name (tgkit), rồi bấm Create application.",
       suCodes3: "Chép App api_id và App api_hash vào hai ô bên dưới.",
       suOpenSite: "Mở my.telegram.org", suCodesSafe: "Hai mã này chỉ nằm trên máy này. Tài khoản Telegram nào cũng dùng được.",
       suNext: "Tiếp",
       suPhoneWhy: "Gõ số điện thoại của tài khoản Telegram. Telegram sẽ gửi mã đăng nhập vào ứng dụng Telegram của bạn.",
       suPhone: "Số điện thoại, có mã quốc gia", suSendCode: "Gửi mã", suChangeCodes: "Đổi mã Telegram",
       suCodeWhy: "Telegram đã gửi mã đăng nhập vào ứng dụng Telegram (trên điện thoại hoặc máy tính). Gõ mã đó vào đây.",
-      suCode: "Mã đăng nhập", suCodeSafe: "Đừng đưa mã này cho ai. TG Kit chỉ dùng nó để đăng nhập trên máy này.",
+      suCode: "Mã đăng nhập", suCodeSafe: "Đừng đưa mã này cho ai. Telegram Assistant chỉ dùng nó để đăng nhập trên máy này.",
       suLogin: "Đăng nhập", suResend: "Gửi mã mới",
       suPwWhy: "Tài khoản của bạn bật xác minh hai bước. Gõ mật khẩu phụ bạn đã đặt trong Telegram.",
       suPw: "Mật khẩu hai bước",
-      suChatsWhy: "Đánh dấu các nhóm TG Kit sẽ sao chép về máy này. Chỉ những nhóm này được tìm kiếm và tóm tắt.",
+      suChatsWhy: "Đánh dấu các nhóm Telegram Assistant sẽ sao chép về máy này. Chỉ những nhóm này được tìm kiếm và tóm tắt.",
       suFilter: "Tìm nhóm", suHow: "Lấy bao nhiêu tin cũ",
       suRecent: "1000 tin gần nhất của mỗi nhóm (nhanh)", suAll: "Tất cả (nhóm lớn có thể mất khá lâu)",
       suAdd: "Thêm các nhóm đã chọn", suFinish: "Xong", suTerminal: "Dùng cửa sổ cài đặt trong terminal",
@@ -282,12 +293,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       findTg: (n) => `Mở Telegram và tìm ${n}`, copyName: "Chép tên", nameCopied: (n) => `Đã chép: ${n}`,
       findTgTip: "Cuộc trò chuyện này không có liên kết Telegram. Chép tên rồi dán vào ô tìm kiếm của Telegram.",
       suStep0: "Thư mục dữ liệu",
-      suFolderWhy: "TG Kit giữ bản sao các nhóm bạn chọn trên máy này. Chọn nơi lưu.",
+      suFolderWhy: "Telegram Assistant giữ bản sao các nhóm bạn chọn trên máy này. Chọn nơi lưu.",
       suKeep: (p) => `Giữ ở ${p}`, suOther: "Dùng thư mục khác",
       suFolderPath: "Đường dẫn đầy đủ của thư mục",
-      suFolderHelp: "Ví dụ D:\\TG Kit. TG Kit tự tạo thư mục nếu chưa có.",
+      suFolderHelp: "Ví dụ D:\\Telegram Assistant. Telegram Assistant tự tạo thư mục nếu chưa có.",
       progWaiting: "Đang chờ", progCopying: (n) => `Đang sao chép: đã có ${n} tin`,
-      progDone: (n) => `Xong: ${n} tin`, progAlready: "Đã có trong TG Kit",
+      progDone: (n) => `Xong: ${n} tin`, progAlready: "Đã có trong Telegram Assistant",
       progPartial: (n) => `Dừng giữa chừng: mới sao chép ${n} tin, còn thiếu tin cũ hơn. Kiểm tra mạng rồi bấm Thử lại.`,
       progStopped: "Đã dừng", progRetry: "Thử lại", progList: "Đang sao chép các nhóm đã chọn",
       suAddedSome: (n, f) => `Đã thêm ${n} nhóm. ${f} nhóm chưa sao chép đủ: xem danh sách và bấm Thử lại ở đó.`,
@@ -295,8 +306,19 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       stopRetry: "Dừng và thử lại", stopping: "Đang dừng...",
       lockStuck: (m) => `Việc lấy tin mới đã không tiến triển trong ${m} phút.`,
       lockGone: "Chương trình đang lấy tin mới đã tắt khi chưa xong.",
-      lockBusy: "Một cửa sổ TG Kit hoặc cửa sổ lệnh khác đang lấy tin mới cho thư mục dữ liệu này.",
-      switchedTo: (n) => `Máy này đang đăng nhập ${n}: TG Kit giờ hiện các nhóm của tài khoản đó.`,
+      lockBusy: "Một cửa sổ Telegram Assistant hoặc cửa sổ lệnh khác đang lấy tin mới cho thư mục dữ liệu này.",
+      switchedTo: (n) => `Máy này đang đăng nhập ${n}: Telegram Assistant giờ hiện các nhóm của tài khoản đó.`,
+      todayBtn: "Hôm nay tôi cần làm gì?", todayAsk: "Hôm nay tôi cần làm gì?",
+      todayHead: "Hôm nay", itemsN: (n) => `${n} mục`,
+      todayGroup_tasks: "Việc của bạn", todayGroup_asks: "Đang chờ bạn trả lời",
+      todayGroup_today: "Nhắc đến hôm nay", andMore: (n) => `Và ${n} mục nữa.`,
+      stopBtn: "Dừng", syncStopping: "Đang dừng. Những gì đã lưu vẫn được giữ.",
+      syncStopped: "Đã dừng. Những gì đã lưu vẫn được giữ; bấm Lấy tin mới để lấy phần còn lại.",
+      progDoneFiles: (n, f) => `Xong: ${n} tin, còn ${f} tệp đang tải`,
+      progStoppedSaved: (n) => `Đã dừng: đã lưu ${n} tin, tin cũ hơn chưa sao chép. Bấm Thử lại để sao chép tiếp.`,
+      filesLabel: "Tệp", filesSmall: (mb) => `Tin nhắn và tệp nhỏ (đến ${mb} MB)`,
+      filesNone: "Chỉ tin nhắn (nhanh nhất)", filesAll: "Tất cả (có thể lâu)",
+      filesHelp: "Tin nhắn được lưu trước và tìm được ngay; tệp tải về sau.",
     },
   };
   const EXAMPLES = {
@@ -339,10 +361,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     suFolder: $("suFolder"), suKeepText: $("suKeepText"), suFolderPathField: $("suFolderPathField"),
     suFolderPathIn: $("suFolderPathIn"), suProg: $("suProg"), suProgList: $("suProgList"), suStop: $("suStop"),
     lockNote: $("lockNote"), lockText: $("lockText"), lockStop: $("lockStop"),
+    syncStop: $("syncStop"), todayBtn: $("todayBtn"), todayEmpty: $("todayEmpty"),
+    suFilesSmallText: $("suFilesSmallText"), mediaMode: $("mediaMode"),
   };
 
   const app = {
-    conv: null, convs: [], chats: [], claude: false, busy: false, ctrl: null, syncing: false,
+    conv: null, convs: [], chats: [], claude: false, busy: false, ctrl: null, syncing: false, maxMedia: 50,
     mode: localStorage.getItem("tgkit-mode") === "offline" ? "offline" : "auto",
   };
 
@@ -521,6 +545,19 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     document.querySelectorAll("[data-i18n-label]").forEach((n) => { n.setAttribute("aria-label", t(n.dataset.i18nLabel)); });
     ui.examples.replaceChildren(...EXAMPLES[LANG].map((q) =>
       el("li", {}, el("button", { class: "chip", type: "button", onclick: () => ask(q) }, q))));
+    showMediaCap(app.maxMedia);
+  }
+
+  // The Files choice names the size limit from the settings ("small" keeps files up to it).
+  function showMediaCap(mb) {
+    app.maxMedia = mb || app.maxMedia || 50;
+    if (ui.suFilesSmallText) ui.suFilesSmallText.textContent = t("filesSmall", app.maxMedia);
+    if (ui.mediaMode) {
+      const keep = ui.mediaMode.value || "small";
+      ui.mediaMode.replaceChildren(...["small", "none", "all"].map((m) =>
+        el("option", { value: m }, m === "small" ? t("filesSmall", app.maxMedia) : m === "none" ? t("filesNone") : t("filesAll"))));
+      ui.mediaMode.value = keep;
+    }
   }
 
   function setMode() {
@@ -710,7 +747,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     }, chatOnly ? t("openChatTg") : t("openTg"));
   }
 
-  // The link of a row: for a chat still in TG Kit, its link as it is now (the same one
+  // The link of a row: for a chat still in Telegram Assistant, its link as it is now (the same one
   // the export gives; a saved card can hold a link an earlier build made); else the
   // row's own link, never a form Telegram Desktop cannot open.
   function itemLink(item, folder, chatName) {
@@ -899,8 +936,27 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       el("li", {}, el("button", { class: "chip", type: "button", onclick: () => ask(q) }, q))));
   }
 
+  // "What do I need to do today": three short groups, each item with who, where, when
+  // and its Telegram link. The server cuts each group to a few items and says how many more.
+  function todayCard(c) {
+    const groups = (c.groups || []).filter((g) => g.total);
+    const note = c.stale && c.stale.length ? el("p", { class: "card-note" }, t("staleNote", c.stale.join(", "))) : null;
+    return el("section", { class: "card today-card" },
+      el("header", { class: "card-head" }, el("h2", {}, t("todayHead")), el("span", { class: "count" }, t("itemsN", c.total || 0))),
+      note,
+      ...groups.map((g) => el("div", { class: "today-group" },
+        el("h3", { class: "today-title" }, `${t("todayGroup_" + g.key)} (${g.total})`),
+        el("ul", { class: "rows" }, (g.items || []).map((it) => el("li", { class: "row" },
+          metaRow(it, [
+            it.due ? el("span", { class: it.due_today ? "due due-today" : "due" }, `${t("due")}: ${it.due}`) : null,
+            tgLink(itemLink(it, it.folder, it.chat))]),
+          el("p", { class: "snippet" }, it.text || "")))),
+        g.more ? el("p", { class: "quiet-line" }, t("andMore", g.more)) : null)));
+  }
+
   function card(c) {
     switch (c.type) {
+      case "today": return todayCard(c);
       case "hits": return hitsCard(c);
       case "summary": return summaryCard(c);
       case "tasks": return tasksCard(c);
@@ -917,14 +973,14 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   }
 
   function botMsg(mode) {
-    const label = el("span", {}, `TG Kit · ${mode === "claude" ? t("modeClaude") : t("modeOffline")}`);
+    const label = el("span", {}, `Telegram Assistant · ${mode === "claude" ? t("modeClaude") : t("modeOffline")}`);
     const node = el("article", { class: "msg msg-bot" },
       el("div", { class: "msg-meta" }, el("img", { class: "logo", src: "/static/icon.svg", alt: "" }), label));
     const body = el("div", { class: "msg-body" });
     node.append(body);
     return {
       node, body, steps: null, stepItems: {},
-      setMode(m) { label.textContent = `TG Kit · ${m === "claude" ? t("modeClaude") : t("modeOffline")}`; },
+      setMode(m) { label.textContent = `Telegram Assistant · ${m === "claude" ? t("modeClaude") : t("modeOffline")}`; },
       pending(text) { body.className = "msg-body pending"; body.textContent = text; },
       stream(text) {
         if (!body.classList.contains("streaming")) { body.className = "msg-body streaming"; body.textContent = ""; }
@@ -1128,12 +1184,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.syncProgress.classList.add("indeterminate");
     ui.syncStatus.textContent = t("syncing");
     ui.lockNote.hidden = true;
+    ui.syncStop.hidden = false;  // Stop is shown the whole time a sync runs
+    ui.syncStop.disabled = false;
     watchLock(true);
     let result = null;
     let switched = false;
     try {
       await stream("/api/sync", {}, (ev) => {
-        if (ev.type === "switched") {
+        if (ev.type === "running") {
+          ui.syncStop.hidden = false;
+        } else if (ev.type === "switched") {
           switched = true;
           onAccountSwitch();
         } else if (ev.type === "progress") {
@@ -1151,6 +1211,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     } finally {
       app.syncing = false;
       watchLock(false);
+      ui.syncStop.hidden = true;
       ui.syncBtn.disabled = false;
       ui.syncProgress.hidden = true;
       ui.syncBar.style.width = "6%";
@@ -1163,12 +1224,27 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       ui.syncStatus.textContent = t("syncBusy");
     } else if (result.needs === "setup") {
       ui.syncStatus.append(`${t("notConnected")}. `, el("button", { class: "link-btn", type: "button", onclick: openSetup }, t("connect")));
+    } else if (result.stopped) {
+      ui.syncStatus.textContent = `${t("syncDone", result.added || 0)} ${t("syncStopped")}`;
     } else {
       ui.syncStatus.textContent = result.code === 0 ? t("syncDone", result.added) : `${t("syncDone", result.added)} ${t("syncFail")}`;
     }
     if (switched) onAccountSwitch();
     else refresh().catch(() => {});
   }
+
+  // Stop on the sync bar: ends this window's own sync cleanly (/api/stop); every chat
+  // already saved is kept and the next Get new messages gets the rest.
+  ui.syncStop.addEventListener("click", async () => {
+    ui.syncStop.disabled = true;
+    ui.syncStatus.textContent = t("syncStopping");
+    try {
+      await api("/api/stop", {});
+    } catch (e) {
+      ui.syncStop.disabled = false;
+      ui.syncStatus.textContent = e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message;
+    }
+  });
 
   // The fallback: `tgkit setup` in a terminal window.
   async function openTerminalSetup() {
@@ -1335,6 +1411,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     suShown = [];
     syncPickBar();
     if (!(opts && opts.keepNote)) ui.suProg.hidden = true;  // a fresh pick starts without old rows
+    api("/api/settings").then((s) => showMediaCap(s.max_media_mb)).catch(() => {});  // the Files choice names the limit
     try {
       const r = await api("/api/setup/dialogs");
       suDialogs = r.dialogs || [];
@@ -1381,14 +1458,20 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     return limit === "all" ? "all" : Number(limit);
   }
 
+  // The Files choice of this copy: small (default), none (text only) or all.
+  function suFiles() {
+    return (document.querySelector('input[name="suFiles"]:checked') || {}).value || "small";
+  }
+
   // A copy cut short (partial) is a failure: its own words and a Retry, never "Done".
   function progBad(r) { return r.state === "error" || r.state === "stopped" || (r.state === "done" && !!r.partial); }
 
   function progText(r) {
     if (r.state === "copying") return t("progCopying", r.count || 0);
     if (r.state === "done" && r.partial) return t("progPartial", r.count || 0);
+    if (r.state === "done" && r.files_pending > 0) return t("progDoneFiles", r.count || 0, r.files_pending);
     if (r.state === "done") return r.already ? t("progAlready") : t("progDone", r.count || 0);
-    if (r.state === "stopped") return t("progStopped");
+    if (r.state === "stopped") return r.count ? t("progStoppedSaved", r.count) : t("progStopped");
     if (r.state === "error") return [r.message, r.hint].filter(Boolean).join(" ");
     return t("progWaiting");
   }
@@ -1404,8 +1487,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
         el("span", { class: failed ? "prog-state bad" : "prog-state" }, progText(r)),
         failed && !p.running ? el("button", { class: "link-btn", type: "button", onclick: () => suStartAdd([r.id], true) }, t("progRetry")) : null);
     }));
-    ui.suStop.hidden = !(p.running && p.lock && p.lock.stuck && p.lock.can_stop);
+    // Stop is shown the whole time a copy runs (the COPYING note names it).
+    suLast = p;
+    ui.suStop.hidden = !p.running;
+    ui.suStop.textContent = suHung(p) ? t("stopRetry") : t("stopBtn");
+    if (p.stopping) ui.suStop.disabled = true;
   }
+
+  let suLast = null;
+  // A copy waiting on this window's own hung sync: Stop and retry frees that lock.
+  function suHung(p) { return !!(p && p.running && p.lock && p.lock.stuck && p.lock.can_stop); }
 
   let suPolling = false;
   let suRetryAfterStop = false;
@@ -1447,7 +1538,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.suStop.disabled = false;
     suNote(t("suAdding"));
     try {
-      renderProgress(await api("/api/setup/add", { ids, limit: suLimit(), keep: !!keep }));
+      renderProgress(await api("/api/setup/add", { ids, limit: suLimit(), keep: !!keep, files: suFiles() }));
       ui.suProg.scrollIntoView({ block: "nearest" });
     } catch (err) {
       suError(err);
@@ -1466,9 +1557,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   ui.suStop.addEventListener("click", async () => {
     ui.suStop.disabled = true;
     suNote(t("stopping"));
-    suRetryAfterStop = true;
+    const hung = suHung(suLast);
+    suRetryAfterStop = hung;  // only Stop and retry copies again; a plain Stop keeps what was saved
     try {
-      await api("/api/sync/stop", {});
+      await api(hung ? "/api/sync/stop" : "/api/stop", {});
     } catch (err) {
       suRetryAfterStop = false;
       suError(err);
@@ -1552,6 +1644,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.exportDir.value = s.export_dir || s.export_now || "";
     ui.exportDir.placeholder = s.export_default || "";
     ui.mediaCap.value = String(s.max_media_mb ?? 50);
+    showMediaCap(s.max_media_mb);
+    ui.mediaMode.value = s.media || "small";
     ui.dataPath.textContent = s.home || "";
     const acc = s.account || {};
     ui.addChatsBtn.hidden = !acc.logged_in;
@@ -1626,6 +1720,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   ui.exportDefault.addEventListener("click", () => saveSetting({ export_dir: "" }));
   ui.openExport.addEventListener("click", () => api("/api/open-folder", {}).catch((e) => setNote(e.message)));
   ui.mediaCap.addEventListener("change", () => saveSetting({ max_media_mb: Number(ui.mediaCap.value || 50) }));
+  ui.mediaMode.addEventListener("change", () => saveSetting({ media: ui.mediaMode.value }));
   ui.openData.addEventListener("click", () => api("/api/open-data", {}).catch((e) => setNote(e.message)));
   ui.openLogs.addEventListener("click", () => api("/api/open-logs", {}).catch((e) => setNote(e.message)));
   ui.copyDiag.addEventListener("click", async () => {
@@ -1686,6 +1781,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     }
   });
   ui.newChat.addEventListener("click", newConversation);
+  // "What do I need to do today": the same question as typing it (offline: no tokens).
+  ui.todayBtn.addEventListener("click", () => ask(t("todayAsk")));
+  ui.todayEmpty.addEventListener("click", () => ask(t("todayAsk")));
   ui.filter.addEventListener("input", renderLists);
   ui.syncBtn.addEventListener("click", sync);
   ui.setupBtn.addEventListener("click", openSetup);

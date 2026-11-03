@@ -1,8 +1,8 @@
-# TG Kit installer for Windows. Double-click Install-Windows.bat rather than running this directly.
-# It creates a private Python environment in this folder (.venv), installs TG Kit into it,
-# adds the tgkit command and the TG Kit icon (desktop and Start menu, it opens the TG Kit
+# Telegram Assistant installer for Windows. Double-click Install-Windows.bat rather than running this directly.
+# It creates a private Python environment in this folder (.venv), installs Telegram Assistant into it,
+# adds the tgkit command and the Telegram Assistant icon (desktop and Start menu, it opens the Telegram Assistant
 # window), registers the Claude Code plugin if Claude is installed, and starts the first-time
-# setup. Running it again (or Update-Windows.bat) updates TG Kit: your data is kept and the
+# setup. Running it again (or Update-Windows.bat) updates Telegram Assistant: your data is kept and the
 # setup is skipped when you are already logged in.
 # Set TGKIT_NO_SYSTEM_CHANGES=1 (or pass -NoSystemChanges) to skip PATH, icons and Claude.
 param([switch]$NoSystemChanges, [switch]$Update)
@@ -35,12 +35,12 @@ function Find-Python {
     return $null
 }
 
-Say 'Installing TG Kit...'
+Say 'Installing Telegram Assistant...'
 Say ''
 
 $py = Find-Python
 if (-not $py) {
-    Say 'TG Kit needs Python (free). It is not installed on this computer yet.'
+    Say 'Telegram Assistant needs Python (free). It is not installed on this computer yet.'
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         $answer = Read-Host 'Install Python now? Type Y and press Enter (or just press Enter to skip)'
         if ($answer -match '^[Yy]') {
@@ -56,19 +56,19 @@ if (-not $py) {
 $pyExe = $py[0]
 $pyArgs = @($py | Select-Object -Skip 1)
 
-Say "Step 1 of 3: preparing a private Python for TG Kit (in $Venv)..."
+Say "Step 1 of 3: preparing a private Python for Telegram Assistant (in $Venv)..."
 if (-not (Test-Path $VPy)) {
     & $pyExe @pyArgs -m venv "$Venv"
-    if ($LASTEXITCODE -ne 0) { Fail "Could not create $Venv. Is the TG Kit folder writable?" }
+    if ($LASTEXITCODE -ne 0) { Fail "Could not create $Venv. Is the Telegram Assistant folder writable?" }
 }
 
-Say 'Step 2 of 3: installing TG Kit (needs internet, about 1 minute)...'
+Say 'Step 2 of 3: installing Telegram Assistant (needs internet, about 1 minute)...'
 & $VPy -m pip install --quiet --disable-pip-version-check --upgrade pip
-# "[app]" adds the window (pywebview). If that part cannot install, TG Kit still works and
+# "[app]" adds the window (pywebview). If that part cannot install, Telegram Assistant still works and
 # its window opens in the web browser instead.
 & $VPy -m pip install --quiet --disable-pip-version-check --upgrade "$Kit[app]"
 if ($LASTEXITCODE -ne 0) {
-    Say '(The window part could not be installed; TG Kit will open in your web browser instead.)'
+    Say '(The window part could not be installed; Telegram Assistant will open in your web browser instead.)'
     & $VPy -m pip install --quiet --disable-pip-version-check --upgrade "$Kit"
 }
 if ($LASTEXITCODE -ne 0) { Fail 'Installing failed. Check your internet connection and double-click Install-Windows.bat again.' }
@@ -82,7 +82,7 @@ if (-not $NoSystemChanges) {
         Set-Content -Path (Join-Path $Bin 'tgkit.cmd') -Value '@"%~dp0..\.venv\Scripts\tgkit.exe" %*' -Encoding ASCII
         # Claude Code runs commands in Git Bash, which never runs a .cmd: give it an sh shim too.
         [IO.File]::WriteAllText((Join-Path $Bin 'tgkit'), "#!/bin/sh`nexec `"`$(dirname `"`$0`")/../.venv/Scripts/tgkit.exe`" `"`$@`"`n", (New-Object Text.UTF8Encoding $false))
-        # An older TG Kit unzipped in another folder leaves its bin on PATH, ahead of this one:
+        # An older Telegram Assistant unzipped in another folder leaves its bin on PATH, ahead of this one:
         # keep only this folder's bin, so the tgkit command is always the one just installed.
         $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
         $parts = @($userPath -split ';' | Where-Object {
@@ -94,21 +94,30 @@ if (-not $NoSystemChanges) {
         $env:Path = "$env:Path;$Bin"
         $target = $AppExe
         if (-not (Test-Path $target)) { $target = $Exe }
+        # The app's own icon (scripts/make-icons.py makes it), not the Python launcher's.
+        $icon = Join-Path $Kit 'src\tgkit\web\static\tgkit.ico'
+        if (-not (Test-Path $icon)) { $icon = "$target,0" } else { $icon = "$icon,0" }
         $shell = New-Object -ComObject WScript.Shell
-        $menu = Join-Path ([Environment]::GetFolderPath('Programs')) 'TG Kit.lnk'
-        foreach ($place in @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'TG Kit.lnk'), $menu)) {
+        $desk = [Environment]::GetFolderPath('Desktop')
+        $progs = [Environment]::GetFolderPath('Programs')
+        # Shortcuts of the old name ("TG Kit", up to 0.2.5) are replaced by the new ones;
+        # only those two files, never anything else. The data folder is not touched.
+        foreach ($old in @((Join-Path $desk 'TG Kit.lnk'), (Join-Path $progs 'TG Kit.lnk'))) {
+            if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
+        }
+        foreach ($place in @((Join-Path $desk 'Telegram Assistant.lnk'), (Join-Path $progs 'Telegram Assistant.lnk'))) {
             $link = $shell.CreateShortcut($place)
             $link.TargetPath = $target
             $link.WorkingDirectory = $Kit
-            $link.IconLocation = "$target,0"
-            $link.Description = 'TG Kit: ask about your Telegram chats'
+            $link.IconLocation = $icon
+            $link.Description = 'Telegram Assistant: ask about your Telegram chats'
             $link.Save()
         }
     } catch {
         Say "Could not add the command or the icon ($($_.Exception.Message)). You can still run: $Exe"
     }
     if (Get-Command claude -ErrorAction SilentlyContinue) {
-        Say 'Adding TG Kit to Claude Code...'
+        Say 'Adding Telegram Assistant to Claude Code...'
         try {
             & claude plugin marketplace add "$Kit" | Out-Null
             & claude plugin install tgkit@tgkit | Out-Null
@@ -124,13 +133,13 @@ if (-not $NoSystemChanges) {
 $loggedIn = (& $VPy -c 'from tgkit import config; print(int(config.logged_in(config.home())))' 2>$null)
 Say ''
 if ("$loggedIn".Trim() -eq '1') {
-    if ($Update) { Say "TG Kit is updated to version $Version. Your chats and tasks are kept." }
-    else { Say "TG Kit $Version is installed. You are already logged in, so the setup is skipped." }
+    if ($Update) { Say "Telegram Assistant is updated to version $Version. Your chats and tasks are kept." }
+    else { Say "Telegram Assistant $Version is installed. You are already logged in, so the setup is skipped." }
 } else {
-    Say "Installed TG Kit $Version! The first-time setup starts now."
+    Say "Installed Telegram Assistant $Version! The first-time setup starts now."
     Say ''
     & $Exe setup
 }
 Say ''
-Say 'Open TG Kit with the "TG Kit" icon on your desktop or in the Start menu.'
+Say 'Open Telegram Assistant with its icon on your desktop or in the Start menu.'
 Say 'It opens a window where you ask about your chats in your own words.'

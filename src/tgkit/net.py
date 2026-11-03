@@ -4,7 +4,11 @@ Ported from the original single-user tool with its sync semantics UNCHANGED.
 Read docs/MAINTENANCE.md before changing anything here. The short version:
 
   * sync only fetches messages newer than the newest id already on disk; it
-    never rewrites history and never re-downloads media;
+    never rewrites history and never re-downloads a file already on disk (a
+    file recorded on its row as pending or failed is fetched again);
+  * text first: a chat's messages are written as soon as its text is read; its
+    files download after, in the background (MediaPool), never blocking the
+    next chat. A few chats are read at once on the ONE client of the process;
   * a chat folder with zero rows is SKIPPED, never crawled from the start
     ("never crawled" is not "sync everything");
   * a damaged line in messages.jsonl aborts sync for that chat before any
@@ -18,7 +22,9 @@ import asyncio
 import contextlib
 import inspect
 import json
+import os
 import re
+import shutil
 import socket
 import sys
 from datetime import datetime, timezone
@@ -41,14 +47,37 @@ def _flood_error():
     return FloodWaitError
 
 
-class Ctx:
-    """What a network command needs: the data folder, its store and config."""
+CHATS_AT_ONCE = 3      # chats read at the same time, on the one client of the process (R14)
+FILES_AT_ONCE = 3      # attachments downloaded at the same time, after the text
+FLOOD_MAX_WAIT = 300   # seconds: a longer FloodWait ends that chat with a plain message
+RETRY_FILES_MAX = 200  # files of one chat a sync tries again (pending or failed earlier)
+MEDIA_TRIES = 3        # a file that failed this many times is not tried again
+_sleep = asyncio.sleep  # the tests replace it to wait out a FloodWait at once
 
-    def __init__(self, base: Path, store: Store, cfg: dict):
+
+class Stopped(Exception):
+    """The person pressed Stop: end cleanly, keep what is saved."""
+
+
+class Ctx:
+    """What a network command needs: the data folder, its store and config.
+
+    `media` is the Files choice (config.MEDIA_MODES), `stop()` says Stop was pressed."""
+
+    def __init__(self, base: Path, store: Store, cfg: dict, media: str | None = None, stop=None):
         self.base = Path(base)
         self.store = store
         self.cfg = cfg
         self.max_media = config.max_media_bytes(self.base, cfg)
+        self.media = media if media in config.MEDIA_MODES else config.media_mode(cfg)
+        self.stop = stop or (lambda: False)
+
+    @property
+    def cap(self) -> int:
+        """The largest file to download now (0: text only)."""
+        if self.media == "none":
+            return 0
+        return 1 << 62 if self.media == "all" else self.max_media
 
 
 def make_client(base: Path, cfg: dict):
@@ -57,7 +86,7 @@ def make_client(base: Path, cfg: dict):
         from telethon import TelegramClient  # noqa: PLC0415
     except ImportError:
         raise UserError(
-            "The Telegram part of TG Kit is missing on this computer.",
+            "The Telegram part of Telegram Assistant is missing on this computer.",
             "Run the installer again (see README).",
         ) from None
     base.mkdir(parents=True, exist_ok=True)
@@ -194,27 +223,233 @@ def remember_sender(names: dict, msg) -> None:
         names[str(getattr(sid, "user_id", sid))] = name
 
 
-async def _download(client, msg, media, row, media_dir: Path, rel_folder: str, cap: int, flood,
-                    beat=None) -> int:
-    """Download one attachment; failures are recorded on the row, never fatal.
-    `beat()` runs for every chunk received: a big file is progress, not a hang."""
+async def _flood_wait(seconds, ctx: "Ctx", beat=None) -> None:
+    """Wait as long as Telegram asked, beating the lock every second; Stop ends the wait."""
+    left = int(seconds or 0) + 1
+    while left > 0:
+        if ctx.stop():
+            raise Stopped()
+        if beat is not None:
+            beat()
+        await _sleep(1)
+        left -= 1
+
+
+# The fields of a row that say what happened to its attachment.
+MEDIA_KEYS = ("media_path", "media_pending", "media_skipped", "media_error", "media_tries")
+
+
+def want_file(ctx: "Ctx", row: dict) -> bool:
+    """Decide, by the Files choice, whether this row's attachment is downloaded later.
+    Every attachment not downloaded says why on its row, so none is lost silently."""
+    media = row.get("media")
+    if not media or row.get("media_path"):
+        return False
     size = media.get("size") or 0
-    if size and size > cap:
-        row["media_skipped"] = f"size {size} > cap {cap}"
-        return 0
+    if ctx.media == "none":
+        row["media_skipped"] = "text only"
+        row.pop("media_pending", None)
+        return False
+    if size and size > ctx.cap:
+        row["media_skipped"] = f"size {size} > cap {ctx.cap}"
+        row.pop("media_pending", None)
+        return False
+    row.pop("media_skipped", None)
+    row["media_pending"] = True
+    return True
+
+
+async def _download(client, msg, row, media_dir: Path, rel_folder: str, flood, beat=None,
+                    ctx: "Ctx | None" = None) -> int:
+    """Download one attachment; failures are recorded on the row, never fatal.
+    `beat()` runs for every chunk received: a big file is progress, not a hang.
+    A FloodWait is waited out once (stoppable); a file still not fetched keeps a
+    `media_error` and a later sync tries it again (up to MEDIA_TRIES times)."""
+    ctx = ctx or Ctx.__new__(Ctx)
+    stop = getattr(ctx, "stop", None) or (lambda: False)
     media_dir.mkdir(parents=True, exist_ok=True)
     kw = {"progress_callback": lambda _got, _total: beat()} if beat is not None else {}
-    try:
-        path = await client.download_media(msg, file=str(media_dir), **kw)
+    for attempt in range(2):
+        if stop():
+            raise Stopped()
+        try:
+            path = await client.download_media(msg, file=str(media_dir), **kw)
+        except flood as exc:
+            if attempt or (getattr(exc, "seconds", 0) or 0) > FLOOD_MAX_WAIT:
+                row["media_error"] = "Telegram asked to wait; try again later"
+                break
+            await _flood_wait(exc.seconds, ctx, beat)
+            continue
+        except Stopped:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            row["media_error"] = f"{type(exc).__name__}: {exc}"
+            break
         if path:
             row["media_path"] = str(Path(rel_folder) / "media" / Path(path).name)
+            for key in ("media_pending", "media_error", "media_tries", "media_skipped"):
+                row.pop(key, None)
             return 1
-    except flood as exc:
-        print(f"  Telegram asked to wait {exc.seconds}s; waiting", flush=True)
-        await asyncio.sleep(exc.seconds + 1)
-    except Exception as exc:  # noqa: BLE001
-        row["media_error"] = f"{type(exc).__name__}: {exc}"
+        row["media_error"] = "Telegram sent no file"
+        break
+    row.pop("media_pending", None)
+    row["media_tries"] = int(row.get("media_tries") or 0) + 1
     return 0
+
+
+def apply_media(d: Path, updates: dict) -> None:
+    """Write what happened to the attachments of `updates` (id -> row) into the chat's
+    messages.jsonl, whole file at once (R1). Only the MEDIA_KEYS of those rows change;
+    every other line is kept byte for byte."""
+    if not updates:
+        return
+    path = d / "messages.jsonl"
+    if not path.exists():
+        return
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        text = line.strip()
+        if text:
+            try:
+                r = json.loads(text)
+            except json.JSONDecodeError:
+                out.append(line)
+                continue
+            u = updates.get(r.get("id"))
+            if u is not None:
+                for key in MEDIA_KEYS:
+                    if key in u:
+                        r[key] = u[key]
+                    elif key != "media_path":
+                        r.pop(key, None)
+                line = json.dumps(r, ensure_ascii=False) + "\n"
+        out.append(line)
+    atomic_write(path, "".join(out))
+
+
+class MediaPool:
+    """Attachments download here, after the text, FILES_AT_ONCE at a time: a slow file
+    never holds up the next chat. Each chat's rows are written back (apply_media) when
+    its files are done and every 20 files; a file not fetched keeps `media_pending`
+    on disk (it was written so with the text), so a later sync tries it again."""
+
+    def __init__(self, client, ctx: "Ctx", flood, beat=None):
+        self.client, self.ctx, self.flood, self.beat = client, ctx, flood, beat
+        self.q: asyncio.Queue = asyncio.Queue()
+        self.chats: dict = {}
+        self.total = 0
+        self.got = 0
+        self.workers = [asyncio.ensure_future(self._work()) for _ in range(FILES_AT_ONCE)]
+
+    def add(self, d: Path, jobs: list, on_change=None) -> None:
+        if not jobs:
+            return
+        st = self.chats.setdefault(d, {"left": 0, "got": 0, "rows": {}, "on": on_change})
+        st["on"] = on_change or st["on"]
+        for msg, row in jobs:
+            st["left"] += 1
+            st["rows"][row["id"]] = row
+            self.total += 1
+            self.q.put_nowait((d, msg, row))
+
+    def left(self, d: Path) -> int:
+        st = self.chats.get(d)
+        return st["left"] if st else 0
+
+    def _flush(self, d: Path) -> None:
+        st = self.chats[d]
+        rows, st["rows"] = st["rows"], {}
+        try:
+            apply_media(d, rows)
+        except Exception as exc:  # noqa: BLE001  (the rows stay "pending" on disk: tried again later)
+            applog.caught("files: the chat's rows were not updated", exc, self.ctx.base)
+
+    async def _work(self) -> None:
+        while True:
+            d, msg, row = await self.q.get()
+            st = self.chats[d]
+            try:
+                if not self.ctx.stop():
+                    got = await _download(self.client, msg, row, d / "media", d.name, self.flood,
+                                          self.beat, self.ctx)
+                    st["got"] += got
+                    self.got += got
+            except Stopped:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                applog.caught("files: a download failed", exc, self.ctx.base)
+            finally:
+                st["left"] -= 1
+                if st["left"] == 0 or st["got"] % 20 == 0:
+                    self._flush(d)
+                if st["on"] is not None:
+                    with contextlib.suppress(Exception):
+                        st["on"](st["left"], st["got"])
+                self.q.task_done()
+
+    async def finish(self) -> None:
+        """Wait for every queued file (Stop makes the rest end at once), then write back."""
+        try:
+            await self.q.join()
+        finally:
+            await self.close()
+
+    async def close(self) -> None:
+        """End the workers and write back what is known. Safe to run twice; runs on
+        every way out (a cancelled copy too: its rows stay "pending" on disk)."""
+        for w in self.workers:
+            w.cancel()
+        with contextlib.suppress(BaseException):
+            await asyncio.gather(*self.workers, return_exceptions=True)
+        for d, st in self.chats.items():
+            if st["rows"]:
+                self._flush(d)
+
+
+async def read_text(client, ctx: "Ctx", entity, rows: list, names: dict, flood, beat=None, on_count=None,
+                    min_id: int = 0, limit: int | None = None, msgs: dict | None = None):
+    """Read a chat's messages NEWEST FIRST into `rows` (no file is downloaded here).
+    Returns None when the read finished, else what stopped it (Stopped, or the error).
+    A FloodWait is waited out (stoppable, at most FLOOD_MAX_WAIT seconds, 3 times) and
+    the read goes on from the oldest message read so far, so the rows stay contiguous.
+    `msgs` collects the messages whose attachment is wanted (id -> message)."""
+    waits = 0
+    while True:
+        kw: dict = {}
+        if min_id:
+            kw["min_id"] = min_id
+        if rows:
+            kw["offset_id"] = rows[-1]["id"]  # older than the oldest read so far
+        if limit is not None:
+            if limit - len(rows) <= 0:
+                return None
+            kw["limit"] = limit - len(rows)
+        try:
+            async for msg in client.iter_messages(entity, **kw):
+                if ctx.stop():
+                    return Stopped()
+                row = message_row(msg, media_summary(msg))
+                remember_sender(names, msg)
+                if beat is not None:
+                    beat()
+                if msgs is not None and want_file(ctx, row):
+                    msgs[row["id"]] = msg
+                rows.append(row)
+                if on_count is not None:
+                    on_count(len(rows))
+            return None
+        except flood as exc:
+            seconds = getattr(exc, "seconds", 0) or 0
+            if waits >= 3 or seconds > FLOOD_MAX_WAIT:
+                return exc
+            waits += 1
+            print(f"  Telegram asked to wait {seconds}s; waiting", flush=True)
+            try:
+                await _flood_wait(seconds, ctx, beat)
+            except Stopped as stop:
+                return stop
+        except Exception as exc:  # noqa: BLE001
+            return exc
 
 
 # ---------------------------------------------------------------------- sync
@@ -302,8 +537,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
     baseline = {d: newest_id(d) for d in dirs}
     flood = _flood_error()
 
-    added_total = 0
-    failed = 0
+    tally = {"added": 0, "failed": 0, "stopped": 0}
     names: dict = {}
     checked: dict = {}
     async with connected(ctx) as client:
@@ -320,7 +554,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
             res = account.adopt(ctx.base, me, locked=True)
             ctx.cfg = config.load(ctx.base)
             print(f"{SWITCHED_LINE} this computer is logged in to {me.get('name') or 'another Telegram account'}, "
-                  "so TG Kit now shows that account's chats.", flush=True)
+                  "so Telegram Assistant now shows that account's chats.", flush=True)
             for note in account.switch_notes(res):
                 print(note, flush=True)
             dirs = store.chat_dirs()
@@ -329,13 +563,23 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
         # filled; without it a cold session skips nearly everything and still
         # prints "0 new", a false clean.
         await client.get_dialogs()
-        for d in dirs:
+        pool = None if dry_run else MediaPool(client, ctx, flood, beat)
+        sem = asyncio.Semaphore(CHATS_AT_ONCE)
+
+        async def one(d: Path) -> None:
+            async with sem:
+                if ctx.stop():
+                    tally["stopped"] += 1
+                    return
+                await sync_one(d)
+
+        async def sync_one(d: Path) -> None:
             title = store.title(d)
             beat(f"sync: {title}")
             target = target_for(d)
             if target is None:
                 print(f"Skipped {title}: no usable address in channel.json", file=sys.stderr)
-                continue
+                return
 
             after = baseline[d]
             if after == 0:
@@ -343,7 +587,7 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                 # beginning": min_id=0 would pull a chat's whole history.
                 print(f"Skipped {title}: it has no messages on disk yet. sync only fetches "
                       f"what is new; add a chat with: tgkit add", file=sys.stderr)
-                continue
+                return
 
             try:
                 entity = await client.get_entity(target)
@@ -351,34 +595,27 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                 applog.caught("sync: a chat could not be opened", exc, ctx.base)
                 print(f"Skipped {title}: Telegram could not open this chat. Check that it still exists "
                       "and that you are a member.", file=sys.stderr)
-                failed += 1
-                continue
+                tally["failed"] += 1
+                return
 
             fresh: list[dict] = []
-            failure: BaseException | None = None
-            try:
-                async for msg in client.iter_messages(entity, min_id=after):
-                    beat()
-                    media = media_summary(msg)
-                    row = message_row(msg, media)
-                    remember_sender(names, msg)
-                    if media and not dry_run:
-                        await _download(client, msg, media, row, d / "media", d.name, ctx.max_media, flood,
-                                        beat)
-                    fresh.append(row)
-            except flood as exc:
-                print(f"  {title}: Telegram asked to wait {exc.seconds}s; stopping this chat",
+            wanted: dict = {}
+            failure = await read_text(client, ctx, entity, fresh, names, flood, lambda *_: beat(),
+                                      min_id=after, msgs=None if dry_run else wanted)
+            if isinstance(failure, Stopped):
+                tally["stopped"] += 1
+                print(f"  {title}: stopped", file=sys.stderr)
+            elif failure is not None and isinstance(failure, flood):
+                print(f"  {title}: Telegram asked to wait {failure.seconds}s; stopping this chat",
                       file=sys.stderr)
-                failure = exc
-            except Exception as exc:  # noqa: BLE001
-                applog.caught("sync: fetching new messages failed", exc, ctx.base)
+            elif failure is not None:
+                applog.caught("sync: fetching new messages failed", failure, ctx.base)
                 print(f"  {title}: getting new messages stopped with an error (details in the log file).",
                       file=sys.stderr)
-                failure = exc
 
             if dry_run:
                 print(f"  {title}: would fetch {len(fresh)} message(s) after #{after}")
-                continue
+                return
 
             # A partial fetch is only safe to commit when it is CONTIGUOUS with
             # the watermark. iter_messages returns NEWEST FIRST, so a fetch that
@@ -399,18 +636,20 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                     )
                     fresh = []
 
+            stopped = isinstance(failure, Stopped)
             if not fresh:
                 if failure is not None:
-                    failed += 1
+                    tally["failed"] += 0 if stopped else 1
                 else:
                     checked[d.name] = _now()
                     if not quiet:
                         print(f"  {title}: up to date")
-                continue
+                await queue_retries(d, entity)
+                return
 
             # Write what was fetched even if the fetch died partway (and was
-            # contiguous): the media is already on disk, and the watermark
-            # moves with the rows.
+            # contiguous): the watermark moves with the rows. The files come
+            # after, in the background; their rows say "pending" until then.
             fresh.sort(key=lambda r: r["id"], reverse=True)
             path = d / "messages.jsonl"
             existing = path.read_text(encoding="utf-8")
@@ -418,13 +657,18 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                 existing += "\n"
             block = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in fresh)
             atomic_write(path, block + existing)
-            added_total += len(fresh)
+            tally["added"] += len(fresh)
             if failure:
-                failed += 1
+                tally["failed"] += 0 if stopped else 1
             else:
                 checked[d.name] = _now()
-            note = " (partial: the chat stopped with an error)" if failure else ""
-            print(f"  {title}: +{len(fresh)} new{note}")
+            note = (" (stopped: the rest comes with the next sync)" if stopped
+                    else " (partial: the chat stopped with an error)" if failure else "")
+            files = [(wanted[r["id"]], r) for r in fresh if r["id"] in wanted and r.get("media_pending")]
+            more = f", {len(files)} file(s) to download" if files else ""
+            print(f"  {title}: +{len(fresh)} new{note}{more}", flush=True)
+            pool.add(d, files)
+            await queue_retries(d, entity, {r["id"] for r in fresh})
 
             # Keep the title current; a renamed chat otherwise keeps a stale one.
             try:
@@ -436,6 +680,33 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
                 applog.caught("sync: channel.json not refreshed", exc, ctx.base)
                 print(f"  {title}: the chat's name could not be refreshed this time.", file=sys.stderr)
 
+        async def queue_retries(d: Path, entity, skip=frozenset()) -> None:
+            """Files an earlier copy or sync did not get (pending, failed, or skipped by a
+            narrower Files choice) are tried again now. `skip`: rows of this run, queued already."""
+            if pool is None or ctx.stop():
+                return
+            try:
+                jobs = await retry_jobs(client, ctx, entity, d)
+            except Exception as exc:  # noqa: BLE001
+                applog.caught("sync: files to try again", exc, ctx.base)
+                return
+            pool.add(d, [j for j in jobs if j[1]["id"] not in skip])
+
+        try:
+            await asyncio.gather(*(one(d) for d in dirs))
+            if pool is not None:
+                if pool.total:
+                    print(f"Files: downloading {pool.total} file(s) in the background ...", flush=True)
+                await pool.finish()
+        finally:
+            if pool is not None:
+                await pool.close()
+        if pool is not None:
+            if pool.total:
+                rest = pool.total - pool.got
+                tail = f"; {rest} not yet (the next sync tries again)" if rest else ""
+                print(f"Files: {pool.got} downloaded{tail}.", flush=True)
+
     if not dry_run:
         store.merge_senders(names)
         if checked:
@@ -443,9 +714,52 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
             state.update(checked)
             write_json(store.home / "sync-state.json", state)
         write_summary(store)
+    failed, added_total = tally["failed"], tally["added"]
     tail = f", {failed} chat(s) failed or skipped" if failed else ""
+    if tally["stopped"]:
+        print(f"Stopped: {added_total} new message(s) saved{tail}. "
+              "Press Get new messages (or run tgkit sync) to get the rest.")
+        return 1 if failed else 0
     print(f"Done: {added_total} new message(s){tail}.")
     return 1 if failed else 0
+
+
+def _retry_wanted(row: dict) -> bool:
+    if not row.get("media") or row.get("media_path"):
+        return False
+    if int(row.get("media_tries") or 0) >= MEDIA_TRIES:
+        return False
+    return bool(row.get("media_pending") or row.get("media_error") or row.get("media_skipped"))
+
+
+async def retry_jobs(client, ctx: "Ctx", entity, d: Path) -> list:
+    """(message, row) pairs for the files of this chat that are still to be fetched:
+    recorded as pending or failed, or skipped by a Files choice that now allows them."""
+    get = getattr(client, "get_messages", None)
+    if get is None or ctx.media == "none":
+        return []
+    want: dict = {}
+    path = d / "messages.jsonl"
+    for line in path.read_text(encoding="utf-8").splitlines() if path.exists() else []:
+        try:
+            row = json.loads(line) if line.strip() else None
+        except json.JSONDecodeError:
+            continue
+        if row and _retry_wanted(row):
+            probe = dict(row)
+            if want_file(ctx, probe):
+                want[row["id"]] = probe
+        if len(want) >= RETRY_FILES_MAX:
+            break
+    if not want:
+        return []
+    msgs = await get(entity, ids=list(want))
+    jobs = []
+    for msg in msgs or []:
+        row = want.get(getattr(msg, "id", None)) if msg is not None else None
+        if row is not None and getattr(msg, "media", None):
+            jobs.append((msg, row))
+    return jobs
 
 
 def write_summary(store: Store) -> None:
@@ -483,7 +797,7 @@ def chat_key(meta: dict) -> tuple:
 
 
 def followed_keys(store) -> set:
-    """Chats already in TG Kit, by id from channel.json, whatever their folder is called."""
+    """Chats already in Telegram Assistant, by id from channel.json, whatever their folder is called."""
     return {chat_key(store.meta(d)) for d in store.chat_dirs() if store.meta(d).get("id") is not None}
 
 
@@ -519,7 +833,7 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
     prev = _same_chat(store, meta, final)
     if prev is not None and not store.meta(prev).get("partial"):
         raise UserError(
-            f"'{title}' is already in TG Kit.",
+            f"'{title}' is already in Telegram Assistant.",
             "To get its new messages run: tgkit sync",
         )
     staging = store.chats / f".adding-{base}"
@@ -531,29 +845,26 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
     flood = _flood_error()
     rows: list[dict] = []
     names: dict = {}
-    files = 0
-    failure: BaseException | None = None
+    wanted: dict = {}
     print(f"Adding {title} ...", flush=True)
-    try:
-        async for msg in client.iter_messages(entity, limit=limit):
-            media = media_summary(msg)
-            row = message_row(msg, media)
-            remember_sender(names, msg)
-            if beat is not None:
-                beat()
-            if media:
-                files += await _download(client, msg, media, row, staging / "media", base,
-                                         ctx.max_media, flood, beat)
-            rows.append(row)
-            if on_count is not None:
-                on_count(len(rows))
-            if len(rows) % 200 == 0:
-                print(f"  {len(rows)} messages so far", flush=True)
-    except Exception as exc:  # noqa: BLE001
-        applog.caught("add: copying a chat failed", exc, ctx.base)
-        failure = exc
+
+    def counted(n):
+        if on_count is not None:
+            on_count(n)
+        if n % 200 == 0:
+            print(f"  {n} messages so far", flush=True)
+    # Text only here: the files of this chat download after it is saved (MediaPool).
+    failure = await read_text(client, ctx, entity, rows, names, flood, beat, counted,
+                              limit=limit, msgs=wanted)
+    stopped = isinstance(failure, Stopped)
+    if failure is not None and not stopped:
+        applog.caught("add: copying a chat failed", failure, ctx.base)
 
     if not rows:  # plain words only: the error's kind and detail are in the log file
+        with contextlib.suppress(OSError):
+            staging.rmdir()  # empty: nothing was read
+        if stopped:
+            raise Stopped()
         raise UserError(
             f"Could not read any messages from '{title}'.",
             "Check that the chat still exists and that you are a member, then try again.",
@@ -565,13 +876,13 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
     atomic_write(staging / "messages.jsonl",
                  "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
     if final.exists() and final != prev:  # checked BEFORE moving anything aside
-        raise UserError(f"'{title}' appeared in TG Kit while adding it; nothing was overwritten.",
+        raise UserError(f"'{title}' appeared in Telegram Assistant while adding it; nothing was overwritten.",
                         f"The fetched copy was left in {staging}.")
     if prev is not None and prev.exists():  # the earlier, cut-short copy: kept aside
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         prev.rename(store.chats / f".partial-old-{prev.name}-{stamp}")
     if final.exists():
-        raise UserError(f"'{title}' appeared in TG Kit while adding it; nothing was overwritten.",
+        raise UserError(f"'{title}' appeared in Telegram Assistant while adding it; nothing was overwritten.",
                         f"The fetched copy was left in {staging}.")
     staging.rename(final)
     store.merge_senders(names)
@@ -579,9 +890,42 @@ async def add_chat(client, ctx: Ctx, entity, label: str, limit: int | None, on_c
     state[base] = _now()
     write_json(store.home / "sync-state.json", state)
     note = " (stopped early; older messages were not fetched)" if failure else ""
-    print(f"  {title}: {len(rows)} messages, {files} file(s){note}")
-    return {"title": title, "folder": base, "messages": len(rows), "files": files,
-            "partial": failure is not None}
+    jobs = [(wanted[r["id"]], r) for r in rows if r["id"] in wanted and r.get("media_pending")]
+    more = f", {len(jobs)} file(s) to download" if jobs else ""
+    print(f"  {title}: {len(rows)} messages{more}{note}", flush=True)
+    return {"title": title, "folder": base, "messages": len(rows), "files": len(jobs), "jobs": jobs,
+            "partial": failure is not None, "stopped": stopped}
+
+
+def _plain_dir(p: Path) -> bool:
+    """A real folder: not a link and not a Windows junction (whose target is elsewhere)."""
+    try:
+        if p.is_symlink() or not p.is_dir():
+            return False
+        junction = getattr(p, "is_junction", None)
+        if junction is not None and junction():
+            return False
+        return not getattr(os.lstat(p), "st_file_attributes", 0) & 0x400  # REPARSE_POINT
+    except OSError:
+        return False
+
+
+def clean_staging(store: Store) -> list[str]:
+    """Remove the staging folders (`chats/.adding-*`) a copy left when the window was
+    closed mid-way. Run under the sync lock, so no copy is using them. A staging folder
+    is never a chat: a chat is only ever renamed out of it when complete, so a folder
+    without the `.adding-` prefix (every committed chat) is never touched."""
+    gone = []
+    if not store.chats.is_dir():
+        return gone
+    for p in store.chats.iterdir():
+        if p.name.startswith(".adding-") and _plain_dir(p):
+            try:
+                shutil.rmtree(p)
+                gone.append(p.name)
+            except OSError as exc:
+                applog.caught("add: an old staging folder was not removed", exc, store.home)
+    return gone
 
 
 async def list_dialogs(client, limit: int = 300) -> list[dict]:
@@ -648,46 +992,81 @@ async def add_chats(ctx: Ctx, query: str | None, limit: int | None, pick, progre
     if not chosen:
         return 0
     report({"type": "plan", "chats": [{"id": _dlg_key(d), "name": d["name"]} for d in chosen]})
-    added = stored = cut_short = 0  # stored: folders written; added: copied in full
+    n = {"added": 0, "stored": 0, "cut_short": 0}  # stored: folders written; added: copied in full
+    stopped_msg = ("Stopped before this chat was copied.", "Press Retry for this chat.")
     # The same lock as sync: add_chat checks its folders, then renames into
     # chats/ and rewrites sync-state.json, which a running sync also rewrites.
     with SyncLock(ctx.store.home, "add") as lock:
+        clean_staging(ctx.store)  # left by a window closed mid-copy; no copy runs now
         async with connected(ctx) as client:
-            for dlg in chosen:
-                key = _dlg_key(dlg)
-                lock.beat(f"add: {dlg['name']}")
-                report({"type": "chat", "id": key, "state": "copying", "count": 0})
+            pool = MediaPool(client, ctx, _flood_error(), lock.beat)
+            sem = asyncio.Semaphore(CHATS_AT_ONCE)
 
-                def counted(n, key=key):
-                    lock.beat()
-                    report({"type": "chat", "id": key, "state": "copying", "count": n})
-                try:
-                    got = await add_chat(client, ctx, dlg["entity"], dlg["name"], limit, counted, lock.beat)
-                    stored += 1
-                    added += 0 if got["partial"] else 1
-                    cut_short += 1 if got["partial"] else 0
-                    ev = {"type": "chat", "id": key, "state": "done", "count": got["messages"],
-                          "partial": got["partial"]}
-                    if got["partial"]:  # a copy cut short is not a success: say so, offer Retry
-                        ev.update(message=f"Copied only {got['messages']} messages of '{dlg['name']}': "
-                                          "the copy stopped early, older messages are missing.",
-                                  hint="Check your internet connection, then press Retry for this chat.")
-                    report(ev)
-                except UserError as exc:
-                    print(exc.render())
-                    report({"type": "chat", "id": key, "state": "error", "message": exc.message, "hint": exc.hint})
-                except Exception as exc:  # noqa: BLE001  (one chat failing never stops the others)
-                    applog.caught("add: a chat failed", exc, ctx.base)
-                    err = UserError(f"Could not copy '{dlg['name']}'.",
-                                    "Check your internet connection, then press Retry for this chat.")
-                    print(err.render())
-                    report({"type": "chat", "id": key, "state": "error", "message": err.message, "hint": err.hint})
-        if stored:
+            async def one(dlg) -> None:
+                key = _dlg_key(dlg)
+                async with sem:
+                    if ctx.stop():
+                        report({"type": "chat", "id": key, "state": "stopped", "message": stopped_msg[0],
+                                "hint": stopped_msg[1]})
+                        return
+                    lock.beat(f"add: {dlg['name']}")
+                    report({"type": "chat", "id": key, "state": "copying", "count": 0})
+
+                    def counted(count, key=key):
+                        lock.beat()
+                        report({"type": "chat", "id": key, "state": "copying", "count": count})
+                    try:
+                        got = await add_chat(client, ctx, dlg["entity"], dlg["name"], limit, counted, lock.beat)
+                    except Stopped:
+                        report({"type": "chat", "id": key, "state": "stopped", "message": stopped_msg[0],
+                                "hint": stopped_msg[1]})
+                        return
+                    except UserError as exc:
+                        print(exc.render())
+                        report({"type": "chat", "id": key, "state": "error", "message": exc.message,
+                                "hint": exc.hint})
+                        return
+                    except Exception as exc:  # noqa: BLE001  (one chat failing never stops the others)
+                        applog.caught("add: a chat failed", exc, ctx.base)
+                        err = UserError(f"Could not copy '{dlg['name']}'.",
+                                        "Check your internet connection, then press Retry for this chat.")
+                        print(err.render())
+                        report({"type": "chat", "id": key, "state": "error", "message": err.message,
+                                "hint": err.hint})
+                        return
+                n["stored"] += 1
+                n["added"] += 0 if got["partial"] else 1
+                n["cut_short"] += 1 if got["partial"] else 0
+                ev = {"type": "chat", "id": key, "state": "stopped" if got["stopped"] else "done",
+                      "count": got["messages"], "partial": got["partial"],
+                      "files_pending": got["files"], "files": 0}
+                if got["stopped"]:  # saved and searchable, marked partial: Retry copies it again
+                    ev.update(message=f"Stopped: {got['messages']} messages of '{dlg['name']}' are saved; "
+                                      "older messages were not copied yet.",
+                              hint="Press Retry for this chat to copy the rest.")
+                elif got["partial"]:  # a copy cut short is not a success: say so, offer Retry
+                    ev.update(message=f"Copied only {got['messages']} messages of '{dlg['name']}': "
+                                      "the copy stopped early, older messages are missing.",
+                              hint="Check your internet connection, then press Retry for this chat.")
+                report(ev)
+
+                def on_files(left, done, ev=ev):
+                    report({**ev, "files_pending": left, "files": done})
+                pool.add(ctx.store.chats / got["folder"], got["jobs"], on_files)
+
+            try:
+                await asyncio.gather(*(one(d) for d in chosen))
+                await pool.finish()  # the files of every chat, after all the text
+            finally:
+                await pool.close()
+        if n["stored"]:
             write_summary(ctx.store)
-    if added:
-        print(f"Added {added} chat(s). Try: tgkit summary")
-    if cut_short:
-        print(f"{cut_short} chat(s) stopped early and are missing older messages. "
+    if n["added"]:
+        print(f"Added {n['added']} chat(s). Try: tgkit summary")
+    if pool.total > pool.got:
+        print(f"{pool.total - pool.got} file(s) were not downloaded yet; tgkit sync tries them again.")
+    if n["cut_short"]:
+        print(f"{n['cut_short']} chat(s) stopped early and are missing older messages. "
               "Run tgkit add again and pick them to copy them again.")
     return 0
 
@@ -719,9 +1098,9 @@ async def server_search(ctx: Ctx, query: str, dirs: list[Path], limit: int) -> i
             shown = owner.get("name") or (f"@{owner['username']}" if owner.get("username") else "another account")
             raise UserError(
                 f"Nothing was searched: this computer is now logged in to {now}, "
-                f"but the chats in TG Kit belong to {shown}.",
-                f"To use {now}'s chats, press Get new messages in the TG Kit window "
-                "(or run: tgkit sync); TG Kit then switches to them and keeps the others aside. "
+                f"but the chats in Telegram Assistant belong to {shown}.",
+                f"To use {now}'s chats, press Get new messages in the Telegram Assistant window "
+                "(or run: tgkit sync); Telegram Assistant then switches to them and keeps the others aside. "
                 "Then search again.",
             )
         await client.get_dialogs()
