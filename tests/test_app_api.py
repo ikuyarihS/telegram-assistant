@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import types
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -422,3 +423,19 @@ def test_unknown_chat_is_a_plain_error(home, server):
 def test_window_falls_back_without_pywebview(monkeypatch):
     monkeypatch.setitem(sys.modules, "webview", None)
     assert appmod._window("http://127.0.0.1:1/") is False
+
+
+@pytest.mark.parametrize("osname, suffix", [("nt", ".ico"), ("posix", ".png")])
+def test_window_icon_is_an_ico_on_windows(monkeypatch, osname, suffix):
+    """WinForms loads the start() icon with System.Drawing.Icon, which rejects a PNG
+    and kills the app from its .NET thread (0.2.7 crashed on open that way)."""
+    seen = {}
+    fake = types.SimpleNamespace(create_window=lambda *a, **k: None,
+                                 start=lambda icon=None: seen.setdefault("icon", icon))
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    monkeypatch.setattr(appmod, "_app_id", lambda: None)
+    monkeypatch.setattr(appmod, "_windows_icon", lambda *a: None)
+    monkeypatch.setattr(appmod, "os", types.SimpleNamespace(name=osname))
+    assert appmod._window("http://127.0.0.1:1/") is True
+    assert seen["icon"] and seen["icon"].endswith(suffix)
+    assert open(seen["icon"], "rb").read(4) == (b"\x00\x00\x01\x00" if suffix == ".ico" else b"\x89PNG")

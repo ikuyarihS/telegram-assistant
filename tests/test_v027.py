@@ -366,9 +366,9 @@ def test_window_has_the_pattern_toggle_and_the_import_section_in_both_languages(
 
 
 def test_version_027_everywhere_and_docs():
-    assert __version__ == "0.2.7"
-    assert 'version = "0.2.7"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == "0.2.7"
+    assert tuple(int(x) for x in __version__.split(".")) >= (0, 2, 7)  # 0.2.8 and later keep every 0.2.7 test
+    assert f'version = "{__version__}"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == __version__
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "## Coming from tg-crawl" in readme and "tgkit import-crawl" in readme
     book = (ROOT / "src" / "tgkit" / "playbook.md").read_text(encoding="utf-8")

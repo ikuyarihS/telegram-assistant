@@ -83,9 +83,11 @@ def _window(url: str, home=None) -> bool:
         webview.create_window(TITLE, url, width=1200, height=800, min_size=(720, 520),
                               text_select=True)
         kw = {}
-        png = icon_path("icon-256.png")
-        if png and "icon" in inspect.signature(webview.start).parameters:
-            kw["icon"] = png  # GTK and Qt use it; Windows gets the .ico below
+        # Windows (WinForms) loads it with System.Drawing.Icon, which only takes an .ico:
+        # a PNG there kills the whole app on the .NET thread, past any try/except here.
+        icon = icon_path() if os.name == "nt" else icon_path("icon-256.png")
+        if icon and "icon" in inspect.signature(webview.start).parameters:
+            kw["icon"] = icon
         threading.Thread(target=_windows_icon, args=(TITLE, icon_path()), daemon=True).start()
         webview.start(**kw)
     except Exception as exc:  # noqa: BLE001
