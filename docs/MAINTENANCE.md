@@ -167,6 +167,23 @@ own (`tasks --json*` once let `tasks --json done 1` through), so the session
 also gets `TGKIT_READONLY=1` and `cli.main` refuses every changing command in
 that mode.
 
+Gemini mode (`gemini.py`, 0.2.9) follows the same rules from the same lists
+(`ai.READ_COMMANDS`, `ai.DENIED_COMMANDS`, `ai.app_rules`; one source, so the
+two CLIs cannot drift). Each run writes `app/gemini/tgkit-policy.toml` and
+passes it as `--admin-policy` and `--policy` (Gemini CLI policy engine): only
+`run_shell_command` with a tgkit read prefix is allowed, the changing tgkit
+commands are denied first, and every other tool (files, web, MCP, skills,
+agents) is denied, so the model never sees it. The user's `~/.gemini` settings
+are only read, never written. The run sets `TGKIT_READONLY=1` and
+`GEMINI_CLI_NO_RELAUNCH=true` (one node process, so Stop ends the process the
+app started), and runs node with the CLI's script rather than npm's
+`gemini.cmd`. If a tool result shows that a command outside the allow list
+ran anyway, the runner stops the answer (`blocked`). Signed in = an auth type
+in `~/.gemini/settings.json` plus the Google account in
+`google_accounts.json` (or `GEMINI_API_KEY`), until an answer fails with exit
+41; the token itself is in the system keychain. `ai.pick` decides who answers:
+Settings' choice, else Claude first, then Gemini.
+
 ### R13 - One change of tasks.json at a time
 
 Every write of `tasks.json` goes through `TaskList.change()`: it takes

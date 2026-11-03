@@ -165,6 +165,22 @@ VI = {
     "That request was not understood.": "Không hiểu yêu cầu này.",
     "Not found.": "Không tìm thấy.",
     "Claude stopped without an answer.": "Claude dừng lại mà không trả lời.",
+    "Gemini stopped without an answer.": "Gemini dừng lại mà không trả lời.",
+    "Claude is not signed in on this computer.": "Claude chưa đăng nhập trên máy này.",
+    "Gemini is not signed in on this computer.": "Gemini chưa đăng nhập trên máy này.",
+    "Gemini has reached its limit for now.": "Gemini đã hết lượt dùng trong lúc này.",
+    "Gemini could not answer this time.": "Lần này Gemini không trả lời được.",
+    "Gemini could not start.": "Gemini không khởi động được.",
+    "Gemini tried something Telegram Assistant does not allow, so it was stopped.":
+        "Gemini đã thử làm một việc Telegram Assistant không cho phép, nên đã bị dừng.",
+    "Gemini could not be installed.": "Chưa cài được Gemini.",
+    "Check the internet connection and press Install Gemini again.": "Kiểm tra kết nối mạng rồi bấm Cài Gemini lại.",
+    "Node.js is not installed yet.": "Máy này chưa có Node.js.",
+    "Press Install Node.js first.": "Bấm Cài Node.js trước.",
+    "Gemini is being installed already.": "Gemini đang được cài.",
+    "Wait until it is done.": "Chờ đến khi xong.",
+    "Pick Claude, Gemini or Off.": "Chọn Claude, Gemini hoặc Tắt.",
+    "Automatic picks Claude first, then Gemini.": "Tự động sẽ chọn Claude trước, rồi đến Gemini.",
     # account
     "Close every Telegram Assistant window and terminal, then log out again.":
         "Đóng mọi cửa sổ Telegram Assistant và terminal rồi đăng xuất lại.",
@@ -315,13 +331,13 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
     (r"Could not copy '(.*)'\.", "Không sao chép được '{0}'."),
     (r"Telegram Assistant could not move (.+): the file is in use or the disk is full\. Nothing was deleted\.",
      "Telegram Assistant chưa chuyển được {0}: tệp đang được dùng hoặc ổ đĩa đã đầy. Không có gì bị xóa."),
-    (r"Today's Claude limit that you set is reached \((.+) of (.+) tokens\)\. Answered without Claude\.",
-     "Đã đạt giới hạn Claude hôm nay bạn đặt ({0} trên {1} token). Đã trả lời không dùng Claude."),
-    (r"You are over the daily Claude limit you set \((.+) of (.+) tokens\)\. Claude still answers; "
+    (r"Today's (Claude|Gemini) limit that you set is reached \((.+) of (.+) tokens\)\. Answered without \1\.",
+     "Đã đạt giới hạn {0} hôm nay bạn đặt ({1} trên {2} token). Đã trả lời không dùng {0}."),
+    (r"You are over the daily (Claude|Gemini) limit you set \((.+) of (.+) tokens\)\. \1 still answers; "
      r"change it in Settings\.",
-     "Bạn đã dùng quá giới hạn Claude mỗi ngày bạn đặt ({0} trên {1} token). Claude vẫn trả lời; "
+     "Bạn đã dùng quá giới hạn {0} mỗi ngày bạn đặt ({1} trên {2} token). {0} vẫn trả lời; "
      "đổi mức này trong Cài đặt."),
-    (r"(.+) Answered without Claude\.", "{0} Đã trả lời không dùng Claude."),
+    (r"(.+) Answered without (Claude|Gemini)\.", "{0} Đã trả lời không dùng {1}."),
     (r"(.+) is not on this computer\.", "{0} không có trên máy này."),
     (r"That pattern is not valid: (.+)\.", "Mẫu này không hợp lệ: {0}."),
     (r"The pattern took longer than (\S+) seconds and was stopped\.", "Mẫu chạy quá {0} giây nên đã dừng."),

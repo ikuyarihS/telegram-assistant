@@ -20,7 +20,10 @@ def home(tmp_path, monkeypatch):
     # Saved files go to a test folder, and no Explorer / browser window ever opens.
     monkeypatch.setenv("TGKIT_EXPORT_DIR", str(tmp_path / "exports"))
     monkeypatch.setenv("TGKIT_NO_REVEAL", "1")
-    for k in ("TG_API_ID", "TG_API_HASH", "TGKIT_API_ID", "TGKIT_API_HASH", "TGKIT_DEBUG", "TGKIT_CLAUDE_MODEL"):
+    # A Gemini CLI on the test computer never answers a test (tests/fake_gemini.py does, when asked).
+    monkeypatch.setenv("TGKIT_GEMINI", "off")
+    for k in ("TG_API_ID", "TG_API_HASH", "TGKIT_API_ID", "TGKIT_API_HASH", "TGKIT_DEBUG", "TGKIT_CLAUDE_MODEL",
+              "TGKIT_GEMINI_MODEL", "GEMINI_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     return base
 

@@ -25,52 +25,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from . import config, playbook, usage
+from . import ai, config, playbook, usage
+from .ai import DENIED_COMMANDS, READ_COMMANDS, READONLY_ENV, TASK_WRITES, plain  # noqa: F401  (shared, ai.py)
 from .store import atomic_write
 
 # Claude Code's shell tool is Bash, or PowerShell on a PC set up that way. Every
 # rule is written for both, so neither shell can run more than the other.
-SHELLS = ("Bash", "PowerShell")
-# Every tasks form is allowed ("tgkit tasks --chat x --since 7d --json"), and a
-# changing word is denied wherever it stands: first ("tasks done 1"), between
-# options ("tasks --json done 1", which argparse runs as "done") or last. Deny
+# The read commands and the denied ones are ai.py's, the same for Gemini. Deny
 # rules win over allow rules. The session also gets TGKIT_READONLY=1, so the
 # tgkit CLI itself refuses every changing command however it is written.
-TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")  # the same as cli.TASK_WRITES
-READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit tasks *",
-                 "tgkit chats*", "tgkit show *", "tgkit media *", "tgkit guide",
-                 "tgkit today", "tgkit today *",
-                 "tgkit usage", "tgkit usage *", "tgkit claude-status", "tgkit claude-status *"]
-# export writes a file and logout ends the Telegram login: the user does them, never this session.
-# import (import-crawl) writes chats: the user does it in Settings.
-DENIED_COMMANDS = (["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit logout*", "tgkit export*",
-                    "tgkit login*", "tgkit import*"]
-                   + [p for w in TASK_WRITES
-                      for p in (f"tgkit tasks {w}*", f"tgkit tasks * {w}", f"tgkit tasks * {w} *")])
-READONLY_ENV = "TGKIT_READONLY"  # the same name as cli.READONLY_ENV
+SHELLS = ("Bash", "PowerShell")
 ALLOWED = [f"{shell}({c})" for shell in SHELLS for c in READ_COMMANDS]
 DENIED = (["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task"]
           + [f"{shell}({c})" for shell in SHELLS for c in DENIED_COMMANDS])
 
 # The app's session reads the same playbook as every other Claude Code session
 # (playbook.md, also `tgkit guide` and the plugin skill), plus the rules of the app.
-APP_RULES = """
-## In the Telegram Assistant app (this session)
-
-You answer inside the Telegram Assistant window. Here these rules come before the ones above:
-
-- Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell,
-  whichever you have). Never read, list or print files.
-- This session is read-only. Never run sync, setup, add, logout, export, import-crawl,
-  `search --online`, or a task change (done, undo, reopen, drop, note, add), even when the user
-  asks: tell them to use the window's buttons (Get new messages, Mark done, Save as file, Settings).
-  The tgkit you run refuses them anyway. `tgkit search --regex "pattern" --json` is allowed.
-- If a chat has "stale": true, say its copy may be old and suggest the Get new messages button.
-- "What do I need to do today" (or "hôm nay tôi cần làm gì"): run `tgkit today --json` and
-  answer with a short list, most urgent first (due today, then people waiting for an answer,
-  then the rest), each with who and which chat. Add nothing it does not hold.
-- Answer short and plain; never show commands.
-"""
+APP_RULES = ai.app_rules("your shell tool (Bash or PowerShell, whichever you have)")
 GUIDE = playbook.text() + APP_RULES
 
 FALLBACK_HINTS = (
@@ -78,16 +49,6 @@ FALLBACK_HINTS = (
     ("not logged in", "login"), ("please run /login", "login"), ("invalid api key", "login"),
     ("authentication", "login"), ("oauth", "login"),
 )
-
-
-_DASHES = {0x2014: "-", 0x2013: "-"}  # em dash, en dash (code points: no dash in the source)
-
-
-def plain(text: str) -> str:
-    """The model sometimes writes em or en dashes although the guide asks it not to;
-    the app shows a plain hyphen instead (same mapping for the streamed words and
-    the final answer, so they match)."""
-    return (text or "").translate(_DASHES)
 
 
 def find_claude() -> list[str] | None:
@@ -210,14 +171,12 @@ def status(cmd: list[str] | None = None, home: Path | None = None) -> dict:
     return out
 
 
-def _tgkit_dirs() -> list[str]:
-    """Folders holding the tgkit command of THIS install, so Claude runs the same one."""
-    exe = Path(sys.executable).resolve().parent
-    dirs = [exe, exe / "Scripts", exe.parent / "bin"]
-    return [str(d) for d in dirs if (d / "tgkit").exists() or (d / "tgkit.exe").exists()]
+_tgkit_dirs = ai.tgkit_dirs  # the folders of THIS install's tgkit, so Claude runs the same one
 
 
 class ClaudeRunner:
+    name = "claude"
+
     def __init__(self, cmd: list[str] | None = None, model: str | None = None):
         self.cmd = cmd if cmd is not None else find_claude()
         self.model = model or os.environ.get("TGKIT_CLAUDE_MODEL") or None
@@ -278,13 +237,7 @@ class ClaudeRunner:
         work.mkdir(parents=True, exist_ok=True)
         guide = work / "tgkit-guide.md"
         atomic_write(guide, GUIDE)
-        env = dict(os.environ)
-        env["TGKIT_HOME"] = str(home)
-        env[READONLY_ENV] = "1"
-        env["PYTHONIOENCODING"] = "utf-8"
-        extra = _tgkit_dirs()
-        if extra:
-            env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+        env = ai.run_env(home)
         flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
         try:
             proc = subprocess.Popen(

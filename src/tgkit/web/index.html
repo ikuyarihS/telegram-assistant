@@ -57,7 +57,7 @@
       </div>
       <fieldset class="mode-pick">
         <legend data-i18n="answersBy">Answers</legend>
-        <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude when available</span></label>
+        <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude or Gemini when available</span></label>
         <label><input type="radio" name="mode" value="offline"> <span data-i18n="offline">Telegram Assistant only</span></label>
       </fieldset>
       <p class="mode-note" id="modeNote"></p>
@@ -129,6 +129,17 @@
     </button>
   </div>
   <div class="settings-body">
+    <section class="set-sec" aria-labelledby="secAi">
+      <h3 id="secAi" data-i18n="secAi">AI answers</h3>
+      <fieldset class="ai-pick">
+        <legend class="sr-only" data-i18n="secAi">AI answers</legend>
+        <label><input type="radio" name="ai" value="claude"> <span>Claude</span></label>
+        <label><input type="radio" name="ai" value="gemini"> <span>Gemini</span></label>
+        <label><input type="radio" name="ai" value="off"> <span data-i18n="aiOff">Off</span></label>
+      </fieldset>
+      <p class="field-help" id="aiNote" data-i18n="aiHelp">Who writes the answers. Off: Telegram Assistant answers by itself, with its own rules.</p>
+    </section>
+
     <section class="set-sec" aria-labelledby="secClaude">
       <h3 id="secClaude" data-i18n="secClaude">Claude</h3>
       <p class="state-line" id="claudeState"><span class="state-dot" id="claudeDot"></span><span id="claudeStateText" data-i18n="checking">Checking...</span></p>
@@ -149,6 +160,19 @@
         </label>
       </div>
       <p class="field-help" data-i18n="modelHelp">Claude Code default is a good choice. Opus thinks more and uses more of your plan; Haiku is quickest and uses the least.</p>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secGemini">
+      <h3 id="secGemini">Gemini</h3>
+      <p class="field-help" data-i18n="geminiWhat">For a Google account with a Gemini plan, instead of Claude.</p>
+      <p class="state-line" id="geminiState"><span class="state-dot" id="geminiDot"></span><span id="geminiStateText" data-i18n="checking">Checking...</span></p>
+      <ol class="fix-steps" id="geminiSteps" hidden></ol>
+      <div class="set-actions">
+        <button class="btn btn-primary" id="geminiNode" type="button" data-i18n="installNode" hidden>Install Node.js</button>
+        <button class="btn btn-primary" id="geminiInstall" type="button" data-i18n="installGemini" hidden>Install Gemini</button>
+        <button class="btn btn-primary" id="geminiLogin" type="button" data-i18n="loginGemini" hidden>Sign in to Google</button>
+        <button class="btn" id="geminiCheck" type="button" data-i18n="checkAgain">Check again</button>
+      </div>
     </section>
 
     <section class="set-sec" aria-labelledby="secUsage">

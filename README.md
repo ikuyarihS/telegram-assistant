@@ -274,8 +274,9 @@ If you prefer typing commands, these need no extra options:
 | Save the summary or the tasks (Excel too) | `tgkit export summary`, `tgkit export tasks --format xlsx` |
 | Save a file someone sent | `tgkit export file "Team" 1234` (the message id) |
 | Log out, or switch to another Telegram account | `tgkit logout`, then `tgkit setup` |
-| Tokens used by Claude answers in the window | `tgkit usage` |
+| Tokens used by AI answers in the window | `tgkit usage` |
 | Is Claude Code installed and logged in | `tgkit claude-status` |
+| Which AI answers in the window (Claude, Gemini or none) | `tgkit ai-status` |
 | Where is my data | `tgkit where` |
 | The instructions for Claude Code | `tgkit guide` |
 | All commands | `tgkit help` |
@@ -354,6 +355,36 @@ the window, or type `tgkit claude-status`:
 
 Until then Telegram Assistant answers by itself, and nothing breaks.
 
+## Using Gemini instead of Claude
+
+No Claude Code? The window can use Google's Gemini instead. You sign in with
+your own Google account (the one that has your Gemini plan). There is no key
+to copy and nothing to type.
+
+Open **Settings** in the window and look at the **Gemini** part. Press the
+button it shows, one at a time:
+
+1. **Install Node.js** (only if it asks for it). Node.js is a free helper
+   program Gemini needs. Its installer opens: click **Next** until **Finish**,
+   then press **Check again**.
+2. **Install Gemini**. Wait about a minute until it says Gemini is installed.
+3. **Sign in to Google**. A black window opens. Choose **Sign in with
+   Google**, then pick your Google account in the browser page that opens.
+   When the page says you are signed in, close the black window.
+4. Press **Check again**. It says "Gemini: signed in" when it is ready.
+
+At the top of Settings, **AI answers** says who writes the answers:
+**Claude**, **Gemini** or **Off**. If you never pick one, Telegram Assistant
+picks for you: Claude when it is there, otherwise Gemini. In a terminal,
+`tgkit ai-status` tells you the same.
+
+Gemini answers like Claude does: you see its words as they come, each
+Telegram Assistant command it runs, and the same result cards. It may only
+read your chats with Telegram Assistant's own commands: it cannot change
+tasks, get new messages, save files, read other files or use the web, and
+your own Gemini settings are not changed. If it is not signed in or has
+reached its limit, Telegram Assistant answers by itself.
+
 ---
 
 ## Where your data lives, and privacy
@@ -429,7 +460,9 @@ zip and send it; they unzip it over the old folder and double-click
   page (`src/tgkit/web/`) served on 127.0.0.1 by `appserver.py`. The same
   package and the same installers work on Windows, macOS and Linux; no
   separate build or signing per system. The offline answers come from
-  `intent.py` and `engine.py`; Claude mode is `claude.py`.
+  `intent.py` and `engine.py`; Claude mode is `claude.py`, Gemini mode is
+  `gemini.py`, and what both share (allowed commands, app rules, who answers)
+  is `ai.py`.
 - The UI is checked with the impeccable detector, static and rendered:
   `impeccable detect src/tgkit/web` and `impeccable detect http://127.0.0.1:<port>/`
   (start a server with `tgkit app --no-window --port <port>`).

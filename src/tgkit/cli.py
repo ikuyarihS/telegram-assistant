@@ -39,8 +39,9 @@ More:
   tgkit logout                    log out of Telegram here (to stop, or to use another account)
   tgkit export search "words"     save results as a Word file (also: summary, tasks, conversation <id>,
                                   file "chat" <message id>; --format docx|xlsx|csv|md, --to folder)
-  tgkit usage                     tokens used by Claude answers in the Telegram Assistant window (--json)
+  tgkit usage                     tokens used by AI answers in the Telegram Assistant window (--json)
   tgkit claude-status             is Claude Code installed and logged in (--json)
+  tgkit ai-status                 which AI answers in the window: Claude, Gemini or none (--json)
   tgkit where                     where your data is kept
   tgkit guide                     the playbook for Claude Code: "run tgkit guide, then answer"
   tgkit                           (nothing else) opens a simple menu
@@ -520,6 +521,29 @@ def cmd_claude_status(args) -> int:
     return 0
 
 
+def cmd_ai_status(args) -> int:
+    from . import ai  # noqa: PLC0415
+
+    st = ai.status(config.home())
+    if args.json:
+        print(json.dumps(st, ensure_ascii=False, indent=2))
+        return 0
+    names = {"claude": "Claude", "gemini": "Gemini", "off": "nobody (Telegram Assistant answers by itself)"}
+    how = "chosen automatically" if st["choice"] == "auto" else "chosen in Settings"
+    print(f"AI answers in the window: {names[st['active']]} ({how})")
+    c, g = st["claude"], st["gemini"]
+    print("Claude: " + {"missing": "not installed", "not_logged_in": "installed, not logged in",
+                        "connected": "installed and logged in",
+                        "unknown": "installed, login not checkable"}[c["state"]])
+    account = f" as {g['account']}" if g.get("account") else ""
+    print("Gemini: " + {"no_node": "not installed (needs Node.js first)", "missing": "not installed",
+                        "not_logged_in": "installed, sign in needed",
+                        "connected": f"signed in{account}"}[g["state"]])
+    for i, step in enumerate(g.get("fix") or [], 1):
+        print(f"  {i}. {step}")
+    return 0
+
+
 def _n(value) -> str:
     return f"{int(value or 0):,}"
 
@@ -711,6 +735,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_claude_status)
 
+    p = sub.add_parser("ai-status", aliases=["ai"])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_ai_status)
+
     p = sub.add_parser("usage", aliases=["tokens"])
     p.add_argument("--conversation", help="also the total of one conversation (its id)")
     p.add_argument("--json", action="store_true")
@@ -758,7 +786,7 @@ _FRIENDLY = {
 }
 
 
-# Set by claude.py for the headless Claude session: every command that changes
+# Set by claude.py and gemini.py for the headless AI session: every command that changes
 # something is refused, whatever words or option order reach argparse.
 READONLY_ENV = "TGKIT_READONLY"
 TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")

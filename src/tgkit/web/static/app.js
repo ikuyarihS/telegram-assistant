@@ -56,10 +56,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       sync: "Get new messages", syncing: "Getting new messages...",
       syncDone: (n) => (n ? `${n} new ${plural(n, "message", "messages")}.` : "Everything is up to date."),
       syncFail: "Some chats could not be updated.", syncBusy: "A sync is already running.",
-      connect: "Connect to Telegram", answersBy: "Answers", auto: "Claude when available", offline: "Telegram Assistant only",
-      modeClaude: "Claude", modeOffline: "Offline",
+      connect: "Connect to Telegram", answersBy: "Answers", auto: "Claude or Gemini when available", offline: "Telegram Assistant only",
+      modeClaude: "Claude", modeGemini: "Gemini", modeOffline: "Offline",
       claudeOn: "Claude Code is on this computer: it plans each search and writes the answer.",
-      claudeOff: "Claude Code is not on this computer: Telegram Assistant answers with its own rules.",
+      geminiOn: "Gemini is on this computer: it plans each search and writes the answer.",
+      noAi: "No AI is set up yet: Telegram Assistant answers with its own rules. Settings shows how to add Claude or Gemini.",
       offlineOn: "Telegram Assistant answers with its own rules, without Claude.",
       emptyTitle: "Ask about your Telegram chats",
       emptyBody: "Search messages, get a summary of what happened, or see your tasks. Type in Vietnamese or English, accents optional.",
@@ -96,8 +97,29 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       fixNotLogged: ["Press Open a window to log in.", "Log in with your Claude account in the page that opens.",
         "Come back and press Check again."],
       loginOpened: "A window opened. Log in there, then press Check again.",
+      secAi: "AI answers", aiOff: "Off",
+      aiHelp: "Who writes the answers. Off: Telegram Assistant answers by itself, with its own rules.",
+      aiAuto: "Chosen automatically: Claude first, then Gemini when it is signed in. Pick one to change it.",
+      aiNone: "No AI is ready yet: set up Claude or Gemini below. Until then Telegram Assistant answers by itself.",
+      geminiWhat: "For a Google account with a Gemini plan, instead of Claude.",
+      gStNoNode: "Gemini: not installed. It needs Node.js first, a free helper program.",
+      gStOldNode: (v) => `Gemini: not installed. Node.js ${v} on this computer is too old for it.`,
+      gStMissing: "Gemini: not installed. How to install it:",
+      gStNotLogged: "Gemini: sign in needed.",
+      gStConnected: (acct) => `Gemini: signed in${acct ? ` as ${acct}` : ""}.`,
+      gFixNoNode: ["Press Install Node.js. In its installer, click Next until Finish.",
+        "Press Check again, then Install Gemini.", "Then press Sign in to Google."],
+      gFixMissing: ["Press Install Gemini. It takes about a minute.", "Then press Sign in to Google."],
+      gFixNotLogged: ["Press Sign in to Google. A black window opens.",
+        "Choose Sign in with Google, then pick your Google account in the browser page that opens.",
+        "When the page says you are signed in, close the black window and press Check again."],
+      installNode: "Install Node.js", installGemini: "Install Gemini", loginGemini: "Sign in to Google",
+      installingGemini: "Installing Gemini. This takes about a minute...",
+      geminiInstalled: "Gemini is installed. Now press Sign in to Google.",
+      nodeOpened: "The Node.js installer is starting in a new window. When it is done, press Check again.",
+      nodeSite: "The Node.js download page opened. Install the LTS version, then press Check again.",
       secUsage: "Token use",
-      usageWhat: "Only answers written by Claude use tokens. Search, summary, tasks and Get new messages run on this computer and use none.",
+      usageWhat: "Only answers written by Claude or Gemini use tokens. Search, summary, tasks and Get new messages run on this computer and use none.",
       today: "Today", month: "This month", thisConv: "This conversation",
       answersN: (n) => `${n} ${plural(n, "answer", "answers")}`,
       tokensN: (n) => `${n} tokens`,
@@ -222,10 +244,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       sync: "Lấy tin mới", syncing: "Đang lấy tin mới...",
       syncDone: (n) => (n ? `Có ${n} tin nhắn mới.` : "Đã cập nhật đầy đủ."),
       syncFail: "Một số nhóm chưa cập nhật được.", syncBusy: "Đang có một lượt lấy tin khác.",
-      connect: "Kết nối Telegram", answersBy: "Trả lời bằng", auto: "Claude nếu có", offline: "Chỉ Telegram Assistant",
-      modeClaude: "Claude", modeOffline: "Ngoại tuyến",
+      connect: "Kết nối Telegram", answersBy: "Trả lời bằng", auto: "Claude hoặc Gemini nếu có", offline: "Chỉ Telegram Assistant",
+      modeClaude: "Claude", modeGemini: "Gemini", modeOffline: "Ngoại tuyến",
       claudeOn: "Máy này có Claude Code: Claude lên kế hoạch tìm kiếm và viết câu trả lời.",
-      claudeOff: "Máy này chưa có Claude Code: Telegram Assistant tự trả lời theo quy tắc có sẵn.",
+      geminiOn: "Máy này có Gemini: Gemini lên kế hoạch tìm kiếm và viết câu trả lời.",
+      noAi: "Chưa cài AI nào: Telegram Assistant tự trả lời theo quy tắc có sẵn. Vào Cài đặt để thêm Claude hoặc Gemini.",
       offlineOn: "Telegram Assistant tự trả lời theo quy tắc có sẵn, không dùng Claude.",
       emptyTitle: "Hỏi về các nhóm Telegram của bạn",
       emptyBody: "Tìm tin nhắn, tóm tắt những gì đã diễn ra, hoặc xem việc cần làm. Gõ tiếng Việt hay tiếng Anh, có dấu hay không dấu đều được.",
@@ -259,8 +282,29 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
         "Bấm Mở cửa sổ đăng nhập và đăng nhập tài khoản Claude.", "Bấm Kiểm tra lại."],
       fixNotLogged: ["Bấm Mở cửa sổ đăng nhập.", "Đăng nhập tài khoản Claude ở trang vừa mở.", "Quay lại đây và bấm Kiểm tra lại."],
       loginOpened: "Một cửa sổ đã mở. Đăng nhập ở đó rồi bấm Kiểm tra lại.",
+      secAi: "AI trả lời", aiOff: "Tắt",
+      aiHelp: "Ai viết câu trả lời. Tắt: Telegram Assistant tự trả lời theo quy tắc có sẵn.",
+      aiAuto: "Đang tự chọn: Claude trước, rồi đến Gemini khi đã đăng nhập. Chọn một mục để đổi.",
+      aiNone: "Chưa có AI nào sẵn sàng: cài Claude hoặc Gemini ở dưới. Trong lúc đó Telegram Assistant tự trả lời.",
+      geminiWhat: "Dành cho tài khoản Google có gói Gemini, thay cho Claude.",
+      gStNoNode: "Gemini: chưa cài. Cần cài Node.js trước, một chương trình hỗ trợ miễn phí.",
+      gStOldNode: (v) => `Gemini: chưa cài. Node.js ${v} trên máy này đã quá cũ.`,
+      gStMissing: "Gemini: chưa cài. Cách cài:",
+      gStNotLogged: "Gemini: cần đăng nhập.",
+      gStConnected: (acct) => `Gemini: đã đăng nhập${acct ? ` với ${acct}` : ""}.`,
+      gFixNoNode: ["Bấm Cài Node.js. Trong trình cài đặt, bấm Next đến khi Finish.",
+        "Bấm Kiểm tra lại, rồi bấm Cài Gemini.", "Sau đó bấm Đăng nhập Google."],
+      gFixMissing: ["Bấm Cài Gemini. Mất khoảng một phút.", "Sau đó bấm Đăng nhập Google."],
+      gFixNotLogged: ["Bấm Đăng nhập Google. Một cửa sổ màu đen sẽ mở.",
+        "Chọn Sign in with Google, rồi chọn tài khoản Google trong trang trình duyệt vừa mở.",
+        "Khi trang báo đã đăng nhập, đóng cửa sổ màu đen và bấm Kiểm tra lại."],
+      installNode: "Cài Node.js", installGemini: "Cài Gemini", loginGemini: "Đăng nhập Google",
+      installingGemini: "Đang cài Gemini. Mất khoảng một phút...",
+      geminiInstalled: "Đã cài Gemini. Giờ bấm Đăng nhập Google.",
+      nodeOpened: "Trình cài Node.js đang mở trong một cửa sổ mới. Cài xong thì bấm Kiểm tra lại.",
+      nodeSite: "Trang tải Node.js đã mở. Cài bản LTS rồi bấm Kiểm tra lại.",
       secUsage: "Mức dùng token",
-      usageWhat: "Chỉ câu trả lời do Claude viết mới dùng token. Tìm kiếm, tóm tắt, việc cần làm và Lấy tin mới chạy trên máy này, không dùng token.",
+      usageWhat: "Chỉ câu trả lời do Claude hoặc Gemini viết mới dùng token. Tìm kiếm, tóm tắt, việc cần làm và Lấy tin mới chạy trên máy này, không dùng token.",
       today: "Hôm nay", month: "Tháng này", thisConv: "Cuộc trò chuyện này",
       answersN: (n) => `${n} câu trả lời`,
       tokensN: (n) => `${n} token`,
@@ -400,6 +444,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     settingsBtn: $("settingsBtn"), settings: $("settings"), setClose: $("setClose"), setStatus: $("setStatus"),
     claudeDot: $("claudeDot"), claudeStateText: $("claudeStateText"), claudeSteps: $("claudeSteps"),
     claudeInstall: $("claudeInstall"), claudeLogin: $("claudeLogin"), claudeCheck: $("claudeCheck"),
+    aiNote: $("aiNote"), geminiDot: $("geminiDot"), geminiStateText: $("geminiStateText"), geminiSteps: $("geminiSteps"),
+    geminiNode: $("geminiNode"), geminiInstall: $("geminiInstall"), geminiLogin: $("geminiLogin"), geminiCheck: $("geminiCheck"),
     modelRow: $("modelRow"), modelPick: $("modelPick"), effortField: $("effortField"), effortPick: $("effortPick"),
     usageGrid: $("usageGrid"), usageCost: $("usageCost"), limitInput: $("limitInput"), hardStop: $("hardStop"),
     exportDir: $("exportDir"), exportDefault: $("exportDefault"), openExport: $("openExport"),
@@ -428,7 +474,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   };
 
   const app = {
-    conv: null, convs: [], chats: [], claude: false, busy: false, ctrl: null, syncing: false, maxMedia: 50,
+    conv: null, convs: [], chats: [], claude: false, ai: null, busy: false, ctrl: null, syncing: false, maxMedia: 50,
     mode: localStorage.getItem("tgkit-mode") === "offline" ? "offline" : "auto",
   };
 
@@ -622,11 +668,15 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     }
   }
 
+  // The AI that answers ("claude", "gemini") or "offline", as a label.
+  const modeName = (m) => (m === "claude" ? t("modeClaude") : m === "gemini" ? t("modeGemini") : t("modeOffline"));
+
   function setMode() {
-    const claude = app.claude && app.mode !== "offline";
-    ui.modeBadge.textContent = claude ? t("modeClaude") : t("modeOffline");
-    ui.modeBadge.classList.toggle("offline", !claude);
-    ui.modeNote.textContent = app.mode === "offline" ? t("offlineOn") : (app.claude ? t("claudeOn") : t("claudeOff"));
+    const ai = app.mode !== "offline" ? app.ai : null;
+    ui.modeBadge.textContent = modeName(ai || "offline");
+    ui.modeBadge.classList.toggle("offline", !ai);
+    ui.modeNote.textContent = app.mode === "offline" ? t("offlineOn")
+      : (app.ai === "gemini" ? t("geminiOn") : app.ai === "claude" ? t("claudeOn") : t("noAi"));
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === app.mode; });
   }
 
@@ -833,6 +883,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   async function refresh() {
     const s = await api("/api/state");
     app.claude = s.claude;
+    app.ai = s.ai || null;
     app.convs = s.conversations || [];
     app.chats = s.chats || [];
     ui.version.textContent = `v${s.version}`;
@@ -1036,14 +1087,14 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   }
 
   function botMsg(mode) {
-    const label = el("span", {}, `Telegram Assistant · ${mode === "claude" ? t("modeClaude") : t("modeOffline")}`);
+    const label = el("span", {}, `Telegram Assistant · ${modeName(mode)}`);
     const node = el("article", { class: "msg msg-bot" },
       el("div", { class: "msg-meta" }, el("img", { class: "logo", src: "/static/icon-256.png", alt: "" }), label));
     const body = el("div", { class: "msg-body" });
     node.append(body);
     return {
       node, body, steps: null, stepItems: {},
-      setMode(m) { label.textContent = `Telegram Assistant · ${m === "claude" ? t("modeClaude") : t("modeOffline")}`; },
+      setMode(m) { label.textContent = `Telegram Assistant · ${modeName(m)}`; },
       pending(text) { body.className = "msg-body pending"; body.textContent = text; },
       stream(text) {
         if (!body.classList.contains("streaming")) { body.className = "msg-body streaming"; body.textContent = ""; }
@@ -1151,9 +1202,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.input.value = "";
     autosize();
     ui.thread.append(userMsg(text));
-    const pattern = ui.patternOn.checked;  // "Pattern (advanced)": matched on this computer, never by Claude
-    const claudeFirst = app.claude && app.mode !== "offline" && !pattern;
-    const b = botMsg(claudeFirst ? "claude" : "offline");
+    const pattern = ui.patternOn.checked;  // "Pattern (advanced)": matched on this computer, never by an AI
+    const aiFirst = app.ai && app.mode !== "offline" && !pattern;
+    const b = botMsg(aiFirst ? app.ai : "offline");
     b.pending(t("thinking"));
     ui.thread.append(b.node);
     scrollDown();
@@ -1781,6 +1832,35 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.modelRow.hidden = !st.installed;
   }
 
+  function showGemini(g) {
+    const node = g.node || {};
+    const states = {
+      connected: ["ok", t("gStConnected", g.account)],
+      not_logged_in: ["warn", t("gStNotLogged")],
+      missing: ["bad", t("gStMissing")],
+      no_node: ["bad", node.found && node.version ? t("gStOldNode", node.version) : t("gStNoNode")],
+    };
+    const [dot, text] = states[g.state] || states.missing;
+    ui.geminiDot.className = `state-dot ${dot}`;
+    ui.geminiStateText.textContent = g.version ? `${text} (v${g.version})` : text;
+    const steps = { no_node: t("gFixNoNode"), missing: t("gFixMissing"), not_logged_in: t("gFixNotLogged") }[g.state] || [];
+    ui.geminiSteps.replaceChildren(...steps.map((s) => el("li", {}, s)));
+    ui.geminiSteps.hidden = !steps.length;
+    ui.geminiNode.hidden = g.state !== "no_node";
+    ui.geminiInstall.hidden = g.state !== "missing";
+    ui.geminiLogin.hidden = g.state !== "not_logged_in";
+  }
+
+  function showAi(st) {
+    const picked = st.choice === "auto" ? st.active : st.choice;
+    document.querySelectorAll('input[name="ai"]').forEach((r) => {
+      r.checked = st.choice === "auto" && st.active === "off" ? false : r.value === picked;
+    });
+    ui.aiNote.textContent = st.choice !== "auto" ? t("aiHelp") : st.active !== "off" ? t("aiAuto") : t("aiNone");
+    showClaude(st.claude);
+    showGemini(st.gemini);
+  }
+
   function showSettings(s) {
     fillSelect(ui.modelPick, s.models || [], s.model, t("modelDefault"));
     fillSelect(ui.effortPick, s.efforts || [], s.effort, t("effortDefault"));
@@ -1815,12 +1895,13 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     if (!ui.settings.open) ui.settings.showModal();
     setNote("");
     ui.claudeStateText.textContent = t("checking");
+    ui.geminiStateText.textContent = t("checking");
     try {
       const conv = app.conv ? `?conversation=${encodeURIComponent(app.conv.id)}` : "";
-      const [s, u, st] = await Promise.all([api("/api/settings"), api(`/api/usage${conv}`), api("/api/claude-status")]);
+      const [s, u, st] = await Promise.all([api("/api/settings"), api(`/api/usage${conv}`), api("/api/ai-status")]);
       showSettings(s);
       showUsage(u);
-      showClaude(st);
+      showAi(st);
     } catch (e) {
       setNote(e.message);
     }
@@ -1838,8 +1919,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   async function recheckClaude() {
     ui.claudeStateText.textContent = t("checking");
     ui.claudeDot.className = "state-dot";
+    ui.geminiStateText.textContent = t("checking");
+    ui.geminiDot.className = "state-dot";
     try {
-      showClaude(await api("/api/claude-status?refresh=1"));
+      showAi(await api("/api/ai-status?refresh=1"));
       showSettings(await api("/api/settings"));
       refresh().catch(() => {});
     } catch (e) {
@@ -1855,6 +1938,43 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   ui.claudeLogin.addEventListener("click", async () => {
     try {
       const r = await api("/api/claude/login", {});
+      setNote(r.ok ? t("loginOpened") : (r.hint || t("errGeneric")));
+    } catch (e) { setNote(e.message); }
+  });
+  ui.geminiCheck.addEventListener("click", recheckClaude);
+  document.querySelectorAll('input[name="ai"]').forEach((r) => r.addEventListener("change", async () => {
+    await saveSetting({ ai_provider: r.value });
+    try {
+      showAi(await api("/api/ai-status"));
+      await refresh();
+    } catch (e) { setNote(e.message); }
+  }));
+  ui.geminiNode.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/gemini/node", {});
+      setNote(r.how === "winget" ? t("nodeOpened") : t("nodeSite"));
+    } catch (e) { setNote(e.message); }
+  });
+  ui.geminiInstall.addEventListener("click", async () => {
+    ui.geminiInstall.disabled = true;
+    ui.geminiStateText.textContent = t("installingGemini");
+    ui.geminiDot.className = "state-dot";
+    clearTimeout(setTimer);
+    ui.setStatus.textContent = t("installingGemini");
+    try {
+      const r = await api("/api/gemini/install", {});
+      if (r.status) showGemini(r.status);
+      setNote(r.ok ? t("geminiInstalled") : [r.message, r.hint].filter(Boolean).join(" "));
+      if (r.ok) refresh().catch(() => {});
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      ui.geminiInstall.disabled = false;
+    }
+  });
+  ui.geminiLogin.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/gemini/login", {});
       setNote(r.ok ? t("loginOpened") : (r.hint || t("errGeneric")));
     } catch (e) { setNote(e.message); }
   });

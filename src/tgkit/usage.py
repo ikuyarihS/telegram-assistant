@@ -1,10 +1,11 @@
-"""Token use of Claude mode answers, kept in the data folder.
+"""Token use of AI answers (Claude or Gemini), kept in the data folder.
 
-    <data>/usage.jsonl   one line per Claude answer: when, which conversation,
-                         the model, input / output / cache tokens, and the cost
-                         only when Claude Code reported one (its own estimate)
+    <data>/usage.jsonl   one line per AI answer: when, which conversation,
+                         the model, the provider (claude or gemini), input /
+                         output / cache tokens, and the cost only when Claude
+                         Code reported one (its own estimate)
 
-Only Claude mode answers use tokens. Search, summary, tasks and sync run on
+Only AI answers use tokens. Search, summary, tasks and sync run on
 this computer and use none, so they are never written here.
 """
 
@@ -50,15 +51,32 @@ def from_result(msg: dict) -> dict | None:
     return out
 
 
+def from_gemini(stats) -> dict | None:
+    """The usage of one answer, from the Gemini CLI's stream-json `result` stats
+    (input_tokens counts the cached ones too; Gemini reports no cost)."""
+    if not isinstance(stats, dict) or not stats:
+        return None
+    cached = _int(stats.get("cached"))
+    out = {"input": max(0, _int(stats.get("input_tokens")) - cached), "output": _int(stats.get("output_tokens")),
+           "cache_read": cached, "cache_write": 0}
+    models = stats.get("models")
+    if isinstance(models, dict) and models:
+        out["models"] = [str(k) for k in models]
+    return out
+
+
 def tokens(u: dict) -> int:
     """Every token kind together: what the daily limit counts."""
     return sum(_int(u.get(k)) for k in KINDS)
 
 
-def record(base: Path, u: dict, conversation: str | None = None, model: str | None = None) -> dict:
+def record(base: Path, u: dict, conversation: str | None = None, model: str | None = None,
+           provider: str | None = None) -> dict:
     """Append one answer's usage. One write of one line, so a reader never sees half."""
     entry = {"at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
              "conversation": conversation, "model": model}
+    if provider:
+        entry["provider"] = provider
     entry.update({k: _int(u.get(k)) for k in KINDS})
     if "cost_usd" in u:
         entry["cost_usd"] = u["cost_usd"]
@@ -130,7 +148,7 @@ def totals(base: Path, conversation: str | None = None, now: datetime | None = N
         if conversation and e.get("conversation") == conversation:
             _add(out["conversation"], e)
     out["cost_note"] = "cost_usd is Claude Code's own estimate; on a Claude plan you are not billed per answer."
-    out["what_uses_tokens"] = ("Only answers written by Claude use tokens. Search, summary, tasks and "
+    out["what_uses_tokens"] = ("Only answers written by Claude or Gemini use tokens. Search, summary, tasks and "
                                "getting new messages run on this computer and use none.")
     return out
 

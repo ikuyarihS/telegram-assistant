@@ -762,6 +762,9 @@ textarea::placeholder { color: var(--muted); }
 .set-sec p { max-width: 62ch; }
 .field-help { font-size: 13px; color: var(--muted); text-wrap: pretty; }
 .set-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-pick { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.ai-pick label { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 2px 0; font-weight: 500; }
+.ai-pick input { accent-color: var(--accent); margin: 0; }
 
 .state-line { display: flex; align-items: baseline; gap: 10px; font-weight: 500; }
 .state-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); transform: translateY(-1px); }

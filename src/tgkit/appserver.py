@@ -26,9 +26,11 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import __version__, account, applog, config, engine, export, intent, setupflow, usage
+from . import __version__, account, ai, applog, config, engine, export, intent, setupflow, usage
 from . import claude as claudemod
+from . import gemini as geminimod
 from .claude import ClaudeRunner
+from .gemini import GeminiRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
 from .net import SWITCHED_LINE
@@ -201,9 +203,13 @@ def _local_event(ev, lang: str | None):
 
 
 class App:
-    def __init__(self, home: Path | None = None, claude: ClaudeRunner | None = None, token: str | None = None):
+    def __init__(self, home: Path | None = None, claude: ClaudeRunner | None = None, token: str | None = None,
+                 gemini: GeminiRunner | None = None):
         self.home = Path(home) if home else config.home()
         self.claude = claude if claude is not None else ClaudeRunner()
+        self.gemini = gemini if gemini is not None else GeminiRunner()
+        self._gstatus = None
+        self._install_busy = threading.Lock()  # one Gemini install at a time
         self.token = token or secrets.token_urlsafe(24)
         self.convs = Conversations(self.home)
         self._sync_busy = threading.Lock()
@@ -231,6 +237,8 @@ class App:
         return {
             "version": __version__,
             "claude": self.claude.available,
+            "ai": self.provider(),
+            "ai_choice": ai.choice(self.home),
             "logged_in": config.logged_in(self.home),
             "has_codes": config.has_credentials(self.home, cfg),
             "chats": engine.chat_list(store),
@@ -424,28 +432,32 @@ class App:
             yield {"type": "done", "mode": "offline", "text": res["text"], "action": None, "turn": turn}
             return
         want = body.get("mode") or "auto"
-        mode = "claude" if want != "offline" and self.claude.available else "offline"
+        provider = self.provider() if want != "offline" else None
+        mode = provider or "offline"
+        name = ai.NAMES.get(provider or "", "")
         notice = None
-        if mode == "claude":
+        if provider:
             lim = usage.limit_state(self.home, self._cfg())
             if lim["reached"] and lim["hard"]:
-                notice = (f"Today's Claude limit that you set is reached ({lim['used']:,} of {lim['limit']:,} "
-                          "tokens). Answered without Claude.")
+                notice = (f"Today's {name} limit that you set is reached ({lim['used']:,} of {lim['limit']:,} "
+                          f"tokens). Answered without {name}.")
                 yield {"type": "notice", "text": notice, "reason": "limit"}
                 mode = "offline"
             elif lim["reached"]:
                 yield {"type": "notice", "reason": "limit_soft",
-                       "text": f"You are over the daily Claude limit you set ({lim['used']:,} of "
-                               f"{lim['limit']:,} tokens). Claude still answers; change it in Settings."}
-        if mode == "claude":
-            yield {"type": "mode", "mode": "claude"}
+                       "text": f"You are over the daily {name} limit you set ({lim['used']:,} of "
+                               f"{lim['limit']:,} tokens). {name} still answers; change it in Settings."}
+        if mode != "offline":
+            runner = self.claude if provider == "claude" else self.gemini
+            key = f"{provider}_session"  # each AI resumes only its own session
+            yield {"type": "mode", "mode": provider}
             steps, cards, final, failed = {}, [], None, None
             model, used = None, None
             titles = [t for _, t in engine.chat_names(store)]
-            for ev in self.claude.stream(text, self.home, conv.get("claude_session"), titles):
+            for ev in runner.stream(text, self.home, conv.get(key), titles):
                 kind = ev["type"]
                 if kind == "session":
-                    conv["claude_session"] = ev["id"]
+                    conv[key] = ev["id"]
                 elif kind == "model":
                     model = ev["model"]
                 elif kind == "usage":
@@ -473,17 +485,19 @@ class App:
                     final = ev["text"]
             if used:
                 # Tokens are spent even when the answer then failed: count them.
-                usage.record(self.home, used, conv["id"], model)
+                usage.record(self.home, used, conv["id"], model, provider)
             if failed is None and final is not None:
                 extra = {"model": model} if model else {}
                 if used:
                     extra["usage"] = {k: v for k, v in used.items() if k != "models"}
-                turn = self.convs.add_turn(conv, "assistant", mode="claude", text=final,
+                turn = self.convs.add_turn(conv, "assistant", mode=provider, text=final,
                                            steps=list(steps.values()), cards=cards, **extra)
-                yield {"type": "done", "mode": "claude", "text": final, "turn": turn}
+                yield {"type": "done", "mode": provider, "text": final, "turn": turn}
                 return
-            failed = failed or {"message": "Claude stopped without an answer."}
-            notice = failed["message"] + " Answered without Claude."
+            if failed and failed.get("reason") == "login" and provider == "gemini":
+                self._gstatus = None  # Settings shows "sign in needed" now
+            failed = failed or {"message": f"{name} stopped without an answer."}
+            notice = failed["message"] + f" Answered without {name}."
             yield {"type": "notice", "text": notice, "reason": failed.get("reason")}
             mode = "offline"
 
@@ -686,10 +700,37 @@ class App:
             self._status = claudemod.status(self.claude.cmd or [], self.home)
         return {**self._status, **claudemod.settings(self.home)}
 
+    def gemini_status(self, refresh: bool = False) -> dict:
+        """Cached: checking runs `node --version` and `gemini --version`."""
+        if refresh or self._gstatus is None:
+            if refresh and self.gemini.cmd is None:  # installed since the app opened? (cmd=[] means "off")
+                self.gemini.cmd = geminimod.find_gemini()
+            self._gstatus = geminimod.status(self.gemini.cmd or [], self.home)
+        return self._gstatus
+
+    def provider(self) -> str | None:
+        """The AI that answers now (ai.pick): Settings' choice, else Claude first, then
+        Gemini when it is signed in. Checks only what the choice needs."""
+        chosen = ai.choice(self.home)
+        if chosen == "off":
+            return None
+        claude_state = (self._status or {}).get("state")
+        need_gemini = self.gemini.available and (
+            chosen == "gemini" or (chosen == "auto" and (not self.claude.available or claude_state == "not_logged_in")))
+        gemini_state = self.gemini_status()["state"] if need_gemini else None
+        return ai.pick(chosen, self.claude.available, claude_state, self.gemini.available, gemini_state)
+
+    def ai_status(self, refresh: bool = False) -> dict:
+        st_claude = self.claude_status(refresh)
+        st_gemini = self.gemini_status(refresh)
+        return {"choice": ai.choice(self.home), "active": self.provider() or "off",
+                "claude": st_claude, "gemini": st_gemini}
+
     def settings(self) -> dict:
         cfg = self._cfg()
         st = self.claude_status()
         return {
+            "ai_provider": ai.choice(self.home),
             "model": str(cfg.get("claude_model") or ""), "effort": str(cfg.get("claude_effort") or ""),
             "models": st.get("models") or list(claudemod.BASE_MODELS) if st.get("installed") else [],
             "efforts": st.get("efforts") or [],
@@ -710,6 +751,11 @@ class App:
         st = self.claude_status()
 
         def change(cfg: dict) -> None:
+            if "ai_provider" in body:
+                chosen = str(body.get("ai_provider") or "")
+                if chosen not in ai.CHOICES:
+                    raise UserError("Pick Claude, Gemini or Off.", "Automatic picks Claude first, then Gemini.")
+                cfg["ai_provider"] = chosen
             if "model" in body:
                 model = str(body.get("model") or "").strip()
                 allowed = set(st.get("models") or claudemod.BASE_MODELS)
@@ -802,6 +848,75 @@ class App:
         self._status = None
         return self._terminal([*cmd, "auth", "login"] if auth else list(cmd),
                               "claude auth login" if auth else "claude")
+
+    # ------------------------------------------------------------- Gemini setup (Settings)
+
+    def _console(self, argv: list[str], cwd: Path | None = None, mac_line: str = "") -> dict:
+        """Open argv in its own console window (Windows) or Terminal (macOS). argv runs
+        directly, not through cmd.exe, so a path with spaces needs no quoting rules."""
+        if os.environ.get("TGKIT_NO_REVEAL"):  # tests: say what would open, open nothing
+            return {"ok": True, "argv": argv}
+        try:
+            if os.name == "nt":
+                subprocess.Popen(argv, cwd=str(cwd) if cwd else None, creationflags=geminimod.NEW_CONSOLE)
+                return {"ok": True}
+            if sys.platform == "darwin" and mac_line:
+                subprocess.Popen(["osascript", "-e", f'tell application "Terminal" to do script "{mac_line}"'])
+                return {"ok": True}
+        except OSError:
+            pass
+        return {"ok": False, "hint": f"Open a terminal and type: {mac_line or ' '.join(argv)}"}
+
+    def gemini_login(self) -> dict:
+        """Sign in to Google: the Gemini CLI in its own window asks how to sign in and
+        opens the Google page in the browser."""
+        cmd = self.gemini.cmd if self.gemini.available else geminimod.find_gemini()
+        if not cmd:
+            return {"ok": False, "hint": "Install Gemini first."}
+        work = self.home / "app" / "gemini"
+        work.mkdir(parents=True, exist_ok=True)
+        geminimod.clear_signin_failed(self.home)
+        self._gstatus = None
+        return self._console(geminimod.login_argv(cmd), work, "gemini")
+
+    def gemini_node(self) -> dict:
+        """Install Node.js: winget in its own window when Windows has it, else the download page."""
+        if geminimod.winget():
+            res = self._console(list(geminimod.WINGET_NODE))
+            if res.get("ok"):
+                return {**res, "how": "winget"}
+        return {**self._browse(geminimod.NODE_URL), "how": "browser"}
+
+    def gemini_install(self) -> dict:
+        """`npm install -g @google/gemini-cli`, then check that the gemini command is really
+        there: an install that ends without it is reported as failed, never as done."""
+        npm = geminimod.find_npm()
+        if not npm:
+            return {"ok": False, "message": "Node.js is not installed yet.", "hint": "Press Install Node.js first."}
+        if not self._install_busy.acquire(blocking=False):
+            return {"ok": False, "message": "Gemini is being installed already.", "hint": "Wait until it is done."}
+        try:
+            env = dict(os.environ)
+            node = geminimod.find_node()
+            if node:  # npm needs node on PATH, also when Node.js came after the app opened
+                env["PATH"] = os.pathsep.join([str(Path(node).parent), env.get("PATH", "")])
+            try:
+                done = subprocess.run([*npm, "install", "-g", geminimod.PACKAGE], stdin=subprocess.DEVNULL,
+                                      capture_output=True, timeout=900, creationflags=NO_WINDOW, env=env)
+                code = done.returncode
+                tail = ((done.stdout or b"") + (done.stderr or b"")).decode("utf-8", "replace").strip()[-600:]
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                code, tail = -1, str(exc)
+            self.gemini.cmd = geminimod.find_gemini()
+            self._gstatus = None
+            st = self.gemini_status()
+            if code == 0 and st["installed"]:
+                return {"ok": True, "status": st}
+            return {"ok": False, "status": st, "detail": tail,
+                    "message": "Gemini could not be installed.",
+                    "hint": "Check the internet connection and press Install Gemini again."}
+        finally:
+            self._install_busy.release()
 
     def reveal(self, body: dict) -> dict:
         """Show a saved file: only one inside the export folder."""
@@ -905,6 +1020,8 @@ class App:
             "Login under way": self.tg.step or "no",
             "sync.lock": lock_text("sync.lock"), "session.lock": lock_text("session.lock"),
             "Claude": "available" if self.claude.available else "not available",
+            "Gemini": "available" if self.gemini.available else "not available",
+            "AI answers": f"{ai.choice(self.home)} (now: {self.provider() or 'off'})",
         }
         return {"text": applog.diagnostics(self.home, facts)}
 
@@ -1098,6 +1215,10 @@ def make_handler(app: App):
                     q = parse_qs(url.query)
                     flag = (q.get("refresh") or [""])[0].strip().lower()
                     return self._json(app.claude_status(flag in ("1", "true", "yes")))
+                if path == "/api/ai-status":
+                    q = parse_qs(url.query)
+                    flag = (q.get("refresh") or [""])[0].strip().lower()
+                    return self._json(app.ai_status(flag in ("1", "true", "yes")))
                 if path == "/api/usage":
                     q = parse_qs(url.query)
                     return self._json(app.usage((q.get("conversation") or [None])[0]))
@@ -1196,6 +1317,15 @@ def make_handler(app: App):
                     return self._json(app.claude_login())
                 if path == "/api/claude/install":
                     return self._json(app.open_install())
+                if path == "/api/gemini/login":
+                    return self._json(app.gemini_login())
+                if path == "/api/gemini/node":
+                    return self._json(app.gemini_node())
+                if path == "/api/gemini/install":
+                    res = app.gemini_install()
+                    lang = self._lang()
+                    return self._json({**res, "message": localize(res.get("message"), lang),
+                                       "hint": localize(res.get("hint"), lang)})
                 if path == "/api/reveal":
                     return self._json(app.reveal(body))
                 if path == "/api/open-link":

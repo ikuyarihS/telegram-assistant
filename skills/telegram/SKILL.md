@@ -33,7 +33,7 @@ it first: "run tgkit guide, then answer".
   into Telegram Assistant; the user does it in Settings ("Coming from
   tg-crawl") or types it in a terminal.
 - Add `--json` to `today`, `search`, `summary`, `tasks`, `chats-log`, `usage`,
-  `claude-status` and `export`, and read the JSON.
+  `claude-status`, `ai-status` and `export`, and read the JSON.
 - "What do I need to do today" (Vietnamese: "hôm nay tôi cần làm gì"): run
   `tgkit today --json` and answer with a short list, most urgent first: tasks
   due today, then people waiting for the user's answer, then the rest. Each
@@ -82,6 +82,7 @@ it first: "run tgkit guide, then answer".
 | "save the file X sent in chat Y" | `tgkit export file "Y" <message id> --json` |
 | "how many tokens did the Telegram Assistant app use" | `tgkit usage --json` |
 | "is Claude connected in the Telegram Assistant app" | `tgkit claude-status --json` |
+| "which AI answers in the app", "is Gemini signed in" | `tgkit ai-status --json` |
 
 Chat names can be typed partly and without accents: `--chat "ke toan"`
 matches "Phòng Kế toán". Search also ignores accents when the words are typed
@@ -128,14 +129,19 @@ without them. `--since` takes `today`, `7d`, `2w`, `30d` or a date like
   `id`, `title`, `created`, `updated` and `turns` (see below).
 - `export ... --json`: `{"path", "name", "folder"}` of the file it saved
   (Word `.docx` unless `--format xlsx|csv|md`; never overwrites a file).
-- `usage --json`: tokens used by Claude answers in the Telegram Assistant window:
-  `today`, `month`, `days`, `all` (each `answers`, `tokens`, `input`,
-  `output`, `cache_read`, `cache_write`, and `cost_usd` only when Claude Code
-  reported it, as its own estimate) and the daily `limit` the user set.
-  Today, search, summary, tasks and sync use no tokens.
+- `usage --json`: tokens used by AI answers (Claude or Gemini) in the Telegram
+  Assistant window: `today`, `month`, `days`, `all` (each `answers`, `tokens`,
+  `input`, `output`, `cache_read`, `cache_write`, and `cost_usd` only when
+  Claude Code reported it, as its own estimate) and the daily `limit` the user
+  set. Today, search, summary, tasks and sync use no tokens.
 - `claude-status --json`: `state` (`connected`, `not_logged_in`, `missing`,
   `unknown`), `version`, `account`, `plan`, the `model` and `effort` chosen
   for the app, and `fix` (steps in plain words).
+- `ai-status --json`: `choice` (`auto`, `claude`, `gemini`, `off`, set in the
+  window's Settings), `active` (the AI that answers now: `claude`, `gemini`
+  or `off`), `claude` (as `claude-status`) and `gemini`: `state`
+  (`connected`, `not_logged_in`, `missing`, `no_node`), `version`, `account`
+  and `fix`.
 - `chats`, `show` and `media` print plain text: chat names with their message
   count and last update; messages as `[date] sender: text`; files with their
   path on disk.
