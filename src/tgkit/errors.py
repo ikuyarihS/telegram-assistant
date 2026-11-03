@@ -173,6 +173,8 @@ VI = {
     "Gemini could not start.": "Gemini không khởi động được.",
     "Gemini tried something Telegram Assistant does not allow, so it was stopped.":
         "Gemini đã thử làm một việc Telegram Assistant không cho phép, nên đã bị dừng.",
+    "Claude tried something Telegram Assistant does not allow, so it was stopped.":
+        "Claude đã thử làm một việc Telegram Assistant không cho phép, nên đã bị dừng.",
     "Gemini could not be installed.": "Chưa cài được Gemini.",
     "Check the internet connection and press Install Gemini again.": "Kiểm tra kết nối mạng rồi bấm Cài Gemini lại.",
     "Node.js is not installed yet.": "Máy này chưa có Node.js.",

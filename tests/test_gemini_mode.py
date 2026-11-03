@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from tgkit import ai, claude, gemini, usage
+from tgkit import ai, claude, gemini, mcp, usage
 from tgkit.appserver import App
 from tgkit.claude import ClaudeRunner
 from tgkit.gemini import GeminiRunner
@@ -81,42 +81,45 @@ def test_runner_streams_the_same_events_as_claude(home, tmp_path, monkeypatch):
     assert run["readonly"] == "1" and run["no_relaunch"] == "true"
     assert Path(run["cwd"]) == home / "app" / "gemini"
     assert "tìm biên bản" in run["stdin"] and "Team Beta" in run["stdin"]
-    assert "run_shell_command" in run["stdin"] and "## In the Telegram Assistant app" in run["stdin"]
+    assert "tools of the tgkit server" in run["stdin"] and "## In the Telegram Assistant app" in run["stdin"]
+    assert argv[argv.index("--allowed-mcp-server-names") + 1] == "tgkit" and "--skip-trust" in argv
+    assert run["trust"] == "true"  # without it the real 0.66.0 CLI does not load the work folder's server
+    settings = json.loads((home / "app" / "gemini" / ".gemini" / "settings.json").read_text(encoding="utf-8"))
+    server = settings["mcpServers"]["tgkit"]
+    assert list(settings) == ["mcpServers"] and list(settings["mcpServers"]) == ["tgkit"]
+    assert server["args"] == ["-m", "tgkit.mcp", "--home", str(home)] and server["includeTools"] == list(mcp.TOOLS)
 
 
-def test_policy_allows_only_tgkit_reads(home):
+def test_policy_allows_only_the_tgkit_tools(home):
     rules = tomllib.loads(gemini.policy_text())["rule"]
     allow = [r for r in rules if r["decision"] == "allow"]
-    assert len(allow) == 1 and allow[0]["toolName"] == "run_shell_command"
-    assert sorted(allow[0]["commandPrefix"]) == ai.READ_PREFIXES
-    assert all(p.startswith("tgkit ") for p in ai.READ_PREFIXES)
-    assert not any(w in p.split() for p in ai.READ_PREFIXES for w in ("sync", "setup", "add", "logout", "export"))
-    star = [r for r in rules if r["toolName"] == "*" and "mcpName" not in r]
-    assert star and star[0]["decision"] == "deny" and star[0]["priority"] < allow[0]["priority"]
-    denies = [r for r in rules if r["decision"] == "deny" and "commandRegex" in r]
-    assert all(r["priority"] > allow[0]["priority"] for r in denies)
-    text = " ".join(r["commandRegex"] for r in denies)
-    for r in denies:  # the real CLI drops a rule its ReDoS check refuses (isSafeRegExp, 0.66.0)
-        p = '"command":"' + r["commandRegex"]
-        assert len(p) <= 2048 and not re.search(r"\([^)]*[*+?{].*\)[*+?{]", p), r["commandRegex"][:40]
-    for word in ai.WRITE_COMMANDS:
-        assert word in text
-    for word in ai.TASK_WRITES:  # spelled letter by letter in the pattern ([dD]...): check the decision
-        assert policy_decision(f"tgkit tasks --json {word} 1") == "deny", word
-    # the same lists as Claude's rules: one source
+    assert allow == [{"toolName": "*", "mcpName": "tgkit", "decision": "allow", "priority": 500}]
+    assert all("toolName" in r for r in rules)  # the real 0.66.0 loader drops the file otherwise
+    shell = [r for r in rules if r.get("toolName") == "run_shell_command"]
+    assert shell and all(r["decision"] == "deny" and r["priority"] > 500 for r in shell)
+    star = [r for r in rules if r.get("toolName") == "*" and "mcpName" not in r]
+    assert star and star[0]["decision"] == "deny" and star[0]["priority"] < 500
+    assert not any("commandPrefix" in r or "commandRegex" in r for r in rules)  # no shell text is ever allowed
+    assert policy_decision("mcp_tgkit_search", "tgkit") == "allow"
+    for tool, server in (("run_shell_command", None), ("write_file", None), ("web_fetch", None),
+                         ("mcp_evil_search", "evil"), ("mcp_tgkit2_search", "tgkit2"), ("google_web_search", None)):
+        assert policy_decision(tool, server) == "deny", tool
+    # the same lists and rules for both AIs: one source
     assert claude.READ_COMMANDS is ai.READ_COMMANDS and claude.DENIED_COMMANDS is ai.DENIED_COMMANDS
-    assert gemini.APP_RULES == ai.app_rules("the run_shell_command tool")
-    assert claude.APP_RULES == ai.app_rules("your shell tool (Bash or PowerShell, whichever you have)")
+    assert gemini.APP_RULES == ai.app_rules("the tools of the tgkit server")
+    assert claude.ALLOWED == [f"mcp__tgkit__{t}" for t in mcp.TOOLS]
 
 
 @pytest.mark.parametrize("env", [
-    {"FAKE_GEMINI_RUN": "tasks done 1"},
-    {"FAKE_GEMINI_RUN": "tasks --json done 1"},
-    {"FAKE_GEMINI_RUN": "sync"},
-    {"FAKE_GEMINI_RUN": "import-crawl x"},
-    {"FAKE_GEMINI_RUN": "export tasks --json"},
+    {"FAKE_GEMINI_CALL": json.dumps({"tool": "tasks", "args": {"view": "done"}})},
+    {"FAKE_GEMINI_CALL": json.dumps({"tool": "tasks", "args": {"view": "add", "chat": "x"}})},
+    {"FAKE_GEMINI_CALL": json.dumps({"tool": "tasks", "args": {"rest": ["1"], "view": "list"}})},
+    {"FAKE_GEMINI_CALL": json.dumps({"tool": "sync", "args": {}})},
+    {"FAKE_GEMINI_CALL": json.dumps({"tool": "import_crawl", "args": {"folder": "x"}})},
+    {"FAKE_GEMINI_CALL": json.dumps({"tool": "search", "args": {"query": "x", "online": True}})},
     {"FAKE_GEMINI_CMD": "type C:\\Users\\x\\secrets.txt"},
     {"FAKE_GEMINI_CMD": 'tgkit search "x" --json && del notes.txt'},
+    {"FAKE_GEMINI_CMD": "tgkit search ([IO.File]::WriteAllText('pwn.txt','x'))"},
     {"FAKE_GEMINI_TOOL": "write_file"},
     {"FAKE_GEMINI_TOOL": "web_fetch"},
 ])
@@ -132,16 +135,26 @@ def test_policy_refuses_writes_and_other_tools(home, monkeypatch, env):
     assert after == before
 
 
-def test_readonly_tgkit_refuses_even_when_the_cli_lets_it_through(home, monkeypatch, tg):
+def test_the_tgkit_tools_refuse_changes_even_when_the_cli_lets_them_through(home, monkeypatch, tg):
     assert tg("tasks")[0] == 0
     before = (home / "tasks.json").read_bytes()
     monkeypatch.setenv("FAKE_GEMINI_IGNORE_POLICY", "1")
-    for run in ("tasks --json done 1", "tasks drop 1", "sync", "export tasks"):
-        monkeypatch.setenv("FAKE_GEMINI_RUN", run)
+    for view in ("done", "drop", "DONE", "undo"):
+        monkeypatch.setenv("FAKE_GEMINI_CALL", json.dumps({"tool": "tasks", "args": {"view": view}}))
         evs = list(runner().stream("xong việc 1", home))
         done = [e for e in evs if e["type"] == "step_done"][0]
-        assert done["ok"] is False and "read-only" in done["note"], run
+        assert done["ok"] is False and "read-only" in done["note"], view
     assert (home / "tasks.json").read_bytes() == before
+
+
+def test_a_tgkit_tool_really_runs_through_the_server(home, monkeypatch):
+    monkeypatch.setenv("FAKE_GEMINI_CALL", json.dumps({"tool": "tasks", "args": {"chat": "alpha", "since": "30d"}}))
+    evs = list(runner().stream("việc tuần này", home))
+    step = [e for e in evs if e["type"] == "step"][0]
+    assert step["command"] == "tgkit tasks --chat=alpha --since=30d --json"
+    assert [e for e in evs if e["type"] == "step_done"][0]["ok"] is True
+    assert isinstance([e for e in evs if e["type"] == "tool_json"][0]["data"]["tasks"], list)
+    assert evs[-1]["type"] == "final"
 
 
 def test_runner_stops_when_a_forbidden_command_ran(home, monkeypatch):
@@ -172,41 +185,28 @@ QUOTED_READS = ['tgkit tasks --chat "Team" --json', 'tgkit tasks all --chat "du 
                 'tgkit tasks --chat "Undone list" --json', "tgkit tasks mine --json", "tgkit tasks"]
 
 
-def policy_decision(command):
-    """The real CLI's matching (chunk-HJ5KJXNZ.js buildArgsPatterns): highest priority first."""
-    rules =sorted(tomllib.loads(gemini.policy_text())["rule"], key=lambda r: -r.get("priority", 0))
-    text = json.dumps({"command": command}, separators=(",", ":"))
+def policy_decision(tool, server=None):
+    """The real CLI's rule choice (0.66.0 policy engine): highest priority first; toolName "*"
+    is any tool; mcpName is the tools of that MCP server (mcp_<server>_<tool>)."""
+    rules = sorted(tomllib.loads(gemini.policy_text())["rule"], key=lambda r: -r.get("priority", 0))
     for r in rules:
-        if r.get("toolName") != "run_shell_command":
-            continue
-        if "commandRegex" in r and re.search('"command":"' + r["commandRegex"], text):
+        if "mcpName" in r:
+            if server is not None and r["mcpName"] in ("*", server) and r.get("toolName", "*") in ("*", tool.split("_", 2)[-1]):
+                return r["decision"]
+        elif r.get("toolName") in ("*", tool):
             return r["decision"]
-        if "commandPrefix" in r and any(re.search(re.escape('"command":' + json.dumps(p)[:-1]) + r'(?:[\s"]|\\")', text)
-                                        for p in r["commandPrefix"]):
-            return r["decision"]
-    return "deny"  # the "*" rule
+    return "ask_user"
 
 
 @pytest.mark.parametrize("command", QUOTED_WRITES)
 def test_policy_denies_a_task_change_however_it_is_quoted(command):
-    assert policy_decision(command) == "deny"
+    assert policy_decision("run_shell_command") == "deny"  # no shell command at all
     assert not ai.allowed_command(command)  # the runner's guard agrees
 
 
 @pytest.mark.parametrize("command", QUOTED_READS)
-def test_policy_still_allows_quoted_task_reads(command):
-    assert policy_decision(command) == "allow"
-    assert ai.allowed_command(command)
-
-
-def test_policy_past_many_quotes():
-    depth = gemini.QUOTE_DEPTH
-    few = "tgkit tasks" + ' --chat "a"' * (depth // 2 - 1)  # depth - 2 escaped quotes
-    assert policy_decision(few + " --json") == "allow"
-    assert policy_decision(few + ' "done" 1') == "deny"  # the word past depth - 2 quotes, itself quoted
-    many = "tgkit tasks" + ' --chat "a"' * (depth // 2 + 1)
-    assert policy_decision(many + " --json") == "deny"  # more than the rule reads past: refused
-    assert policy_decision(many + " done 1") == "deny"
+def test_quoted_task_reads_are_plain_shell_text(command):
+    assert ai.allowed_command(command)  # what a read looks like; the policy still gives no shell
 
 
 def test_claude_denies_quoted_task_words_too():

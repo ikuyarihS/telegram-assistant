@@ -1,12 +1,13 @@
 """Claude mode for the app: a headless Claude Code session that answers with tgkit.
 
 The app runs `claude -p --output-format stream-json` with the question on
-stdin. The session may use only its shell tool (Bash, or PowerShell where Claude
-Code runs commands in PowerShell, as on many Windows PCs), and only for tgkit's
-read commands (search, summary, tasks lists, chats, show, media). Anything else
-is denied without a prompt, and the tgkit it runs is read-only (TGKIT_READONLY):
-it refuses to change a task, sync, add chats or set up, however the command is
-written. Its words stream into the chat; each tgkit command it runs
+stdin. The session has no shell and no built-in tools (`--tools ""`; Bash and
+PowerShell are denied as well): its only tools are tgkit's read commands, served
+by Telegram Assistant's own MCP server (mcp.py, passed per run with
+`--mcp-config` and `--strict-mcp-config`), which runs tgkit with an argv list from
+typed fields, so no text from the model reaches a shell. Anything else is denied
+without a prompt, and the tgkit it runs is read-only (TGKIT_READONLY): it refuses
+to change a task, sync, add chats or set up. Its words stream into the chat; each tgkit command it runs
 shows as a step, and the JSON it got back becomes the same cards the offline
 mode draws. The session id is kept per conversation, so a follow-up resumes it.
 
@@ -25,23 +26,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from . import ai, config, playbook, usage
+from . import ai, config, mcp, playbook, usage
 from .ai import DENIED_COMMANDS, READ_COMMANDS, READONLY_ENV, TASK_WRITES, plain  # noqa: F401  (shared, ai.py)
 from .store import atomic_write
 
-# Claude Code's shell tool is Bash, or PowerShell on a PC set up that way. Every
-# rule is written for both, so neither shell can run more than the other.
-# The read commands and the denied ones are ai.py's, the same for Gemini. Deny
-# rules win over allow rules. The session also gets TGKIT_READONLY=1, so the
-# tgkit CLI itself refuses every changing command however it is written.
+# Claude Code's shells (Bash, or PowerShell on a PC set up that way) are never
+# offered: a wildcard rule like PowerShell(tgkit search *) also matches
+# "tgkit search ([IO.File]::WriteAllText(...))". The only allowed tools are the
+# tgkit server's (mcp.py), the same tools Gemini gets. Deny rules win over allow
+# rules. The session also gets TGKIT_READONLY=1.
 SHELLS = ("Bash", "PowerShell")
-ALLOWED = [f"{shell}({c})" for shell in SHELLS for c in READ_COMMANDS]
-DENIED = (["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task"]
-          + [f"{shell}({c})" for shell in SHELLS for c in DENIED_COMMANDS])
+ALLOWED = [f"mcp__{mcp.SERVER}__{t}" for t in mcp.TOOLS]
+DENIED = ["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task", *SHELLS]
 
 # The app's session reads the same playbook as every other Claude Code session
 # (playbook.md, also `tgkit guide` and the plugin skill), plus the rules of the app.
-APP_RULES = ai.app_rules("your shell tool (Bash or PowerShell, whichever you have)")
+APP_RULES = ai.app_rules("the tools of the tgkit server (mcp__tgkit__search and the others)")
 GUIDE = playbook.text() + APP_RULES
 
 FALLBACK_HINTS = (
@@ -174,6 +174,15 @@ def status(cmd: list[str] | None = None, home: Path | None = None) -> dict:
 _tgkit_dirs = ai.tgkit_dirs  # the folders of THIS install's tgkit, so Claude runs the same one
 
 
+def mcp_file(home: Path) -> Path:
+    """The per-run MCP config (`--mcp-config`): only the tgkit server."""
+    return Path(home) / "app" / "claude" / "tgkit-mcp.json"
+
+
+def mcp_config(home: Path) -> dict:
+    return {"mcpServers": {mcp.SERVER: {"type": "stdio", **mcp.server_command(home)}}}
+
+
 class ClaudeRunner:
     name = "claude"
 
@@ -191,10 +200,11 @@ class ClaudeRunner:
     def args(self, home: Path, session: str | None, guide_file: Path | None) -> list[str]:
         a = list(self.cmd) + ["-p", "--output-format", "stream-json", "--verbose"]
         if not self.compat:
-            a += ["--include-partial-messages", "--tools", ",".join(SHELLS), "--permission-mode", "dontAsk",
-                  "--safe-mode", "--strict-mcp-config"]
+            a += ["--include-partial-messages", "--tools", "", "--permission-mode", "dontAsk",
+                  "--safe-mode"]
             if guide_file is not None:
                 a += ["--append-system-prompt-file", str(guide_file)]
+        a += ["--mcp-config", str(mcp_file(home)), "--strict-mcp-config"]
         a += ["--allowedTools", *ALLOWED, "--disallowedTools", *DENIED]
         chosen = settings(home)
         model = self.model or chosen["model"]
@@ -237,6 +247,7 @@ class ClaudeRunner:
         work.mkdir(parents=True, exist_ok=True)
         guide = work / "tgkit-guide.md"
         atomic_write(guide, GUIDE)
+        atomic_write(mcp_file(home), json.dumps(mcp_config(home), indent=2))
         env = ai.run_env(home)
         flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
         try:
@@ -264,6 +275,7 @@ class ClaudeRunner:
         streamed = False
         final = None
         new_session = None
+        blocked = None
         try:
             for raw in proc.stdout:
                 line = raw.decode("utf-8", "replace").strip()
@@ -288,8 +300,11 @@ class ClaudeRunner:
                 elif kind == "assistant":
                     for block in (msg.get("message") or {}).get("content") or []:
                         if block.get("type") == "tool_use":
-                            cmd = (block.get("input") or {}).get("command") or block.get("name")
-                            tools[block.get("id")] = cmd
+                            name = str(block.get("name") or "")
+                            params = block.get("input") if isinstance(block.get("input"), dict) else {}
+                            tool = mcp.tool_of(name)
+                            cmd = mcp.describe(tool, params) if tool else str(params.get("command") or name)
+                            tools[block.get("id")] = (tool, name, cmd)
                             yield {"type": "step", "id": block.get("id"), "command": cmd}
                         elif block.get("type") == "text" and not streamed:
                             yield {"type": "token", "text": plain(block.get("text", ""))}
@@ -304,12 +319,19 @@ class ClaudeRunner:
                         ok = not block.get("is_error")
                         yield {"type": "step_done", "id": block.get("tool_use_id"), "ok": ok,
                                "note": "" if ok else body[:300]}
-                        cmd = tools.get(block.get("tool_use_id")) or ""
+                        tool, name, cmd = tools.get(block.get("tool_use_id")) or (None, "", "")
+                        if ok and not tool:
+                            # A tool outside the tgkit server ran (a shell, a file tool):
+                            # Claude's rules should have refused it. Stop now.
+                            blocked = f"{name}: {cmd}"
+                            break
                         if ok and "--json" in cmd:
                             try:
                                 yield {"type": "tool_json", "command": cmd, "data": json.loads(body)}
                             except ValueError:
                                 pass
+                    if blocked:
+                        break
                 elif kind == "result":
                     final = msg
                     used = usage.from_result(msg)
@@ -321,6 +343,10 @@ class ClaudeRunner:
             proc.wait()
             t.join(timeout=2)
 
+        if blocked:
+            yield {"type": "error", "reason": "blocked", "detail": blocked[-400:],
+                   "message": "Claude tried something Telegram Assistant does not allow, so it was stopped."}
+            return
         if final and not final.get("is_error") and proc.returncode == 0:
             yield {"type": "final", "text": plain(final.get("result") or ""), "session": new_session}
             return

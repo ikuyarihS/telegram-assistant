@@ -277,9 +277,9 @@ def test_a_catastrophic_pattern_is_stopped_in_bounded_time(home):
 
 
 def test_regex_is_read_only_for_claude_and_import_is_denied(home, tg, monkeypatch, tmp_path):
-    assert "Bash(tgkit search *)" in claude.ALLOWED and "PowerShell(tgkit search *)" in claude.ALLOWED
+    assert "mcp__tgkit__search" in claude.ALLOWED and not any("import" in a for a in claude.ALLOWED)
     for shell in ("Bash", "PowerShell"):
-        assert f"{shell}(tgkit import*)" in claude.DENIED
+        assert shell in claude.DENIED
     assert "import-crawl" in claude.APP_RULES and "--regex" in claude.APP_RULES
     crawl = make_crawl(tmp_path)
     monkeypatch.setenv("TGKIT_READONLY", "1")

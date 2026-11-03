@@ -9,13 +9,20 @@ Checked against Gemini CLI 0.66.0 (its --help and bundled docs):
   tool_result (tool_id, status, output, error), error, result (status, stats).
 - `--resume <session id>` continues a session of the same folder, so every run
   uses one fixed work folder in the data folder.
+- No shell: tgkit's read commands are the tools of a small MCP server run by
+  Telegram Assistant itself (mcp.py, `python -m tgkit.mcp`, an argv list, typed
+  JSON fields), so no text from the model ever reaches PowerShell, cmd or bash.
+  Each run writes the server into the work folder's `.gemini/settings.json`
+  (workspace settings; `--skip-trust` trusts that folder for the run, which a
+  stdio MCP server needs) and passes `--allowed-mcp-server-names tgkit`, so the
+  user's own MCP servers stay off. The user's own Gemini settings are never edited.
 - Tools are ruled by the policy engine. Each run passes Telegram Assistant's own
   policy file (`--admin-policy`, the top tier, and `--policy` as well, in case an
   administrator's system policy makes the CLI skip supplemental admin files):
-  only `run_shell_command` for tgkit's read commands is allowed, every other tool
-  (files, web, MCP, skills, agents) is denied and so hidden from the model, and a
-  changing tgkit command is denied first. The user's own Gemini settings are
-  never edited. The tgkit it runs is read-only too (TGKIT_READONLY).
+  only the tools of the tgkit MCP server are allowed (mcpName = "tgkit"); the
+  shell and every other tool (files, web, other MCP servers, skills, agents) are
+  denied and so hidden from the model. The tgkit it runs is read-only too
+  (TGKIT_READONLY).
 - Not signed in: it exits with code 41 and "Please set an Auth method". The login
   token sits in the system keychain, so "signed in" here is the CLI's own
   condition for headless runs (an auth type in ~/.gemini/settings.json and, for a
@@ -39,7 +46,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from . import ai, playbook, usage
+from . import ai, mcp, playbook, usage
 from .ai import plain
 from .store import atomic_write
 
@@ -53,7 +60,7 @@ NEW_CONSOLE = 0x00000010  # CREATE_NEW_CONSOLE
 WINGET_NODE = ["winget", "install", "-e", "--id", "OpenJS.NodeJS.LTS",
                "--accept-source-agreements", "--accept-package-agreements"]
 
-APP_RULES = ai.app_rules("the run_shell_command tool")
+APP_RULES = ai.app_rules("the tools of the tgkit server")
 GUIDE = playbook.text() + APP_RULES
 # The question goes on stdin; -p only starts headless mode and is added after it.
 PROMPT_FLAG = "Answer the request above."
@@ -71,67 +78,24 @@ MESSAGES = {
 }
 
 
-def _toml_list(items) -> str:
-    return "[" + ", ".join(json.dumps(i) for i in items) + "]"
-
-
-# Escaped quotes the task rule reads past; a tasks command with more is refused outright.
-QUOTE_DEPTH = 32
-
-
-def task_write_regex() -> str:
-    """The deny pattern for a task change. The CLI tests `"command":"` + this against
-    the JSON of the arguments, where a quote is \\" and a tab is \\t. So it reads the
-    command as JSON string text (past escaped quotes, never past its closing quote),
-    finds a word start (a space, a quote, an escape) and the changing word in any
-    case, with quotes, backslashes, carets or backticks between its letters ("do"ne,
-    d^one, DONE): every way a shell can still hand argparse the word. Over-denying a
-    chat name that holds the word is fine (the window has the buttons).
-    The CLI drops a pattern with a quantified group after any "(?" (its ReDoS check,
-    isSafeRegExp), so nothing here is a quantified group: the escaped quotes are
-    nested optional groups, QUOTE_DEPTH deep (many_quotes_regex covers the rest)."""
-    glue = r"""[\\"'`^]*"""  # a backslash, quote, ' ` or ^ between letters
-    words = "|".join(glue.join(f"[{c.lower()}{c.upper()}]" for c in w) for w in ai.TASK_WRITES)
-    body = r'(?:[^"]*\\"' * QUOTE_DEPTH + "|)" * QUOTE_DEPTH + '[^"]*'
-    return ("tgkit tasks" + body + r'(?:[^A-Za-z0-9_"\\]|\\u[0-9a-fA-F]{4}|\\.)'
-            + glue + f"(?:{words})(?![A-Za-z0-9_])")
-
-
-def many_quotes_regex() -> str:
-    """A tasks command with more escaped quotes than task_write_regex reads past."""
-    return "tgkit tasks" + r'[^"]*\\"' * QUOTE_DEPTH
-
-
 def policy_text() -> str:
-    """The policy file of every Gemini run (TOML, Gemini CLI policy engine)."""
-    writes = "|".join(ai.WRITE_COMMANDS)
-    return f"""# Telegram Assistant: the only tool of the Gemini session is tgkit's read commands.
-# Written by Telegram Assistant for each answer; your own Gemini settings are not changed.
+    """The policy file of every Gemini run (TOML, Gemini CLI policy engine): the tools of
+    the tgkit MCP server are allowed, the shell and everything else denied. Every rule
+    has a toolName: 0.66.0 drops the whole file for an mcpName rule without one (its
+    docs say otherwise; checked with the CLI's own loader)."""
+    return f"""# Telegram Assistant: the only tools of the Gemini session are tgkit's read commands,
+# served by Telegram Assistant itself (no shell). Written for each answer; your own
+# Gemini settings are not changed.
 
 [[rule]]
 toolName = "{SHELL_TOOL}"
-commandRegex = {json.dumps(f"tgkit ({writes})")}
 decision = "deny"
 priority = 999
-denyMessage = "Telegram Assistant is read-only here."
+denyMessage = "Telegram Assistant gives Gemini no shell. Use the tgkit tools."
 
 [[rule]]
-toolName = "{SHELL_TOOL}"
-commandRegex = {json.dumps(task_write_regex())}
-decision = "deny"
-priority = 998
-denyMessage = "Telegram Assistant is read-only here: task changes use the window's buttons."
-
-[[rule]]
-toolName = "{SHELL_TOOL}"
-commandRegex = {json.dumps(many_quotes_regex())}
-decision = "deny"
-priority = 997
-denyMessage = "Too many quotes in one tasks command: ask with fewer filters."
-
-[[rule]]
-toolName = "{SHELL_TOOL}"
-commandPrefix = {_toml_list(ai.READ_PREFIXES)}
+toolName = "*"
+mcpName = "{mcp.SERVER}"
 decision = "allow"
 priority = 500
 
@@ -147,6 +111,13 @@ mcpName = "*"
 decision = "deny"
 priority = 100
 """
+
+
+def settings_for(home: Path) -> dict:
+    """The work folder's .gemini/settings.json: the tgkit MCP server and nothing else.
+    Workspace settings, so an administrator's system settings still come first."""
+    return {"mcpServers": {mcp.SERVER: {**mcp.server_command(home), "timeout": mcp.TIMEOUT * 1000,
+                                        "includeTools": list(mcp.TOOLS)}}}
 
 
 # ------------------------------------------------------------------ finding it
@@ -427,7 +398,8 @@ class GeminiRunner:
 
     def args(self, home: Path, session: str | None, policy: Path) -> list[str]:
         a = list(self.cmd) + ["-p", PROMPT_FLAG, "-o", "stream-json", "--approval-mode", "default",
-                              "--admin-policy", str(policy), "--policy", str(policy), "--skip-trust"]
+                              "--admin-policy", str(policy), "--policy", str(policy), "--skip-trust",
+                              "--allowed-mcp-server-names", mcp.SERVER]
         if self.model:
             a += ["-m", self.model]
         if session:
@@ -437,6 +409,9 @@ class GeminiRunner:
     def env(self, home: Path) -> dict:
         env = ai.run_env(home)
         env["GEMINI_CLI_NO_RELAUNCH"] = "true"
+        # The work folder's own settings (the tgkit server) load only in a trusted folder;
+        # --skip-trust alone comes too late for them in 0.66.0 (the tool was "not found").
+        env["GEMINI_CLI_TRUST_WORKSPACE"] = "true"
         env["NO_COLOR"] = "1"
         return env
 
@@ -455,6 +430,8 @@ class GeminiRunner:
         work.mkdir(parents=True, exist_ok=True)
         policy = work / "tgkit-policy.toml"
         atomic_write(policy, policy_text())
+        (work / ".gemini").mkdir(exist_ok=True)
+        atomic_write(work / ".gemini" / "settings.json", json.dumps(settings_for(home), indent=2))
         try:
             proc = subprocess.Popen(
                 self.args(home, session, policy), cwd=str(work), env=self.env(home),
@@ -505,18 +482,23 @@ class GeminiRunner:
                 elif kind == "tool_use":
                     params = msg.get("parameters") or {}
                     name = str(msg.get("tool_name") or "")
-                    cmd = str(params.get("command") or name) if isinstance(params, dict) else name
-                    tools[msg.get("tool_id")] = (name, cmd)
+                    tool = mcp.tool_of(name)
+                    if tool:
+                        cmd = mcp.describe(tool, params)
+                    else:
+                        cmd = str(params.get("command") or name) if isinstance(params, dict) else name
+                    tools[msg.get("tool_id")] = (tool, name, cmd)
                     yield {"type": "step", "id": msg.get("tool_id"), "command": cmd}
                 elif kind == "tool_result":
-                    name, cmd = tools.get(msg.get("tool_id"), ("", ""))
+                    tool, name, cmd = tools.get(msg.get("tool_id"), (None, "", ""))
                     ok = msg.get("status") == "success"
                     body = str(msg.get("output") or "")
                     note = "" if ok else str((msg.get("error") or {}).get("message") or body)[:300]
                     yield {"type": "step_done", "id": msg.get("tool_id"), "ok": ok, "note": note}
                     said = []
-                    if ok and not (name == SHELL_TOOL and ai.allowed_command(cmd)):
-                        # The CLI ran something its policy should have refused: stop now.
+                    if ok and not tool:
+                        # A tool outside the tgkit server ran (the shell, a file tool): the CLI's
+                        # policy should have refused it. Stop now.
                         blocked = f"{name}: {cmd}"
                         break
                     if ok and "--json" in cmd:

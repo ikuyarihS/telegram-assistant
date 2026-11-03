@@ -33,17 +33,15 @@ def test_runner_streams_tokens_steps_and_json(home, tmp_path, monkeypatch):
     argv = run["argv"]
     assert "-p" in argv and "stream-json" in argv and "--resume" not in argv
     allowed = argv[argv.index("--allowedTools") + 1: argv.index("--disallowedTools")]
-    assert allowed and all(a.startswith(("Bash(tgkit ", "PowerShell(tgkit ")) for a in allowed)
-    assert not any("sync" in a or "setup" in a or " add" in a for a in allowed)
+    assert allowed and all(a.startswith("mcp__tgkit__") for a in allowed)
+    assert not any("sync" in a or "setup" in a or "add" in a or "export" in a for a in allowed)
     denied = argv[argv.index("--disallowedTools") + 1:]
-    assert "Write" in denied
-    tools = argv[argv.index("--tools") + 1].split(",")
-    assert set(tools) == {"Bash", "PowerShell"}
-    for shell in tools:  # every shell gets the same allow and deny rules
-        assert {a.split("(", 1)[1] for a in allowed if a.startswith(shell + "(")} == \
-            {a.split("(", 1)[1] for a in allowed if a.startswith("Bash(")}
-        for cmd in ("setup", "add", "sync", "tasks done", "tasks drop", "tasks note", "tasks add"):
-            assert f"{shell}(tgkit {cmd}*)" in denied
+    assert {"Write", "Bash", "PowerShell", "WebFetch", "Read"} <= set(denied)
+    assert argv[argv.index("--tools") + 1] == ""  # no built-in tool at all, no shell
+    config = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text(encoding="utf-8"))
+    assert list(config["mcpServers"]) == ["tgkit"] and "--strict-mcp-config" in argv
+    server = config["mcpServers"]["tgkit"]
+    assert server["args"][:2] == ["-m", "tgkit.mcp"] and Path(server["command"]).name.lower().startswith("python")
     assert "tìm biên bản" in run["stdin"] and "Team Beta" in run["stdin"]
 
 
@@ -85,9 +83,25 @@ def test_offline_choice_skips_claude(home, tmp_path, monkeypatch):
     assert evs[-1]["mode"] == "offline" and not log.exists()
 
 
-def test_powershell_session_steps_and_no_dashes(home, monkeypatch):
-    """Gate B-1, B-4: a Claude whose shell is PowerShell still runs tgkit; dashes go."""
-    monkeypatch.setenv("FAKE_CLAUDE_SHELL", "PowerShell")
+def test_a_shell_call_is_denied_and_a_broken_cli_is_stopped(home, monkeypatch):
+    """Gate 0.2.9 fix: the gate's PowerShell and bash constructions go nowhere in Claude mode."""
+    gate = "tgkit search ([IO.File]::WriteAllText('pwn.txt','x')) --json"
+    for shell, cmd in (("PowerShell", gate), ("Bash", "tgkit search `touch pwn.txt`")):
+        assert not permitted(cmd, shell)
+        monkeypatch.setenv("FAKE_CLAUDE_SHELL", shell)
+        monkeypatch.setenv("FAKE_CLAUDE_CMD", cmd)
+        evs = list(runner().stream("x", home, None, []))
+        assert [e for e in evs if e["type"] == "step_done"][0]["ok"] is False
+        assert not [e for e in evs if e["type"] == "tool_json"]
+        monkeypatch.setenv("FAKE_CLAUDE_IGNORE_RULES", "1")  # a CLI that ran it anyway: stopped
+        evs = list(runner().stream("x", home, None, []))
+        assert evs[-1]["type"] == "error" and evs[-1]["reason"] == "blocked"
+        assert not [e for e in evs if e["type"] == "final"]
+        monkeypatch.delenv("FAKE_CLAUDE_IGNORE_RULES")
+
+
+def test_steps_and_no_dashes(home, monkeypatch):
+    """Gate B-1, B-4: the tgkit tool shows as a tgkit step; dashes go."""
     em, en = chr(0x2014), chr(0x2013)
     monkeypatch.setenv("FAKE_CLAUDE_FINAL", f"Có 1 tin {em} biên bản họp 1{en}2.")
     evs = list(runner().stream("tìm biên bản", home, None, []))
@@ -110,7 +124,7 @@ def test_claude_session_cannot_change_tasks(home, tg, monkeypatch):
     before = (home / "tasks.json").read_bytes()
     src = str(Path(__file__).resolve().parent.parent / "src")
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([src, os.environ.get("PYTHONPATH", "")]))
-    monkeypatch.setenv("FAKE_CLAUDE_RUN", "tasks --json undo 1")
+    monkeypatch.setenv("FAKE_CLAUDE_CALL", json.dumps({"tool": "tasks", "args": {"view": "undo"}}))
     evs = list(runner().stream("mở lại việc 1", home, None, []))
     done = [e for e in evs if e["type"] == "step_done"][0]
     assert done["ok"] is False and "read-only" in done["note"], done
@@ -127,11 +141,14 @@ def test_claude_session_cannot_change_tasks(home, tg, monkeypatch):
 
 
 def permitted(cmd: str, shell: str = "Bash") -> bool:
-    """Claude Code's rule check: `*` stands for any run of characters, a deny rule wins."""
+    """Claude Code's rule check: `*` stands for any run of characters, a deny rule wins,
+    a bare tool name covers every use of that tool."""
     from tgkit.claude import ALLOWED, DENIED
 
     def hit(rules):
         for rule in rules:
+            if rule == shell:
+                return True
             if rule.startswith(shell + "(") and rule.endswith(")"):
                 pat = rule[len(shell) + 1:-1]
                 if re.fullmatch(".*".join(re.escape(p) for p in pat.split("*")), cmd, re.S):
@@ -151,12 +168,14 @@ WRITES = ["tgkit tasks done 3", "tgkit tasks --json done 1", "tgkit tasks --chat
 
 
 def test_filtered_task_reads_run_and_writes_are_denied(home, tg, monkeypatch):
-    """Gate 0.2.1 note: "tasks --json --since 7d" and "tasks --chat x --json" were denied."""
+    """Gate 0.2.1 note: "tasks --json --since 7d" and "tasks --chat x --json" were denied.
+    0.2.9: no shell command at all; the reads go through the tasks tool's fields."""
+    from tgkit import mcp
     for shell in ("Bash", "PowerShell"):
-        for cmd in FILTERED_READS:
-            assert permitted(cmd, shell), (shell, cmd)
-        for cmd in WRITES:
+        for cmd in FILTERED_READS + WRITES:
             assert not permitted(cmd, shell), (shell, cmd)
+    assert mcp.argv("tasks", {"view": "all", "chat": "du an", "since": "7d"}) == \
+        ["tasks", "--chat=du an", "--since=7d", "--json", "--", "all"]
     monkeypatch.setenv("TGKIT_READONLY", "1")
     every = json.loads(tg("tasks", "all", "--json")[1])["tasks"]  # scans every chat once
     assert len({t["chat"] for t in every}) > 1, "the fixture needs tasks in two chats"
@@ -186,7 +205,7 @@ def test_claude_session_runs_a_filtered_task_read(home, monkeypatch):
     """The fake Claude really runs `tgkit tasks --chat ... --since ... --json` read-only."""
     src = str(Path(__file__).resolve().parent.parent / "src")
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([src, os.environ.get("PYTHONPATH", "")]))
-    monkeypatch.setenv("FAKE_CLAUDE_RUN", "tasks --chat alpha --since 30d --json")
+    monkeypatch.setenv("FAKE_CLAUDE_CALL", json.dumps({"tool": "tasks", "args": {"chat": "alpha", "since": "30d"}}))
     evs = list(runner().stream("việc tuần này", home, None, []))
     done = [e for e in evs if e["type"] == "step_done"][0]
     assert done["ok"] is True, done

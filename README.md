@@ -382,9 +382,12 @@ terminal, `tgkit ai-status` tells you the same.
 Gemini answers like Claude does: you see its words as they come, each
 Telegram Assistant command it runs, and the same result cards. It may only
 read your chats with Telegram Assistant's own commands: it cannot change
-tasks, get new messages, save files, read other files or use the web, and
-your own Gemini settings are not changed. If it is not signed in or has
-reached its limit, Telegram Assistant answers by itself.
+tasks, get new messages, save files, read other files, run other programs or
+use the web, and your own Gemini settings are not changed. Neither Gemini nor
+Claude gets a command line here: they can only ask Telegram Assistant for a
+search, a summary or a list, and whatever they write is searched for as text,
+never run. If it is not signed in or has reached its limit, Telegram
+Assistant answers by itself.
 
 ---
 

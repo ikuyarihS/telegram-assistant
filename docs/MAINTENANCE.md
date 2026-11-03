@@ -167,18 +167,42 @@ own (`tasks --json*` once let `tasks --json done 1` through), so the session
 also gets `TGKIT_READONLY=1` and `cli.main` refuses every changing command in
 that mode.
 
-Gemini mode (`gemini.py`, 0.2.9) follows the same rules from the same lists
-(`ai.READ_COMMANDS`, `ai.DENIED_COMMANDS`, `ai.app_rules`; one source, so the
-two CLIs cannot drift). Each run writes `app/gemini/tgkit-policy.toml` and
-passes it as `--admin-policy` and `--policy` (Gemini CLI policy engine): only
-`run_shell_command` with a tgkit read prefix is allowed, the changing tgkit
-commands are denied first, and every other tool (files, web, MCP, skills,
-agents) is denied, so the model never sees it. The user's `~/.gemini` settings
-are only read, never written. The run sets `TGKIT_READONLY=1` and
-`GEMINI_CLI_NO_RELAUNCH=true` (one node process, so Stop ends the process the
-app started), and runs node with the CLI's script rather than npm's
-`gemini.cmd`. If a tool result shows that a command outside the allow list
-ran anyway, the runner stops the answer (`blocked`). Signed in = an auth type
+No shell for either AI (0.2.9 gate fix). A shell allow rule can only match
+text, and text is not what a shell runs: the 0.2.9 gate got
+`tgkit search ([IO.File]::WriteAllText('pwn.txt','x'))` through an allowed
+`tgkit search` prefix, and PowerShell wrote the file before tgkit started. So
+tgkit's read commands are the tools of `mcp.py`, a small MCP server on stdio
+that Telegram Assistant runs itself (`python -m tgkit.mcp --home <data>`). The
+model fills typed fields; `mcp.argv` checks them against `mcp.TOOLS` and runs
+`python -m tgkit <command> --opt=value ... --json -- <positional>` with an argv
+list (`shell=False`, never a `.cmd`), with `TGKIT_READONLY=1`. No tool can
+sync, set up, add, export, import, log out, search online or change a task
+(`mcp.NOT_OFFERED` names every option left out; a test prints it). Claude
+gets it with `--mcp-config` + `--strict-mcp-config`, `--tools ""` and Bash and
+PowerShell denied; `claude.ALLOWED` is the `mcp__tgkit__*` names.
+`ai.allowed_command` is still kept as a strict allow-list check of shell text
+(`ai.shell_words`: plain words, or one quoted string with nothing a shell
+expands), so the tests can show the gate's constructions are refused there too.
+
+Gemini mode (`gemini.py`, 0.2.9) uses the same tools and rules (`mcp.TOOLS`,
+`ai.app_rules`; one source, so the two CLIs cannot drift). Each run writes
+`app/gemini/.gemini/settings.json` (workspace settings: only the tgkit server)
+and `app/gemini/tgkit-policy.toml`, passed as `--admin-policy` and `--policy`:
+`run_shell_command` is denied, the tools of the `tgkit` MCP server are allowed
+(`toolName = "*"` + `mcpName = "tgkit"`: 0.66.0 drops the whole file for an
+mcpName rule without a toolName, although its docs allow it), and every other
+tool (files, web, other MCP servers, skills, agents) is denied, so the model
+never sees it. `--allowed-mcp-server-names tgkit` keeps the user's own MCP
+servers off. The user's `~/.gemini` settings are only read, never written. The
+run sets `TGKIT_READONLY=1`, `GEMINI_CLI_TRUST_WORKSPACE=true` (with
+`--skip-trust` alone 0.66.0 did not load the work folder's server: "Tool
+mcp_tgkit_search not found") and `GEMINI_CLI_NO_RELAUNCH=true` (one node
+process, so Stop ends the process the app started), and runs node with the
+CLI's script rather than npm's `gemini.cmd`. If a tool result shows that a
+tool outside the tgkit server ran anyway, the runner stops the answer
+(`blocked`); Claude's runner does the same. `test_the_real_gemini_policy_engine_agrees`
+runs the CLI's own policy engine on the generated file when a 0.66.0 bundle
+is there (`TGKIT_GEMINI_BUNDLE`). Signed in = an auth type
 in `~/.gemini/settings.json` plus the Google account in
 `google_accounts.json` (or `GEMINI_API_KEY`), until an answer fails with exit
 41; the token itself is in the system keychain. `ai.pick` decides who answers:
@@ -186,18 +210,8 @@ Settings' choice, else Claude first, then Gemini. In auto the window checks
 Claude's login (cached) as soon as Gemini is signed in, so its first pick
 matches `tgkit ai-status`.
 
-The CLI tests a `commandRegex` against the JSON of the arguments (`"command":"`
-+ the pattern), where a quote is `\"` and a tab is `\t`: `[^"]*` stops at the
-first quoted argument. `gemini.task_write_regex()` reads past escaped quotes
-and matches a changing word in any case, quoted or with `^`, `\` or backticks
-between its letters. The CLI silently drops a rule whose pattern fails its
-ReDoS check (`isSafeRegExp`: no quantified group after any `(?`, at most 2048
-characters), so the pattern has no quantified group: the quotes are nested
-optional groups `QUOTE_DEPTH` deep and `many_quotes_regex()` refuses a tasks
-command with more. Check a changed pattern with the real CLI: a dropped rule
-prints "Unsafe regex pattern" at startup (`gemini -p hi --admin-policy
-file.toml` shows it before the sign-in error). `test_policy_allows_only_tgkit_reads`
-runs the same check.
+Check a changed policy with the real CLI's loader: a rule it refuses can drop
+the whole file without a word, and then only the CLI's defaults apply.
 
 ### R13 - One change of tasks.json at a time
 

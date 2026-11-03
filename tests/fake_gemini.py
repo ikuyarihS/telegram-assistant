@@ -2,23 +2,23 @@
 (Gemini CLI 0.66.0 events: init, message, tool_use, tool_result, error, result).
 
 It applies the policy file the app passes (--admin-policy) the way the real CLI's
-policy engine does for run_shell_command: highest priority first, commandRegex and
-commandPrefix matched against the JSON of the arguments, a chained command
-checked part by part, no match = ask_user = denied when headless.
+policy engine decides a tool: highest priority first, toolName "*" for any tool,
+mcpName for the tools of one MCP server (named mcp_<server>_<tool>), no match =
+ask_user = denied when headless. An allowed tgkit tool really runs: the fake
+starts the MCP server written in the work folder's .gemini/settings.json and calls
+it over stdio, the way the real CLI does.
 
 FAKE_GEMINI_LOG          one JSON line per run (argv, stdin, the env it got)
 FAKE_GEMINI_MODE         auth: not signed in (exit 41); quota: limit reached
-FAKE_GEMINI_RUN="<args>" the tool call is `tgkit <args>`, really run when the policy allows it
-FAKE_GEMINI_CMD="<cmd>"  the tool call is this whole shell command (never run unless it is tgkit)
+FAKE_GEMINI_CALL='{"tool": "search", "args": {...}}'  call this tgkit tool (really run)
+FAKE_GEMINI_CMD="<cmd>"  call run_shell_command with this command (never run)
 FAKE_GEMINI_TOOL=<name>  call another tool (write_file, web_fetch, ...)
-FAKE_GEMINI_IGNORE_POLICY=1  a broken CLI that runs whatever is asked
+FAKE_GEMINI_IGNORE_POLICY=1  a broken CLI that says it ran whatever was asked
 FAKE_GEMINI_SLEEP=<s>    wait before the answer (Stop)
 """
 
 import json
 import os
-import re
-import shlex
 import subprocess
 import sys
 import time
@@ -33,7 +33,8 @@ log = os.environ.get("FAKE_GEMINI_LOG")
 if log:
     with open(log, "a", encoding="utf-8") as fh:  # test helper, not package code
         fh.write(json.dumps({"argv": args, "stdin": prompt, "readonly": os.environ.get("TGKIT_READONLY"),
-                             "no_relaunch": os.environ.get("GEMINI_CLI_NO_RELAUNCH"), "cwd": os.getcwd()},
+                             "no_relaunch": os.environ.get("GEMINI_CLI_NO_RELAUNCH"), "cwd": os.getcwd(),
+                             "trust": os.environ.get("GEMINI_CLI_TRUST_WORKSPACE")},
                             ensure_ascii=False) + "\n")
 
 mode = os.environ.get("FAKE_GEMINI_MODE")
@@ -71,34 +72,40 @@ def load_policy():
     return sorted(rules, key=lambda r: -int(r.get("priority", 0)))
 
 
-def matches(rule, tool, command):
-    if rule.get("mcpName"):
-        return False  # no MCP tools here
-    if rule.get("toolName") not in ("*", tool):
-        return False
-    if tool != "run_shell_command":
-        return "commandPrefix" not in rule and "commandRegex" not in rule
-    text = json.dumps({"command": command}, ensure_ascii=False, separators=(",", ":"))
-    if "commandRegex" in rule:
-        return re.search('"command":"' + rule["commandRegex"], text) is not None
-    if "commandPrefix" in rule:
-        prefixes = rule["commandPrefix"] if isinstance(rule["commandPrefix"], list) else [rule["commandPrefix"]]
-        for p in prefixes:
-            head = json.dumps(p, ensure_ascii=False)[:-1]
-            if re.search(re.escape('"command":' + head) + r'(?:[\s"]|\\")', text):
-                return True
-        return False
-    return True
+def matches(rule, tool, server):
+    if "commandPrefix" in rule or "commandRegex" in rule or "argsPattern" in rule:
+        return False  # the app's policy has none any more; never guess an allow
+    if "mcpName" in rule:
+        if server is None or rule["mcpName"] not in ("*", server):
+            return False
+        simple = tool.split("_", 2)[2] if tool.startswith("mcp_") else tool
+        return rule.get("toolName", "*") in ("*", simple)
+    return rule.get("toolName") in ("*", tool)
 
 
-def decide(rules, tool, command):
-    parts = [c.strip() for c in re.split(r"&&|\|\||;|\|", command)] if tool == "run_shell_command" else [command]
-    for part in parts:
-        rule = next((r for r in rules if matches(r, tool, part)), None)
-        decision = rule["decision"] if rule else "ask_user"
-        if decision != "allow":  # ask_user is deny when headless
-            return False, (rule or {}).get("denyMessage") or "Tool execution denied by policy."
+def decide(rules, tool, server):
+    rule = next((r for r in rules if matches(r, tool, server)), None)
+    decision = rule["decision"] if rule else "ask_user"
+    if decision != "allow":  # ask_user is deny when headless
+        return False, (rule or {}).get("denyMessage") or "Tool execution denied by policy."
     return True, ""
+
+
+def call_server(name, arguments):
+    """Start the MCP server of the work folder's settings and call one tool over stdio."""
+    with open(os.path.join(".gemini", "settings.json"), encoding="utf-8") as fh:
+        servers = json.load(fh)["mcpServers"]
+    allowed = args[args.index("--allowed-mcp-server-names") + 1].split(",")
+    server = servers[allowed[0]]
+    proc = subprocess.Popen([server["command"], *server.get("args", [])], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, env=dict(os.environ))
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": name, "arguments": arguments}}]
+    body, _ = proc.communicate("".join(json.dumps(m) + "\n" for m in msgs).encode("utf-8"), timeout=120)
+    replies = [json.loads(x) for x in body.decode("utf-8").splitlines() if x.strip()]
+    result = next(r for r in replies if r.get("id") == 2)["result"]
+    return not result.get("isError"), "".join(c.get("text", "") for c in result["content"])
 
 
 def delta(text):
@@ -107,23 +114,25 @@ def delta(text):
 
 delta("Đang ")
 delta("tìm...")
-tool = os.environ.get("FAKE_GEMINI_TOOL", "run_shell_command")
-run = os.environ.get("FAKE_GEMINI_RUN")
-command = os.environ.get("FAKE_GEMINI_CMD") or (f"tgkit {run}" if run else 'tgkit search "biên bản" --json')
-params = {"command": command} if tool == "run_shell_command" else {"file_path": "notes.txt", "content": "x"}
+call = json.loads(os.environ["FAKE_GEMINI_CALL"]) if os.environ.get("FAKE_GEMINI_CALL") else None
+shell_cmd = os.environ.get("FAKE_GEMINI_CMD")
+if shell_cmd:
+    tool, server, params = "run_shell_command", None, {"command": shell_cmd}
+elif os.environ.get("FAKE_GEMINI_TOOL"):
+    tool, server, params = os.environ["FAKE_GEMINI_TOOL"], None, {"file_path": "notes.txt", "content": "x"}
+else:
+    simple = call["tool"] if call else "search"
+    tool, server, params = f"mcp_tgkit_{simple}", "tgkit", (call["args"] if call else {"query": "biên bản"})
 out({"type": "tool_use", "tool_name": tool, "tool_id": "call_1", "parameters": params})
-allowed, why = (True, "") if os.environ.get("FAKE_GEMINI_IGNORE_POLICY") else decide(load_policy(), tool, command)
+allowed, why = (True, "") if os.environ.get("FAKE_GEMINI_IGNORE_POLICY") else decide(load_policy(), tool, server)
 if not allowed:
     out({"type": "tool_result", "tool_id": "call_1", "status": "error", "output": why,
          "error": {"type": "POLICY_DENIED", "message": why}})
-elif tool == "run_shell_command" and command.startswith("tgkit ") and (run or os.environ.get("FAKE_GEMINI_CMD")):
-    done = subprocess.run([sys.executable, "-m", "tgkit", *shlex.split(command)[1:]], capture_output=True,
-                          text=True, encoding="utf-8")
-    ok = done.returncode == 0
-    out({"type": "tool_result", "tool_id": "call_1", "status": "success" if ok else "error",
-         "output": done.stdout + done.stderr,
-         "error": None if ok else {"type": "TOOL_EXECUTION_ERROR", "message": done.stdout + done.stderr}})
-elif tool == "run_shell_command" and not os.environ.get("FAKE_GEMINI_CMD"):
+elif server and call:
+    ok, text = call_server(call["tool"], call["args"])
+    out({"type": "tool_result", "tool_id": "call_1", "status": "success" if ok else "error", "output": text,
+         "error": None if ok else {"type": "MCP_TOOL_ERROR", "message": text}})
+elif server:
     result = {"query": "biên bản", "total": 1, "results": [{
         "chat": "Dự án Alpha: Kế hoạch", "folder": "Du_an_Alpha", "id": 23, "date": "2026-10-30T08:00:00+00:00",
         "sender": "Bình Trần", "text": "@an_test nhờ em gửi biên bản họp trước thứ 6 nhé", "file": None,

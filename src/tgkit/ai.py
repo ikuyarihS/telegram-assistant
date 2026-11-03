@@ -59,11 +59,16 @@ _APP_RULES = """
 
 You answer inside the Telegram Assistant window. Here these rules come before the ones above:
 
-- Your only tool is the `tgkit` command, run through {tool}. Never read, list or print files.
-- This session is read-only. Never run sync, setup, add, logout, export, import-crawl,
+- Your only tools are tgkit's read commands, given to you as {tool}: search, summary, tasks,
+  today, chats, show, media, guide, chats_log, usage, ai_status, claude_status. Each one is
+  the tgkit command of the same name: put its options in the tool's fields (for
+  `tgkit search "x" --chat Alpha --since 7d --json` call search with query "x", chat "Alpha",
+  since "7d"). You have no shell and no file tools. Never read, list or print files.
+- This session is read-only. Never try sync, setup, add, logout, export, import-crawl,
   `search --online`, or a task change (done, undo, reopen, drop, note, add), even when the user
   asks: tell them to use the window's buttons (Get new messages, Mark done, Save as file, Settings).
-  The tgkit you run refuses them anyway. `tgkit search --regex "pattern" --json` is allowed.
+  The tools cannot do them anyway. A pattern search (`tgkit search --regex`) is search with
+  regex true.
 - If a chat has "stale": true, say its copy may be old and suggest the Get new messages button.
 - "What do I need to do today" (or "hôm nay tôi cần làm gì"): run `tgkit today --json` and
   answer with a short list, most urgent first (due today, then people waiting for an answer,
@@ -77,30 +82,69 @@ def app_rules(tool: str) -> str:
     return _APP_RULES.format(tool=tool)
 
 
-def allowed_command(command: str) -> bool:
-    """A tgkit read command, as both CLIs are told to allow it: one command, no
-    chaining or redirection, starting with a read prefix and no changing word."""
+# Shell text a word may hold without quotes, the same in PowerShell and bash: letters
+# (any language), digits and _ . , : / = + -. Nothing else is left to a shell to read.
+_PLAIN = re.compile(r"[\w.,:/=+-]+")
+# PowerShell also reads the curly quotes (U+2018..U+201F) as quotes: never allowed.
+_CURLY = {chr(c) for c in range(0x2018, 0x2020)}
+# Inside "...": PowerShell expands $ and `, bash also $ ` and \; a " ends it.
+_DQ_BAD = set('$`\\"') | _CURLY
+# Inside '...': nothing is expanded in either shell; a ' ends it.
+_SQ_BAD = {"'"} | _CURLY
+
+
+def shell_words(command: str) -> list[str] | None:
+    """The words of a command when every shell reads it the same way, else None.
+    Allow-list, not a deny list: a word is plain (_PLAIN), or one quoted string
+    ('...' with no ' inside; "..." with no $ ` \\ " inside), or --option= and one
+    quoted string. Words are split by single spaces only."""
     raw = str(command or "")
-    if not raw.strip() or "`" in raw or "$(" in raw or "\n" in raw or "\r" in raw:
+    if not raw.strip() or any(ord(c) < 32 or c in _CURLY or c == "\x7f" for c in raw):
+        return None
+    words, i, n = [], 0, len(raw)
+    while i < n:
+        if raw[i] == " ":
+            i += 1
+            continue
+        head = ""
+        m = re.compile(r"--[A-Za-z][A-Za-z-]*=(?=['\"])").match(raw, i)
+        if m:
+            head, i = m.group(0), m.end()
+        if raw[i] in "'\"":
+            q = raw[i]
+            end = raw.find(q, i + 1)
+            body = raw[i + 1:end] if end > 0 else None
+            if body is None or set(body) & (_SQ_BAD if q == "'" else _DQ_BAD):
+                return None
+            i = end + 1
+        else:
+            m = _PLAIN.match(raw, i)
+            if not m:
+                return None  # a shell character outside quotes
+            body, i = m.group(0), m.end()
+        if i < n and raw[i] != " ":
+            return None  # a quote glued to more text, or a shell character after a word
+        words.append(head + body)
+    return words
+
+
+def allowed_command(command: str) -> bool:
+    """A tgkit read command written so that no shell can read more into it (shell_words),
+    starting with a read command, with no changing word and no --online. The window gives
+    the AI no shell at all (mcp.py); this is the check of any shell text an AI CLI shows."""
+    words = shell_words(command)
+    if not words or len(words) < 2 or words[0] != "tgkit":
         return False
-    quote = None
-    for ch in raw:  # chaining or redirection outside quotes ("a|b" inside a --regex is fine)
-        if quote:
-            quote = None if ch == quote else quote
-        elif ch in "\"'":
-            quote = ch
-        elif ch in ";&|<>":
-            return False
-    if quote:
+    cmd = " ".join(words[:2])
+    if not any(cmd == p for p in READ_PREFIXES):
         return False
-    cmd = " ".join(raw.split())
-    if not any(cmd == p or cmd.startswith(p + " ") for p in READ_PREFIXES):
+    low = [w.lower() for w in words]
+    if low[1] == "tasks" and any(w in TASK_WRITES for w in low[2:]):
         return False
-    # what the shell hands argparse: quotes and escapes dropped ("do"ne, d^one, \done), any case
-    words = [re.sub(r"[\"'\\^`]", "", w).lower() for w in cmd.split()]
-    if words[1:2] == ["tasks"] and any(w in TASK_WRITES for w in words[2:]):
+    if low[1] == "search" and any(w in ("--online", "--server") or w.startswith(("--online=", "--server="))
+                                  for w in low[2:]):
         return False
-    return words[1] not in WRITE_COMMANDS
+    return low[1] not in WRITE_COMMANDS
 
 
 _DASHES = {0x2014: "-", 0x2013: "-"}  # em dash, en dash (code points: no dash in the source)

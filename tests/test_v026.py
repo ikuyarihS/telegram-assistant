@@ -590,7 +590,7 @@ def test_tgkit_today_json_runs_read_only_for_claude(home, tg, monkeypatch):
     assert data["kind"] == "today" and [g["key"] for g in data["groups"]] == ["tasks", "asks", "today"]
     code, out, _ = tg("today")
     assert code == 0 and "Họp" in out
-    assert any("tgkit today" in a for a in claude.ALLOWED)
+    assert "mcp__tgkit__today" in claude.ALLOWED
     assert "tgkit today --json" in claude.APP_RULES
 
 

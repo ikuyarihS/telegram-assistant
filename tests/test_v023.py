@@ -712,11 +712,11 @@ def test_reveal_api_stays_in_the_export_folder(home, server, tmp_path):
 
 
 def test_claude_session_may_read_usage_but_not_export_or_log_out(home, tg, monkeypatch):
-    for shell in ("Bash", "PowerShell"):
-        for cmd in ("tgkit usage", "tgkit usage --json", "tgkit claude-status --json"):
-            assert permitted(cmd, shell), (shell, cmd)
-        for cmd in ('tgkit export search "x"', "tgkit export tasks --format xlsx", "tgkit logout",
-                    "tgkit logout --yes", "tgkit login"):
+    from tgkit import claude, mcp
+    assert "mcp__tgkit__usage" in claude.ALLOWED and "mcp__tgkit__claude_status" in claude.ALLOWED
+    assert not any(w in t for t in mcp.TOOLS for w in ("export", "logout", "login"))
+    for shell in ("Bash", "PowerShell"):  # 0.2.9: no shell command at all
+        for cmd in ("tgkit usage", "tgkit usage --json", 'tgkit export search "x"', "tgkit logout --yes"):
             assert not permitted(cmd, shell), (shell, cmd)
     (home / "tgkit.session").write_bytes(b"x")
     monkeypatch.setenv("TGKIT_READONLY", "1")
