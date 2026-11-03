@@ -983,7 +983,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   function botMsg(mode) {
     const label = el("span", {}, `Telegram Assistant · ${mode === "claude" ? t("modeClaude") : t("modeOffline")}`);
     const node = el("article", { class: "msg msg-bot" },
-      el("div", { class: "msg-meta" }, el("img", { class: "logo", src: "/static/icon.svg", alt: "" }), label));
+      el("div", { class: "msg-meta" }, el("img", { class: "logo", src: "/static/icon-256.png", alt: "" }), label));
     const body = el("div", { class: "msg-body" });
     node.append(body);
     return {
@@ -1238,7 +1238,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     } else if (result.needs === "setup") {
       ui.syncStatus.append(`${t("notConnected")}. `, el("button", { class: "link-btn", type: "button", onclick: openSetup }, t("connect")));
     } else if (result.stopped) {
-      ui.syncStatus.textContent = `${t("syncDone", result.added || 0)} ${t("syncStopped")}`;
+      ui.syncStatus.textContent = result.added ? `${t("syncDone", result.added)} ${t("syncStopped")}` : t("syncStopped");
     } else {
       ui.syncStatus.textContent = result.code === 0 ? t("syncDone", result.added) : `${t("syncDone", result.added)} ${t("syncFail")}`;
     }

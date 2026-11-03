@@ -363,9 +363,9 @@ It makes `dist\TelegramAssistant-<version>.zip` (one folder inside, named
 data folder, your login, `.venv` or anything in `.gitignore`. Send that zip.
 The other person unzips it and double-clicks `Install-Windows.bat` (on a Mac,
 `Install-Mac.command`); each person logs in with their own Telegram account.
-The app icon is a simple picture drawn by `scripts/make-icons.py`
-(`assets/icon.svg` is the same design); `docs/MAINTENANCE.md` says how to
-replace it.
+The app icon comes from one picture, `assets/icon-source.png`;
+`scripts/make-icons.py` makes every size from it and `docs/MAINTENANCE.md`
+says how to replace it.
 For a new version, raise `version` in `pyproject.toml`, commit, make a new
 zip and send it; they unzip it over the old folder and double-click
 `Update-Windows.bat`.
