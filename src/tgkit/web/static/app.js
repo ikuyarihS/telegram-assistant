@@ -189,6 +189,31 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       copyRunning: "Copying the chats you ticked. Settings, Add chats shows each chat.",
       copyEnded: "The copy of the ticked chats has ended. Settings, Add chats shows each chat.",
       suListLater: "Your chats show here again when the copy has ended.",
+      patternOn: "Pattern (advanced)", patternMatch: "pattern",
+      patternTip: "Find messages with a regular expression, like tg-crawl's find. Accents must match.",
+      patternPh: "A pattern, for example invoice|hóa đơn",
+      secImport: "Coming from tg-crawl",
+      importHelp: "Already have chats copied with tg-crawl? Bring them in here. Messages, files and names are copied, nothing is downloaded again, and the tg-crawl folder is not changed.",
+      importDir: "tg-crawl folder", importPh: "For example D:\\tg-crawl", importPick: "Choose folder",
+      importCheck: "Check it", importGo: "Import",
+      importNeedFolder: "Choose the tg-crawl folder first, or paste its path.",
+      importTypePath: "The folder picker did not open here: type or paste the folder path.",
+      importFound: (c, m, f) => `${c} ${plural(c, "chat", "chats")}, ${m} ${plural(m, "message", "messages")}, ${f} ${plural(f, "file", "files")} to import.`,
+      importBad: (name, n) => `${name}: ${n} damaged ${plural(n, "line", "lines")}, so this chat will be skipped.`,
+      importMerge: (n) => `${n} ${plural(n, "chat is", "chats are")} already here: only the messages missing here are added.`,
+      importSkipped: (name, why) => `Skipped ${name}: ${why}.`,
+      skip_loose: "a loose file, not a chat", skip_hidden: "a hidden folder", skip_partial: "an unfinished copy",
+      skip_link: "a link to another folder", skip_nomessages: "no messages inside", skip_noid: "the chat's id is missing",
+      importStarting: "Starting the import...",
+      importCopying: (name, i, n) => `Copying ${name} (${i} of ${n})...`,
+      importStopping: "Stopping. Chats already imported are kept.",
+      importDone: (c, m, f) => `Done: ${c} ${plural(c, "chat", "chats")} imported, ${m} new ${plural(m, "message", "messages")}, ${f} ${plural(f, "file", "files")}. The tg-crawl folder was not changed.`,
+      importLook: (n) => `${n} ${plural(n, "chat needs", "chats need")} a look: see the rows marked Warning or Failed.`,
+      importStoppedNote: "Stopped: import again to finish the rest.",
+      importCheckHead: "Check after import", colChat: "Chat", colCrawl: "In tg-crawl", colNow: "Now here",
+      colFiles: "Files", colResult: "Result",
+      res_ok: "OK", res_warning: "Warning", res_failed: "Failed", res_skipped: "Skipped", res_stopped: "Stopped",
+      suCrawl: "Already have a copy made with tg-crawl?", suCrawlBtn: "Import it instead of downloading again",
     },
     vi: {
       newChat: "Cuộc trò chuyện mới", filter: "Lọc cuộc trò chuyện và nhóm", conversations: "Cuộc trò chuyện",
@@ -327,6 +352,31 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       copyRunning: "Đang sao chép các nhóm bạn đã chọn. Xem từng nhóm trong Cài đặt, Thêm nhóm.",
       copyEnded: "Đã sao chép xong các nhóm bạn đã chọn. Xem từng nhóm trong Cài đặt, Thêm nhóm.",
       suListLater: "Danh sách nhóm sẽ hiện lại khi sao chép xong.",
+      patternOn: "Mẫu (nâng cao)", patternMatch: "theo mẫu",
+      patternTip: "Tìm tin nhắn bằng biểu thức chính quy, như lệnh find của tg-crawl. Dấu phải gõ đúng.",
+      patternPh: "Một mẫu, ví dụ invoice|hóa đơn",
+      secImport: "Chuyển từ tg-crawl",
+      importHelp: "Đã có các nhóm chép bằng tg-crawl? Đưa vào đây. Tin nhắn, tệp và tên người được chép sang, không tải lại gì, và thư mục tg-crawl không bị thay đổi.",
+      importDir: "Thư mục tg-crawl", importPh: "Ví dụ D:\\tg-crawl", importPick: "Chọn thư mục",
+      importCheck: "Kiểm tra", importGo: "Nhập",
+      importNeedFolder: "Hãy chọn thư mục tg-crawl trước, hoặc dán đường dẫn của nó.",
+      importTypePath: "Hộp chọn thư mục không mở được ở đây: hãy gõ hoặc dán đường dẫn.",
+      importFound: (c, m, f) => `Sẽ nhập ${c} nhóm, ${m} tin nhắn, ${f} tệp.`,
+      importBad: (name, n) => `${name}: ${n} dòng bị hỏng, nên nhóm này sẽ được bỏ qua.`,
+      importMerge: (n) => `${n} nhóm đã có ở đây: chỉ thêm các tin còn thiếu.`,
+      importSkipped: (name, why) => `Bỏ qua ${name}: ${why}.`,
+      skip_loose: "tệp lẻ, không phải nhóm", skip_hidden: "thư mục ẩn", skip_partial: "bản chép chưa xong",
+      skip_link: "lối tắt tới thư mục khác", skip_nomessages: "không có tin nhắn bên trong", skip_noid: "thiếu mã của nhóm",
+      importStarting: "Đang bắt đầu nhập...",
+      importCopying: (name, i, n) => `Đang chép ${name} (${i} trên ${n})...`,
+      importStopping: "Đang dừng. Các nhóm đã nhập vẫn được giữ.",
+      importDone: (c, m, f) => `Xong: đã nhập ${c} nhóm, ${m} tin mới, ${f} tệp. Thư mục tg-crawl không bị thay đổi.`,
+      importLook: (n) => `Có ${n} nhóm cần xem lại: xem các dòng Cảnh báo hoặc Lỗi.`,
+      importStoppedNote: "Đã dừng: hãy nhập lại để xong phần còn lại.",
+      importCheckHead: "Kiểm tra sau khi nhập", colChat: "Nhóm", colCrawl: "Trong tg-crawl", colNow: "Ở đây",
+      colFiles: "Tệp", colResult: "Kết quả",
+      res_ok: "Đủ", res_warning: "Cảnh báo", res_failed: "Lỗi", res_skipped: "Bỏ qua", res_stopped: "Đã dừng",
+      suCrawl: "Đã có bản sao làm bằng tg-crawl?", suCrawlBtn: "Nhập bản đó thay vì tải lại",
     },
   };
   const EXAMPLES = {
@@ -371,6 +421,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     lockNote: $("lockNote"), lockText: $("lockText"), lockStop: $("lockStop"),
     syncStop: $("syncStop"), todayBtn: $("todayBtn"), todayEmpty: $("todayEmpty"),
     suFilesSmallText: $("suFilesSmallText"), mediaMode: $("mediaMode"),
+    patternOn: $("patternOn"), importSec: $("importSec"), importDir: $("importDir"), importPick: $("importPick"),
+    importCheck: $("importCheck"), importNote: $("importNote"), importBox: $("importBox"), importSum: $("importSum"),
+    importSkip: $("importSkip"), importGo: $("importGo"), importStop: $("importStop"), importLine: $("importLine"),
+    importWrap: $("importWrap"), importRows: $("importRows"), suCrawl: $("suCrawl"),
   };
 
   const app = {
@@ -824,7 +878,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   function hitsCard(c) {
     const head = el("header", { class: "card-head" },
       el("h2", {}, t("messagesFor", c.query || "")),
-      el("span", { class: "count" }, c.match === "words" ? `${t("messagesN", c.total)}, ${t("wordsMatch")}` : t("messagesN", c.total)),
+      el("span", { class: "count" }, c.match === "words" ? `${t("messagesN", c.total)}, ${t("wordsMatch")}`
+        : c.match === "pattern" ? `${t("messagesN", c.total)}, ${t("patternMatch")}` : t("messagesN", c.total)),
       exportMenu({ kind: "card", card: c }));
     const note = c.stale && c.stale.length ? el("p", { class: "card-note" }, t("staleNote", c.stale.join(", "))) : null;
     const rows = el("ul", { class: "rows" }, c.items.map((h) => el("li", { class: "row" },
@@ -1096,7 +1151,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.input.value = "";
     autosize();
     ui.thread.append(userMsg(text));
-    const claudeFirst = app.claude && app.mode !== "offline";
+    const pattern = ui.patternOn.checked;  // "Pattern (advanced)": matched on this computer, never by Claude
+    const claudeFirst = app.claude && app.mode !== "offline" && !pattern;
     const b = botMsg(claudeFirst ? "claude" : "offline");
     b.pending(t("thinking"));
     ui.thread.append(b.node);
@@ -1105,7 +1161,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     app.ctrl = new AbortController();
     let action = null;
     try {
-      await stream("/api/ask", { text, conversation: app.conv ? app.conv.id : null, mode: app.mode }, (ev) => {
+      await stream("/api/ask", { text, conversation: app.conv ? app.conv.id : null, mode: app.mode, pattern, lang: LANG }, (ev) => {
         switch (ev.type) {
           case "conversation":
             app.conv = { id: ev.id, title: ev.title };
@@ -1842,6 +1898,151 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       ui.logoutYes.disabled = false;
     }
   });
+  // ------------------------------------------------------------ import a tg-crawl copy
+
+  // Check it shows what Import would bring in; Import runs `tgkit import-crawl` on this
+  // computer (the window's own task, with Stop) and ends with a check of every chat.
+  const importing = { plan: null, running: false };
+  const errText = (e) => {
+    const d = (e && e.data) || e || {};
+    const msg = d.message || (e && e.message) || t("errGeneric");
+    return d.hint ? `${msg} ${d.hint}` : msg;
+  };
+
+  function importNote(text, bad) {
+    ui.importNote.textContent = text || "";
+    ui.importNote.classList.toggle("bad", !!bad);
+    ui.importNote.hidden = !text;
+  }
+
+  function showPlan(p) {
+    importing.plan = p;
+    const merge = p.chats.filter((c) => c.in_tgkit && !c.bad).length;
+    const notes = [
+      ...p.chats.filter((c) => c.bad).map((c) => t("importBad", c.title, c.bad)),
+      ...(merge ? [t("importMerge", merge)] : []),
+      ...p.skipped.map((s) => t("importSkipped", s.name, t(`skip_${s.code}`))),
+    ];
+    ui.importSum.textContent = t("importFound", p.chats.filter((c) => !c.bad).length, p.messages, p.files);
+    ui.importSkip.replaceChildren(...notes.map((n) => el("li", {}, n)));
+    ui.importSkip.hidden = !notes.length;
+    ui.importGo.hidden = false;
+    ui.importGo.disabled = false;
+    ui.importLine.textContent = "";
+    ui.importLine.classList.remove("bad");
+    ui.importWrap.hidden = true;
+    ui.importBox.hidden = false;
+  }
+
+  async function checkImport() {
+    const folder = ui.importDir.value.trim();
+    ui.importBox.hidden = true;
+    importNote("");
+    if (!folder) { importNote(t("importNeedFolder"), true); ui.importDir.focus(); return; }
+    ui.importCheck.disabled = true;
+    try {
+      showPlan(await api("/api/import/preview", { folder }));
+      ui.importGo.focus();
+    } catch (e) {
+      importNote(errText(e), true);
+    } finally {
+      ui.importCheck.disabled = false;
+    }
+  }
+
+  function importRow(r) {
+    return el("tr", { class: `res-${r.status}` },
+      el("td", {}, el("span", { class: "import-chat" }, r.chat), r.note ? el("span", { class: "import-why" }, r.note) : null),
+      el("td", { class: "num" }, num(r.source)),
+      el("td", { class: "num" }, r.messages === null || r.messages === undefined ? "-" : num(r.messages)),
+      el("td", { class: "num" }, num(r.files)),
+      el("td", {}, el("span", { class: `res-tag res-${r.status}` }, t(`res_${r.status}`))));
+  }
+
+  async function runImport() {
+    const folder = ui.importDir.value.trim();
+    if (!folder || importing.running) return;
+    importing.running = true;
+    [ui.importGo, ui.importCheck, ui.importPick].forEach((b) => { b.disabled = true; });
+    ui.importStop.hidden = false;
+    ui.importStop.disabled = false;
+    ui.importLine.classList.remove("bad");
+    ui.importLine.textContent = t("importStarting");
+    ui.importRows.replaceChildren();
+    ui.importWrap.hidden = true;
+    let total = (importing.plan && importing.plan.chats.length) || 0;
+    let n = 0;
+    let result = null;
+    let failed = null;
+    try {
+      await stream("/api/import", { folder }, (ev) => {
+        if (ev.type === "plan") total = ev.chats;
+        else if (ev.type === "chat" && ev.state === "copying") {
+          if (!ui.importStop.disabled) ui.importLine.textContent = t("importCopying", ev.chat, n + 1, total);
+        } else if (ev.type === "chat") {
+          n += 1;
+          ui.importRows.append(importRow(ev));
+          ui.importWrap.hidden = false;
+        } else if (ev.type === "done") result = ev;
+        else if (ev.type === "error") failed = ev;
+      });
+    } catch (e) {
+      failed = { message: e.message, hint: "" };
+    } finally {
+      importing.running = false;
+      ui.importStop.hidden = true;
+      [ui.importGo, ui.importCheck, ui.importPick].forEach((b) => { b.disabled = false; });
+    }
+    if (failed) {
+      ui.importLine.textContent = errText(failed);
+      ui.importLine.classList.add("bad");
+      return;
+    }
+    if (!result) return;
+    ui.importRows.replaceChildren(...result.rows.map(importRow));
+    ui.importWrap.hidden = !result.rows.length;
+    const c = result.counts || {};
+    const look = (c.warning || 0) + (c.failed || 0);
+    ui.importLine.textContent = [t("importDone", (c.ok || 0) + (c.warning || 0), result.messages, result.files),
+      look ? t("importLook", look) : "", result.account_note || "", result.stopped ? t("importStoppedNote") : ""]
+      .filter(Boolean).join(" ");
+    ui.importLine.classList.toggle("bad", look > 0);
+    ui.importGo.hidden = true;  // imported: a second press would only check again
+    refresh().catch(() => {});
+  }
+
+  ui.importCheck.addEventListener("click", checkImport);
+  ui.importDir.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); checkImport(); } });
+  ui.importGo.addEventListener("click", runImport);
+  ui.importStop.addEventListener("click", async () => {
+    ui.importStop.disabled = true;
+    ui.importLine.textContent = t("importStopping");
+    try { await api("/api/stop", {}); } catch (e) { ui.importLine.textContent = errText(e); }
+  });
+  ui.importPick.addEventListener("click", async () => {
+    ui.importPick.disabled = true;
+    importNote("");
+    try {
+      const r = await api("/api/pick-folder", { start: ui.importDir.value.trim() });
+      if (r.path) { ui.importDir.value = r.path; checkImport(); } else if (!r.busy && r.hint) importNote(t("importTypePath"));
+    } catch (e) {
+      importNote(errText(e), true);
+    } finally {
+      ui.importPick.disabled = false;
+    }
+  });
+  // From the setup's chat list: "Already have a tg-crawl copy? Import it instead".
+  ui.suCrawl.addEventListener("click", async () => {
+    ui.setupDlg.close();
+    await openSettings();
+    ui.importSec.scrollIntoView({ block: "start" });
+    ui.importDir.focus();
+  });
+  ui.patternOn.addEventListener("change", () => {
+    ui.input.placeholder = ui.patternOn.checked ? t("patternPh") : t("inputPh");
+    ui.input.focus();
+  });
+
   ui.toastClose.addEventListener("click", () => { ui.toast.hidden = true; });
   ui.toastShow.addEventListener("click", () => {
     if (toastFile) api("/api/reveal", { path: toastFile }).catch(() => {});

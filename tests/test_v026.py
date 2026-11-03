@@ -625,10 +625,10 @@ def test_note3_plain_words_without_class_names(tmp_path):
 # ------------------------------------------------------------ 1, 4, 7 name, icon, version
 
 
-def test_version_is_026_everywhere():
-    assert __version__ == "0.2.6"
-    assert 'version = "0.2.6"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == "0.2.6"
+def test_version_is_026_everywhere():  # 0.2.7 and later keep every 0.2.6 test
+    assert tuple(int(x) for x in __version__.split(".")) >= (0, 2, 6)
+    assert f'version = "{__version__}"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == __version__
 
 
 def test_the_window_says_telegram_assistant():

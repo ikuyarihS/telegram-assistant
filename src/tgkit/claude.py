@@ -42,8 +42,9 @@ READ_COMMANDS = ["tgkit search *", "tgkit summary *", "tgkit tasks", "tgkit task
                  "tgkit today", "tgkit today *",
                  "tgkit usage", "tgkit usage *", "tgkit claude-status", "tgkit claude-status *"]
 # export writes a file and logout ends the Telegram login: the user does them, never this session.
+# import (import-crawl) writes chats: the user does it in Settings.
 DENIED_COMMANDS = (["tgkit setup*", "tgkit add*", "tgkit sync*", "tgkit logout*", "tgkit export*",
-                    "tgkit login*"]
+                    "tgkit login*", "tgkit import*"]
                    + [p for w in TASK_WRITES
                       for p in (f"tgkit tasks {w}*", f"tgkit tasks * {w}", f"tgkit tasks * {w} *")])
 READONLY_ENV = "TGKIT_READONLY"  # the same name as cli.READONLY_ENV
@@ -60,10 +61,10 @@ You answer inside the Telegram Assistant window. Here these rules come before th
 
 - Your only tool is the `tgkit` command, run through your shell tool (Bash or PowerShell,
   whichever you have). Never read, list or print files.
-- This session is read-only. Never run sync, setup, add, logout, export, `search --online`, or a
-  task change (done, undo, reopen, drop, note, add), even when the user asks: tell them to use the
-  window's buttons (Get new messages, Mark done, Save as file, Settings). The tgkit you run refuses
-  them anyway.
+- This session is read-only. Never run sync, setup, add, logout, export, import-crawl,
+  `search --online`, or a task change (done, undo, reopen, drop, note, add), even when the user
+  asks: tell them to use the window's buttons (Get new messages, Mark done, Save as file, Settings).
+  The tgkit you run refuses them anyway. `tgkit search --regex "pattern" --json` is allowed.
 - If a chat has "stale": true, say its copy may be old and suggest the Get new messages button.
 - "What do I need to do today" (or "hôm nay tôi cần làm gì"): run `tgkit today --json` and
   answer with a short list, most urgent first (due today, then people waiting for an answer,

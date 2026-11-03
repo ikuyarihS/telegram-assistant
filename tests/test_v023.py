@@ -1003,8 +1003,8 @@ def test_every_error_the_window_can_show_has_vietnamese():
             return "".join(v.value if isinstance(v, ast.Constant) else "X" for v in arg.values)
         return None
     texts = []
-    for mod in ("account", "appserver", "config", "conversations", "engine", "export", "net", "setupflow",
-                "store", "tasks"):
+    for mod in ("account", "appserver", "config", "conversations", "crawlimport", "engine", "export", "net",
+                "setupflow", "store", "tasks"):
         tree = ast.parse((src / f"{mod}.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "UserError":

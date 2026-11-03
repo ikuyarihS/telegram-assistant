@@ -104,6 +104,35 @@ and start again later with `tgkit setup` (or option 7 in the menu).
    Type the numbers you want, for example `1, 3-5`, or type a word to search
    the list. Only these chats are copied. You can add more later.
 
+## Coming from tg-crawl
+
+If you already copied chats with tg-crawl, Telegram Assistant can take that
+copy over, so you do not download those messages and files again and you can
+stop using tg-crawl. It only copies: your tg-crawl folder stays exactly as it
+was. The names of the people are carried over, a chat you already have in
+Telegram Assistant gets only the messages it is missing, and afterwards a
+table shows, chat by chat, that every message arrived. Your own searches with
+a pattern (tg-crawl's `find`) work with `tgkit search --regex "pattern"`, or
+with **Pattern (advanced)** under the question box in the window.
+
+1. Log in first (see First-time setup), so each chat can be matched to your
+   Telegram account. A chat your account does not have is still copied and
+   searchable; it is marked, and Get new messages skips it.
+2. Open **Settings** and find **Coming from tg-crawl**. (In the setup, the
+   chat list has a link to it.)
+3. Press **Choose folder** and pick your tg-crawl folder (the one that holds
+   `out`), or type its full path.
+4. Press **Check it**. It says how many chats, messages and files it found, and
+   what it will skip (loose files such as `hits.tsv`, unfinished `.partial`
+   copies).
+5. Press **Import**, then read the table. A row marked "Warning" or "Failed"
+   says why in plain words. A chat that failed is left in Telegram Assistant
+   as it was; you can import again.
+
+In a terminal: `tgkit import-crawl "D:\path\to\tg-crawl" --preview` to check,
+then the same without `--preview` to import (`--offline` skips the account
+check).
+
 ---
 
 ## The Telegram Assistant window
@@ -237,7 +266,9 @@ If you prefer typing commands, these need no extra options:
 | Get new messages from Telegram | `tgkit sync` |
 | Read the latest messages of a chat | `tgkit show "Team"` |
 | Files and photos in a chat | `tgkit media "Team"` |
+| Search with a pattern (like tg-crawl's find) | `tgkit search --regex "h[oó]a đ[oơ]n \d+"` |
 | Search Telegram itself (older messages too) | `tgkit search "contract" --online` |
+| Bring in a tg-crawl copy | `tgkit import-crawl "D:\path\to\tg-crawl"` |
 | Follow more chats | `tgkit add` |
 | Save messages found as a Word file | `tgkit export search "biên bản"` |
 | Save the summary or the tasks (Excel too) | `tgkit export summary`, `tgkit export tasks --format xlsx` |

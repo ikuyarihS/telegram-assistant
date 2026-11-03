@@ -31,6 +31,8 @@ More:
   tgkit chats                     your chats and when they were last updated
   tgkit add                       follow more chats (pick from a list)
   tgkit search "words" --online   ask Telegram itself (also finds older messages)
+  tgkit search --regex "a|b"      search with a pattern (a regular expression, like tg-crawl's find)
+  tgkit import-crawl "folder"     bring in a copy made with tg-crawl (copies it; --preview to look first)
   tgkit media "chat"              files and photos in a chat
   tgkit who                       look up the names of people
   tgkit setup                     first-time setup, or change settings
@@ -132,18 +134,24 @@ def cmd_chats(args) -> int:
             print(f"  {store.title(d)}\n      {len(rs)} messages, {span}, {files} file(s), updated {upd}")
         else:
             print(f"  {store.title(d)}\n      no messages yet")
+        if (store.meta(d).get("from_crawl") or {}).get("account") == "not_seen":
+            print("      from tg-crawl; your Telegram account does not have this chat, so sync skips it")
     if stale:
         print("\nSome chats were last updated more than 12 hours ago. Run: tgkit sync")
     return 0
 
 
 def _hits(store: Store, args) -> list[tuple]:
-    # One search rule for the CLI and the app (engine.find).
+    # One search rule for the CLI and the app (engine.find; a pattern: engine.regex_find).
+    if args.regex:
+        return engine.regex_find(store, args.query, args.chat, args.since, args.case)
     return engine.find(store, args.query, args.chat, args.since, args.case)
 
 
 def cmd_search(args) -> int:
     store = _store()
+    if args.regex and args.online:
+        raise UserError("Telegram itself cannot search with a pattern.", "Leave out --online or --regex.")
     if args.online:
         net, ctx = _ctx()
         dirs = store.match(args.chat)
@@ -156,6 +164,10 @@ def cmd_search(args) -> int:
             "total": len(hits),
             "results": [engine.hit_dict(store, r, d) for r, d, _, _ in shown],
         }, ensure_ascii=False, indent=2))
+        return 0
+    if not hits and args.regex:
+        print(f"No messages match the pattern '{args.query}'.")
+        print("Tip: in a pattern, accents must match; without --regex, accents are optional.")
         return 0
     if not hits:
         print(f"No messages found for '{args.query}'.")
@@ -353,6 +365,46 @@ def cmd_add(args) -> int:
 def cmd_who(args) -> int:
     net, ctx = _ctx()
     return net.run(net.resolve_names(ctx, ctx.store.match(args.chat)))
+
+
+def cmd_import_crawl(args) -> int:
+    """Copy a tg-crawl copy in: messages, files and names. The tg-crawl folder is only read."""
+    from . import crawlimport  # noqa: PLC0415
+    from .store import OWNER_ENV, stop_check  # noqa: PLC0415
+
+    base = config.home()
+    if args.events:  # the window: one JSON event per line
+        def say(ev):
+            print(json.dumps(ev, ensure_ascii=False), flush=True)
+        try:
+            res = crawlimport.run_import(base, args.folder, check=not args.offline,
+                                         stop=stop_check(base, os.environ.get(OWNER_ENV)), report=say)
+        except UserError as exc:
+            say({"type": "error", "message": exc.message, "hint": exc.hint or ""})
+            return 1
+        say({"type": "done", **res})
+        return 0 if not (res["counts"]["warning"] or res["counts"]["failed"]) else 1
+    plan = crawlimport.preview(base, args.folder)
+    if args.preview:
+        if args.json:
+            print(json.dumps(plan, ensure_ascii=False, indent=2))
+        else:
+            print(crawlimport.render_preview(plan))
+            print("\nNothing was copied. To import, run the same command without --preview.")
+        return 0
+    if not args.json:
+        print(crawlimport.render_preview(plan))
+        print("\nImporting (the tg-crawl folder is only read) ...", flush=True)
+
+    def progress(ev):
+        if not args.json and ev.get("type") == "chat" and ev.get("state") == "copying":
+            print(f"  {ev['chat']} ...", flush=True)
+    res = crawlimport.run_import(base, args.folder, check=not args.offline, report=progress)
+    if args.json:
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        print(crawlimport.render_report(res))
+    return 0 if not (res["counts"]["warning"] or res["counts"]["failed"]) else 1
 
 
 def cmd_setup(args) -> int:
@@ -567,6 +619,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query")
     p.add_argument("--chat", help="only chats whose name contains this")
     p.add_argument("--online", "--server", action="store_true", help="ask Telegram itself")
+    p.add_argument("--regex", "--pattern", action="store_true",
+                   help="the query is a regular expression (like tg-crawl's find); accents must match")
     p.add_argument("--since", help="only messages since e.g. 7d, 2w, 2026-09-01")
     p.add_argument("--context", type=int, default=0, help="also show N messages around each hit")
     p.add_argument("--limit", type=int, default=30, help="show at most N (0 = all)")
@@ -627,6 +681,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("who")
     p.add_argument("--chat")
     p.set_defaults(func=cmd_who)
+
+    p = sub.add_parser("import-crawl", aliases=["import"])
+    p.add_argument("folder", help="the tg-crawl folder (or its out folder)")
+    p.add_argument("--preview", action="store_true", help="only say what would be imported")
+    p.add_argument("--offline", action="store_true", help="do not ask Telegram which chats your account has")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--events", action="store_true", help=argparse.SUPPRESS)  # the window
+    p.set_defaults(func=cmd_import_crawl)
 
     p = sub.add_parser("app", aliases=["window", "ui"], add_help=False)
     p.add_argument("app_args", nargs=argparse.REMAINDER)
@@ -705,7 +767,8 @@ TASK_WRITES = ("done", "undo", "reopen", "drop", "note", "add")
 def _writes(func, args) -> bool:
     if func is cmd_tasks:
         return (args.action or "").lower() in TASK_WRITES
-    return func in (cmd_setup, cmd_add, cmd_sync, cmd_who, cmd_menu, cmd_app, cmd_logout, cmd_export)
+    return func in (cmd_setup, cmd_add, cmd_sync, cmd_who, cmd_menu, cmd_app, cmd_logout, cmd_export,
+                    cmd_import_crawl)
 
 
 def main(argv=None) -> int:

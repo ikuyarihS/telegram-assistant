@@ -597,6 +597,11 @@ async def _sync_chats(ctx: Ctx, dirs: list[Path], quiet: bool, dry_run: bool, lo
             try:
                 entity = await client.get_entity(target)
             except Exception as exc:  # noqa: BLE001
+                if (store.meta(d).get("from_crawl") or {}).get("account") == "not_seen":
+                    # imported from tg-crawl, and this account never had it: kept, not a failure
+                    print(f"Skipped {title}: it came from tg-crawl and your Telegram account does not have it.",
+                          file=sys.stderr)
+                    return
                 applog.caught("sync: a chat could not be opened", exc, ctx.base)
                 print(f"Skipped {title}: Telegram could not open this chat. Check that it still exists "
                       "and that you are a member.", file=sys.stderr)

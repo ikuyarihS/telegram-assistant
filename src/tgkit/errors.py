@@ -216,6 +216,55 @@ VI = {
     "Telegram Assistant only copies files it got during sync (big files are skipped). "
     "Open the message in Telegram to download it.":
         "Telegram Assistant chỉ chép các tệp nhận được khi lấy tin (tệp lớn bị bỏ qua). Mở tin nhắn trên Telegram để tải về.",
+    # pattern search (search --regex, the window's Pattern (advanced))
+    "Type a pattern first.": "Hãy gõ một mẫu trước.",
+    'For example: tgkit search --regex "invoice|hoa don"': 'Ví dụ: tgkit search --regex "invoice|hoa don"',
+    "Check the brackets and backslashes, or search for plain words instead.":
+        "Kiểm tra lại dấu ngoặc và dấu gạch chéo ngược, hoặc tìm bằng từ thường.",
+    "Try a simpler pattern (for example without nested + or *), or search fewer chats with --chat.":
+        "Thử một mẫu đơn giản hơn (ví dụ không lồng + hoặc * vào nhau), hoặc tìm trong ít nhóm hơn với --chat.",
+    "Search for plain words instead.": "Hãy tìm bằng từ thường.",
+    "The pattern search did not finish.": "Tìm theo mẫu chưa chạy xong.",
+    "Telegram itself cannot search with a pattern.": "Telegram không tìm theo mẫu được.",
+    "Leave out --online or --regex.": "Bỏ --online hoặc --regex.",
+    # import a tg-crawl copy
+    "Pick the tg-crawl folder first.": "Hãy chọn thư mục tg-crawl trước.",
+    "For example: D:\\tg-crawl": "Ví dụ: D:\\tg-crawl",
+    "Type the full path of the tg-crawl folder.": "Gõ đường dẫn đầy đủ của thư mục tg-crawl.",
+    "That folder does not exist.": "Thư mục này không tồn tại.",
+    "Check the path, or pick the folder again.": "Kiểm tra đường dẫn, hoặc chọn lại thư mục.",
+    "That folder cannot be read.": "Không đọc được thư mục này.",
+    "That is Telegram Assistant's own data folder, not a tg-crawl copy.":
+        "Đây là thư mục dữ liệu của chính Telegram Assistant, không phải bản sao tg-crawl.",
+    "Pick the tg-crawl folder (the one holding out).": "Chọn thư mục tg-crawl (thư mục chứa out).",
+    "No tg-crawl chats were found in that folder.": "Không tìm thấy nhóm nào của tg-crawl trong thư mục này.",
+    "Pick the tg-crawl folder (the one holding out), or its out folder.":
+        "Chọn thư mục tg-crawl (thư mục chứa out), hoặc chính thư mục out.",
+    "Import again.": "Hãy nhập lại.",
+    "It has no messages.": "Nhóm này không có tin nhắn.",
+    "Fix that file in tg-crawl, then import again.": "Sửa tệp đó trong tg-crawl rồi nhập lại.",
+    "Messages in between would never be fetched, so Telegram Assistant's copy was left as it was.":
+        "Các tin ở giữa sẽ không bao giờ được lấy về, nên bản sao của Telegram Assistant được giữ nguyên.",
+    "Your Telegram account does not have this chat: it is kept and searchable, but Get new messages skips it.":
+        "Tài khoản Telegram của bạn không có nhóm này: nhóm vẫn được giữ và tìm được, nhưng Lấy tin mới sẽ bỏ qua.",
+    "Stopped while copying this chat; Telegram Assistant's copy of it was left as it was.":
+        "Đã dừng khi đang sao chép nhóm này; bản sao của nhóm trong Telegram Assistant được giữ nguyên.",
+    "Could not import this chat; Telegram Assistant's copy was left as it was (details in the log file).":
+        "Không nhập được nhóm này; bản sao trong Telegram Assistant được giữ nguyên (chi tiết trong tệp nhật ký).",
+    "Not logged in to Telegram on this computer, so the chats were not checked against your account.":
+        "Máy này chưa đăng nhập Telegram, nên các nhóm chưa được đối chiếu với tài khoản của bạn.",
+    "Telegram could not be asked which chats your account has, so the chats were not checked.":
+        "Không hỏi được Telegram tài khoản của bạn có những nhóm nào, nên các nhóm chưa được đối chiếu.",
+    "This computer is logged in to another Telegram account than the chats shown, so the chats were not checked. "
+    "Press Get new messages first, then import again.":
+        "Máy này đang đăng nhập một tài khoản Telegram khác với các nhóm đang hiện, nên các nhóm chưa được đối chiếu. "
+        "Bấm Lấy tin mới trước, rồi nhập lại.",
+    "The chats were not checked against your Telegram account (--offline).":
+        "Các nhóm chưa được đối chiếu với tài khoản Telegram của bạn (--offline).",
+    "The import ended without a report.": "Việc nhập đã kết thúc mà không có báo cáo.",
+    "Import again: chats already imported are not copied twice, and the tg-crawl folder was not changed.":
+        "Hãy nhập lại: các nhóm đã nhập không bị chép hai lần, và thư mục tg-crawl không bị thay đổi.",
+    "Finish it or close the setup, then try again.": "Hoàn tất hoặc đóng phần cài đặt, rồi thử lại.",
 }
 
 # Texts with a name, a number or a path inside: (pattern, Vietnamese with {0}, {1}...).
@@ -274,6 +323,22 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
      "đổi mức này trong Cài đặt."),
     (r"(.+) Answered without Claude\.", "{0} Đã trả lời không dùng Claude."),
     (r"(.+) is not on this computer\.", "{0} không có trên máy này."),
+    (r"That pattern is not valid: (.+)\.", "Mẫu này không hợp lệ: {0}."),
+    (r"The pattern took longer than (\S+) seconds and was stopped\.", "Mẫu chạy quá {0} giây nên đã dừng."),
+    (r"The pattern search could not start \((.*)\)\.", "Không bắt đầu tìm theo mẫu được ({0})."),
+    (r"(\d+) line\(s\) of its messages\.jsonl could not be read, so it was not imported: "
+     r"a copy built from part of a file could miss messages for good\.",
+     "{0} dòng trong messages.jsonl của nhóm này không đọc được, nên nhóm chưa được nhập: "
+     "bản sao dựng từ một phần tệp có thể mất tin vĩnh viễn."),
+    (r"Not imported: the tg-crawl copy starts at message #(\d+), after Telegram Assistant's copy ends \(#(\d+)\)\.",
+     "Chưa nhập: bản tg-crawl bắt đầu từ tin #{0}, sau chỗ bản sao của Telegram Assistant kết thúc (#{1})."),
+    (r"(\d+) of (\d+) messages from tg-crawl are not in Telegram Assistant's copy\.",
+     "{0} trên {1} tin từ tg-crawl không có trong bản sao của Telegram Assistant."),
+    (r"(\d+) file\(s\) were not in the tg-crawl copy; Get new messages tries to download them\.",
+     "{0} tệp không có trong bản tg-crawl; Lấy tin mới sẽ thử tải về."),
+    (r"'(.*)' appeared in Telegram Assistant while importing it; nothing was overwritten\.",
+     "'{0}' đã xuất hiện trong Telegram Assistant trong lúc nhập; không ghi đè gì."),
+    (r"Could not start the import \((.*)\)\.", "Không bắt đầu nhập được ({0})."),
 )]
 
 

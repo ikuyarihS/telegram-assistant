@@ -8,7 +8,12 @@ writes a chat folder: new messages come only from the guarded `tgkit sync`.
 in the user's language plus result cards the UI draws.
 """
 
+import json
+import os
 import re
+import subprocess
+import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -114,6 +119,129 @@ def search(store: Store, query: str, chat: str | None = None, since: str | None 
     shown = hits[:limit] if limit else hits
     return {"query": query, "total": len(hits), "match": match,
             "results": [hit_dict(store, r, d) for r, d, _, _ in shown]}
+
+
+# ------------------------------------------------------------------ pattern search (--regex)
+
+# A regular expression can take exponential time on one message ("(a+)+$"), and
+# Python's re cannot be interrupted. So the pattern is matched in a child Python
+# that is ended after REGEX_TIMEOUT seconds: a slow pattern costs at most that,
+# never a hung window or terminal. Only that child, started here, is ever ended.
+REGEX_TIMEOUT = 15.0
+_NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+_CHILD = ("import sys; sys.path.insert(0, sys.argv[1]); "
+          "from tgkit.engine import _regex_child; _regex_child()")
+
+
+def _python() -> str:
+    """python.exe, not pythonw.exe: the child needs real stdout pipes."""
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe" and exe.with_name("python.exe").exists():
+        return str(exe.with_name("python.exe"))
+    return str(exe)
+
+
+def compile_pattern(pattern: str, case: bool = False) -> re.Pattern:
+    """The pattern as typed (accents must match), or a plain error. Never falls back to words."""
+    pattern = unicodedata.normalize("NFC", pattern or "")
+    if not pattern.strip():
+        raise UserError("Type a pattern first.", 'For example: tgkit search --regex "invoice|hoa don"')
+    try:
+        return re.compile(pattern, 0 if case else re.IGNORECASE)
+    except re.error as exc:
+        raise UserError(f"That pattern is not valid: {exc.msg}.",
+                        "Check the brackets and backslashes, or search for plain words instead.") from None
+
+
+def _haystack(r: dict) -> str:
+    hay = r.get("text") or ""
+    m = r.get("media") or {}
+    if m.get("file_name"):
+        hay += " " + m["file_name"]
+    return unicodedata.normalize("NFC", hay)
+
+
+def _regex_child() -> None:
+    """The child: read the job on stdin, print {"hits": {folder path: [ids]}}."""
+    job = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    rx = re.compile(job["pattern"], 0 if job.get("case") else re.IGNORECASE)
+    cutoff = parse_date(job.get("cutoff")) if job.get("cutoff") else None
+    hits: dict = {}
+    for folder in job["dirs"]:
+        d = Path(folder)
+        store = Store(d.parent.parent)
+        for r in store.rows(d):
+            if cutoff and (parse_date(r.get("date")) or cutoff) < cutoff:
+                continue
+            if rx.search(_haystack(r)):
+                hits.setdefault(folder, []).append(r.get("id"))
+    sys.stdout.buffer.write(json.dumps({"hits": hits}).encode("utf-8"))
+    sys.stdout.flush()
+
+
+def regex_find(store: Store, pattern: str, chat: str | None = None, since: str | None = None,
+               case: bool = False, timeout: float | None = None) -> list[tuple]:
+    """Like find(), for a regular expression (tg-crawl's `find`), in bounded time."""
+    compile_pattern(pattern, case)  # a bad pattern is a plain error before anything runs
+    dirs = store.match(chat)
+    cutoff = parse_since(since) if since else None
+    limit = REGEX_TIMEOUT if timeout is None else timeout
+    job = {"pattern": unicodedata.normalize("NFC", pattern), "case": case, "dirs": [str(d) for d in dirs],
+           "cutoff": cutoff.isoformat() if cutoff else None}
+    root = str(Path(__file__).resolve().parent.parent)
+    try:
+        done = subprocess.run([_python(), "-I", "-c", _CHILD, root], input=json.dumps(job).encode("utf-8"),
+                              capture_output=True, timeout=limit, creationflags=_NO_WINDOW)
+    except subprocess.TimeoutExpired:  # subprocess.run has ended the child (ours) already
+        raise UserError(f"The pattern took longer than {int(limit)} seconds and was stopped.",
+                        "Try a simpler pattern (for example without nested + or *), "
+                        "or search fewer chats with --chat.") from None
+    except OSError as exc:
+        raise UserError(f"The pattern search could not start ({exc}).", "Search for plain words instead.") from None
+    try:
+        found = json.loads(done.stdout.decode("utf-8"))["hits"] if done.returncode == 0 else None
+    except (ValueError, KeyError):
+        found = None
+    if found is None:
+        from . import applog  # noqa: PLC0415
+
+        applog.caught("search --regex: the child failed",
+                      RuntimeError(done.stderr.decode("utf-8", "replace")[-2000:]), store.home)
+        raise UserError("The pattern search did not finish.", "Search for plain words instead.")
+    out = []
+    for d in dirs:
+        ids = set(found.get(str(d)) or [])
+        if not ids:
+            continue
+        rs = store.rows(d)
+        out.extend((r, d, i, rs) for i, r in enumerate(rs) if r.get("id") in ids)
+    out.sort(key=lambda h: h[0].get("date") or "", reverse=True)
+    return out
+
+
+def regex_search(store: Store, pattern: str, chat: str | None = None, since: str | None = None,
+                 limit: int = SEARCH_LIMIT, timeout: float | None = None) -> dict:
+    hits = regex_find(store, pattern, chat, since, timeout=timeout)
+    shown = hits[:limit] if limit else hits
+    return {"query": pattern, "total": len(hits), "match": "pattern",
+            "results": [hit_dict(store, r, d) for r, d, _, _ in shown]}
+
+
+def pattern_answer(store: Store, pattern: str, lang: str = "en") -> dict:
+    """The window's "Pattern (advanced)" search: {"text", "cards", "action"}."""
+    data = regex_search(store, pattern)
+    n = data["total"]
+    if n:
+        text = _t(lang, f"Tìm thấy {n} tin nhắn khớp mẫu “{pattern}”.",
+                  f"Found {n} message{'s' if n != 1 else ''} matching the pattern “{pattern}”.")
+        if n > len(data["results"]):
+            text += _t(lang, f" Đây là {len(data['results'])} tin mới nhất.",
+                       f" Showing the newest {len(data['results'])}.")
+    else:
+        text = _t(lang, f"Không có tin nhắn nào khớp mẫu “{pattern}”. Trong mẫu, dấu phải gõ đúng.",
+                  f"No messages match the pattern “{pattern}”. In a pattern, accents must match.")
+    cards = [{**hits_card(data), "source": {"kind": "search", "query": pattern, "regex": True}}] if n else []
+    return {"text": text, "cards": cards, "action": None}
 
 
 # ------------------------------------------------------------------ tasks
@@ -427,7 +555,10 @@ def source_of(command: str) -> dict | None:
             pos.append(w)
         i += 1
     if sub in ("search", "find") and pos:
-        return {"kind": "search", "query": pos[0], "chat": opts.get("chat"), "since": opts.get("since")}
+        src = {"kind": "search", "query": pos[0], "chat": opts.get("chat"), "since": opts.get("since")}
+        if "--regex" in rest:
+            src["regex"] = True
+        return src
     if sub in ("summary", "digest"):
         return {"kind": "summary", "chat": pos[0] if pos else None, "since": opts.get("since")}
     if sub in ("tasks", "task", "todo"):

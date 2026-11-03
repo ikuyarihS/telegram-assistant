@@ -29,6 +29,9 @@ it first: "run tgkit guide, then answer".
 - Never run `tgkit logout` yourself. To log out or use another Telegram
   account, the user opens Settings in the Telegram Assistant window (or types
   `tgkit logout` in a terminal) and then connects again.
+- Never run `tgkit import-crawl` yourself. It copies a whole tg-crawl folder
+  into Telegram Assistant; the user does it in Settings ("Coming from
+  tg-crawl") or types it in a terminal.
 - Add `--json` to `today`, `search`, `summary`, `tasks`, `chats-log`, `usage`,
   `claude-status` and `export`, and read the JSON.
 - "What do I need to do today" (Vietnamese: "hôm nay tôi cần làm gì"): run
@@ -57,6 +60,7 @@ it first: "run tgkit guide, then answer".
 |---|---|
 | "what do I need to do today", "hôm nay tôi cần làm gì" | `tgkit today --json` (add `--lang vi` for Vietnamese group titles) |
 | "find / did anyone mention X" | `tgkit search "X" --json` (add `--chat "name"`, `--since 30d`) |
+| "find this pattern / regex", "like tg-crawl's find" | `tgkit search --regex "pattern" --json` (accents must match; `find` is the same command) |
 | "not in my chats? search Telegram" | `tgkit search "X" --online` |
 | "what happened this week", "summarize" | `tgkit summary --json` (default: last 7 days) |
 | "summarize chat Y last month" | `tgkit summary "Y" --since 30d --json` |

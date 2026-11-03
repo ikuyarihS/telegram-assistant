@@ -216,11 +216,13 @@ def _summary_head(L: dict):
     return [L["chat"], L["kind"], L["date"], L["from"], L["text"], L["link"]]
 
 
-def search_doc(store: Store, query: str, chat=None, since=None, lang="en") -> dict:
+def search_doc(store: Store, query: str, chat=None, since=None, lang="en", regex=False) -> dict:
     if not (query or "").strip():
         raise UserError("What should be searched?", 'For example: tgkit export search "biên bản"')
     L = _labels(lang)
-    data = engine.search(store, query, chat, since, limit=0)
+    # a pattern card (window "Pattern (advanced)", search --regex) is run again as a pattern
+    data = (engine.regex_search(store, query, chat, since, limit=0) if regex
+            else engine.search(store, query, chat, since, limit=0))
     meta = [f"{data['total']} {L['messages']}" + (f", {L['words']}" if data["match"] == "words" else "")]
     if chat:
         meta.append(f"{L['in_chat']}: {chat}")
@@ -328,15 +330,17 @@ def build(base: Path, kind: str, *, query=None, chat=None, since=None, which="op
     """The document for one export. A card that says how it was made is run again,
     so the file holds every result, not only the ones the card had room for."""
     store = Store(base)
+    regex = False
     if kind == "card":
         src = card.get("source") if isinstance(card, dict) else None
         if isinstance(src, dict) and src.get("kind") in ("search", "summary", "tasks"):
             kind, query, chat, since = src["kind"], src.get("query"), src.get("chat"), src.get("since")
             which = src.get("which") or which
+            regex = bool(src.get("regex"))
         else:
             return card_doc(card or {}, lang, store)
     if kind == "search":
-        return search_doc(store, query or "", chat, since, lang)
+        return search_doc(store, query or "", chat, since, lang, regex=regex)
     if kind == "summary":
         return summary_doc(store, chat, since, lang)
     if kind == "tasks":

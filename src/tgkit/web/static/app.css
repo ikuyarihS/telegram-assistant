@@ -949,6 +949,41 @@ textarea::placeholder { color: var(--muted); }
 .lock-note p { margin: 0 0 6px; overflow-wrap: anywhere; }
 .lock-note .btn[hidden] { display: none; }
 
+/* the composer's Pattern (advanced) switch, left of the key hint */
+.composer-foot {
+  max-width: 800px;
+  margin: 8px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+.composer-foot .hint { margin: 0; text-align: right; }
+.pattern-toggle { align-items: center; color: var(--muted); font-size: 12px; }
+.pattern-toggle input { margin: 0; }
+.pattern-toggle:has(input:checked) { color: var(--accent-text); font-weight: 500; }
+
+/* Settings, Coming from tg-crawl: check, import, then one row per chat */
+.import-box { display: grid; gap: 10px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.import-box[hidden], .import-note[hidden], .import-wrap[hidden], .import-skip[hidden] { display: none; }
+.import-sum { font-weight: 600; }
+.import-skip { margin: 0; padding-left: 20px; display: grid; gap: 2px; font-size: 13px; color: var(--muted); }
+.import-note, .import-line { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.import-note.bad, .import-line.bad { color: var(--warn); }
+.import-box .btn[hidden] { display: none; }
+.import-wrap { max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.import-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.import-table th { position: sticky; top: 0; padding: 7px 10px; text-align: left; font-weight: 600; color: var(--muted); background: var(--sunken); }
+.import-table td { padding: 7px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+.import-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.import-chat { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.import-why { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); text-wrap: pretty; }
+.res-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; color: var(--muted); background: var(--sunken); }
+.res-tag.res-ok { color: var(--ok); }
+.res-tag.res-warning { color: var(--warn); background: var(--warn-soft); }
+.res-tag.res-failed { color: var(--danger); background: var(--danger-soft); }
+
 /* ---------------------------------------------------------------- narrow */
 
 @media (max-width: 860px) {

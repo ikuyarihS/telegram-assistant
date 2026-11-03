@@ -7,9 +7,9 @@ in a browser cannot call it. Answers stream as NDJSON (one JSON per line).
 It reads through engine (the same code the CLI runs), writes only
 tasks.json (task buttons), the app's own conversation files, usage.jsonl,
 the app settings in config.json and the files the user saves (export), and
-gets new messages by running `tgkit sync` itself, so the sync lock and every
-rule in docs/MAINTENANCE.md apply unchanged. Log out goes through
-account.logout, under the same sync lock.
+gets new messages by running `tgkit sync` itself (a tg-crawl import: `tgkit
+import-crawl`), so the sync lock and every rule in docs/MAINTENANCE.md apply
+unchanged. Log out goes through account.logout, under the same sync lock.
 """
 
 import contextlib
@@ -168,6 +168,27 @@ def _error(exc: UserError, lang: str | None = None) -> dict:
             "hint": localize(hint, lang) or "", "needs": needs}
 
 
+# The folder picker: tkinter's dialog in a child Python (Tk wants its own main thread).
+_PICK_CODE = ("import sys, tkinter; from tkinter import filedialog; r = tkinter.Tk(); r.withdraw(); "
+              "r.attributes('-topmost', True); "
+              "p = filedialog.askdirectory(parent=r, title=sys.argv[1], initialdir=sys.argv[2], mustexist=True); "
+              "r.destroy(); sys.stdout.write(p or '')")
+
+
+def _local_import(ev: dict, lang: str | None) -> dict:
+    """An import event in the window's language: its error, and each sentence of each row note."""
+    if not is_vi(lang):
+        return ev
+    if ev.get("type") == "error":
+        return {**ev, "message": localize(ev.get("message"), lang), "hint": localize(ev.get("hint"), lang)}
+    if ev.get("type") == "chat" and ev.get("notes"):
+        return {**ev, "note": " ".join(localize(n, lang) for n in ev["notes"])}
+    if ev.get("type") == "done":
+        rows = [{**r, "note": " ".join(localize(n, lang) for n in r.get("notes") or [])} for r in ev.get("rows") or []]
+        return {**ev, "rows": rows, "account_note": localize(ev.get("account_note"), lang)}
+    return ev
+
+
 def _local_event(ev, lang: str | None):
     """A streamed error or notice in the window's language."""
     if not is_vi(lang) or not isinstance(ev, dict):
@@ -194,6 +215,7 @@ class App:
         self._sync_view: dict = {"line": "", "done": 0, "chats": 0}
         self._sync_last: dict | None = None
         self._settings_lock = threading.Lock()
+        self._pick_busy = threading.Lock()  # one folder picker at a time
         self._status = None
         self.tg = setupflow.TelegramSetup(self.home)  # setup inside the window
         self.last_seen = time.monotonic()
@@ -388,6 +410,19 @@ class App:
         yield {"type": "conversation", "id": conv["id"], "title": conv["title"]}
         self.convs.add_turn(conv, "user", text=text)
         store = self.store()
+        if body.get("pattern"):  # "Pattern (advanced)": a regular expression, matched here (no Claude)
+            yield {"type": "mode", "mode": "offline"}
+            try:
+                res = engine.pattern_answer(store, text, "vi" if is_vi(body.get("lang")) else "en")
+            except UserError as exc:
+                self.convs.add_turn(conv, "assistant", mode="offline", text=exc.render(), error=True)
+                yield _error(exc)
+                return
+            turn = self.convs.add_turn(conv, "assistant", mode="offline", text=res["text"], cards=res["cards"],
+                                       pattern=True)
+            yield {"type": "cards", "cards": res["cards"]}
+            yield {"type": "done", "mode": "offline", "text": res["text"], "action": None, "turn": turn}
+            return
         want = body.get("mode") or "auto"
         mode = "claude" if want != "offline" and self.claude.available else "offline"
         notice = None
@@ -535,6 +570,94 @@ class App:
             yield ev
         finally:
             self._sync_busy.release()
+
+    # ------------------------------------------------------------- import a tg-crawl copy
+
+    def import_preview(self, body: dict) -> dict:
+        """What Import would bring in (reads only, nothing is copied)."""
+        from . import crawlimport  # noqa: PLC0415
+
+        return crawlimport.preview(self.home, body.get("folder"))
+
+    def import_crawl(self, body: dict, lang: str | None = None):
+        """Import runs `tgkit import-crawl --events` as this window's own child, like its sync:
+        the window never writes a chat itself (R12), the same Stop ends it cleanly, and
+        closing the window ends it (a chat half copied is left as it was)."""
+        folder = str(body.get("folder") or "").strip()
+        if self.tg.step:
+            yield {"type": "error", "message": "A Telegram login is under way in the setup window.",
+                   "hint": "Finish it or close the setup, then try again."}
+            return
+        if self.tg.adding:
+            yield {"type": "error", "message": "Telegram Assistant is still copying the chats you ticked.",
+                   "hint": "Wait until it is done, then try again."}
+            return
+        if not self._sync_busy.acquire(blocking=False):
+            yield {"type": "error", "message": "New messages are being fetched right now.",
+                   "hint": "Wait until it is done, then try again."}
+            return
+        try:
+            self._after_check()
+            self._sync_view = {"line": "", "done": 0, "chats": 0}
+            owner = secrets.token_hex(8)
+            env = dict(os.environ, TGKIT_HOME=str(self.home), PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1",
+                       **{OWNER_ENV: owner})
+            try:
+                proc = subprocess.Popen([_python(), "-m", "tgkit", "import-crawl", folder, "--events"], env=env,
+                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
+            except OSError as exc:
+                yield {"type": "error", "message": f"Could not start the import ({exc}).", "hint": ""}
+                return
+            _end_with_server(proc)
+            self._proc, self._proc_owner = proc, owner
+            yield {"type": "running", "stop": True}
+            ended = False
+            try:
+                for raw in proc.stdout:
+                    try:
+                        ev = json.loads(raw.decode("utf-8", "replace"))
+                    except ValueError:
+                        continue  # a warning line, not an event
+                    if not isinstance(ev, dict):
+                        continue
+                    ended = ended or ev.get("type") in ("done", "error")
+                    if ev.get("type") == "chat" and ev.get("state") == "copying":
+                        self._sync_view = {**self._sync_view, "line": str(ev.get("chat") or "")}
+                    yield _local_import(ev, lang)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait()
+                self._proc, self._proc_owner = None, None
+                with contextlib.suppress(OSError):
+                    (self.home / STOP_FILE).unlink()  # a control file, never data
+            if not ended:
+                yield {"type": "error", "message": "The import ended without a report.",
+                       "hint": "Import again: chats already imported are not copied twice, and the tg-crawl "
+                               "folder was not changed."}
+        finally:
+            self._sync_busy.release()
+
+    def pick_folder(self, body: dict) -> dict:
+        """The computer's own folder picker, opened by this local server in a child Python
+        (a web page cannot read a folder path). No picker: type the path instead."""
+        if not self._pick_busy.acquire(blocking=False):
+            return {"ok": False, "path": "", "busy": True}
+        try:
+            start = str(body.get("start") or Path.home())
+            title = "Pick the tg-crawl folder" if not is_vi(body.get("lang")) else "Chọn thư mục tg-crawl"
+            try:
+                done = subprocess.run([_python(), "-I", "-c", _PICK_CODE, title, start], capture_output=True,
+                                      timeout=900, creationflags=NO_WINDOW)
+            except (OSError, subprocess.TimeoutExpired):
+                return {"ok": False, "path": "", "hint": "Type or paste the folder path instead."}
+            if done.returncode != 0:
+                return {"ok": False, "path": "", "hint": "Type or paste the folder path instead."}
+            path = done.stdout.decode("utf-8", "replace").strip()
+            return {"ok": bool(path), "path": str(Path(path)) if path else ""}
+        finally:
+            self._pick_busy.release()
 
     def open_setup(self) -> dict:
         """Start `tgkit setup` in its own window: a Telegram login code is typed only there."""
@@ -1032,6 +1155,12 @@ def make_handler(app: App):
                     return self._stream(app.ask(body))
                 if path == "/api/sync":
                     return self._stream(app.sync(), drain=True)
+                if path == "/api/import/preview":
+                    return self._json(app.import_preview(body))
+                if path == "/api/import":
+                    return self._stream(app.import_crawl(body, self._lang()), drain=True)
+                if path == "/api/pick-folder":
+                    return self._json(app.pick_folder({**body, "lang": self._lang()}))
                 if path == "/api/setup":
                     return self._json(app.open_setup())
                 if path == "/api/setup/folder":

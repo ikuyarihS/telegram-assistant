@@ -19,6 +19,7 @@ chats cannot always be fetched again.
 | `conversations.py` | the app's saved conversations, read by `tgkit chats-log` | only `app/conversations/*.json` |
 | `claude.py` | the app's Claude mode: a headless `claude -p` limited to tgkit read commands | only `app/claude/tgkit-guide.md` |
 | `playbook.md`, `playbook.py` | the one Claude Code playbook: `tgkit guide` prints it, `skills/telegram/SKILL.md` is its frontmatter plus this text, the app's guide is this text plus `claude.APP_RULES`. Edit `playbook.md`, copy it under the SKILL.md frontmatter; `tests/test_guide.py` fails when they differ | no |
+| `crawlimport.py` | `tgkit import-crawl`: copies a tg-crawl `out/` folder into `chats/` (R18) | yes: new chats, merged rows, copied files, new names; never the tg-crawl folder |
 | `appserver.py`, `app.py`, `web/` | the Telegram Assistant window: a local server on 127.0.0.1 and its HTML/CSS/JS | no chat data; sync runs `tgkit sync` |
 
 ## 1. The rules that produced this design
@@ -245,6 +246,34 @@ seconds the token-proved end of R11 applies. Each add first removes old
 `chats/.adding-*` staging folders (`net.clean_staging`, under the sync lock:
 real folders only, never a link, never a committed chat).
 
+### R18 - A tg-crawl copy is read, never changed, and merged by id
+
+`crawlimport.run_import` opens the tg-crawl folder for reading only: its rows
+are parsed, its files are copied with `shutil.copy2`, nothing there is written,
+moved or deleted (`test_v027` hashes every source file before and after). It
+takes `SyncLock` (R11), cleans old staging folders, then checks the account
+under `SessionLock` (`check_account`, through `net.connected`, R14). Each
+chat goes through `chats/.adding-<folder>` and lands at once: a new chat by
+one rename, an existing chat by moving its new files in and then one
+`atomic_write` of `messages.jsonl` (R1). Rows merge by id, newest first, with
+no duplicate ids; on the same id the Telegram Assistant row wins (tg-crawl
+records no edits), only a missing file is filled in. So `net.newest_id` stays
+the true watermark (R2). A chat whose tg-crawl copy starts after the end of
+Telegram Assistant's copy is not merged: the messages between would never be
+fetched (R4). A source with a line that cannot be read is not imported (R2).
+After each chat the ids and count are checked against the source; a missing
+id is a warning row. A chat the logged-in account does not have is kept with
+`channel.json` `from_crawl.account = "not_seen"`; sync skips it in plain words
+and does not count it as failed. Names from `senders.json` are added only for
+ids not known yet. The window runs `tgkit import-crawl --events` as a child
+(R12 holds: the app itself never writes a chat), with the same Stop as R17.
+Headless Claude never runs it (`claude.DENIED`, `TGKIT_READONLY`).
+
+`tgkit search --regex` (and Pattern (advanced) in the window) runs Python `re`
+in a child process (`engine.regex_find`) with a time limit (`REGEX_TIMEOUT`):
+`re` cannot be interrupted, so a pattern that backtracks forever is ended with
+its process and the user gets a plain sentence.
+
 Every caught error that is not a `UserError` goes to
 `<data>/app/logs/tgkit.log` (rotated) with its traceback, never message text,
 codes, phone numbers or passwords (`applog`). Settings has Copy diagnostics.
@@ -269,6 +298,12 @@ codes, phone numbers or passwords (`applog`). Settings has Copy diagnostics.
 - `thread_of()` is O(n^2) in its fixpoint loop; fine for chats of a few
   thousand messages, index children if one grows far beyond that.
 - Sync reads each `messages.jsonl` twice (watermark, then prepend).
+- Plain `tgkit search` still treats a query that is a valid regex as a
+  pattern (`store.matcher`) without the R18 time limit; only `--regex` is
+  bounded.
+- An import into an existing chat that fails after its new files were moved
+  in leaves those files (unreferenced) in its `media/`; the rows are as they
+  were (R5: a spare file is recoverable, a lost message is not).
 - No `tgkit remove`: to stop following a chat, move its folder out of
   `chats/`.
 - Task detection is keyword based (Vietnamese and English cues); it finds

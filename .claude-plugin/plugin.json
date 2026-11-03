@@ -1,6 +1,6 @@
 {
   "name": "tgkit",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Telegram Assistant: search, summarize and track tasks from your own Telegram chats, and see what to do today. Uses the local tgkit tool; works offline on a copy of the chats you picked.",
   "author": { "name": "Telegram Assistant" },
   "keywords": ["telegram", "search", "summary", "tasks", "vietnamese"]

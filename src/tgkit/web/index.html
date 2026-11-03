@@ -102,7 +102,13 @@
           <span class="btn-label" id="sendLabel" data-i18n="send">Send</span>
         </button>
       </div>
-      <p class="hint" data-i18n="hint">Enter to send, Shift+Enter for a new line, Esc to stop</p>
+      <div class="composer-foot">
+        <label class="check pattern-toggle">
+          <input type="checkbox" id="patternOn" aria-describedby="patternHelp"> <span data-i18n="patternOn">Pattern (advanced)</span>
+        </label>
+        <p class="sr-only" id="patternHelp" data-i18n="patternTip">Find messages with a regular expression, like tg-crawl's find. Accents must match.</p>
+        <p class="hint" data-i18n="hint">Enter to send, Shift+Enter for a new line, Esc to stop</p>
+      </div>
     </form>
   </main>
 </div>
@@ -195,6 +201,42 @@
       <div class="set-actions">
         <button class="btn" id="copyDiag" type="button" data-i18n="copyDiag">Copy diagnostics</button>
         <button class="btn" id="openLogs" type="button" data-i18n="openLogs">Open log folder</button>
+      </div>
+    </section>
+
+    <section class="set-sec" id="importSec" aria-labelledby="secImport">
+      <h3 id="secImport" data-i18n="secImport">Coming from tg-crawl</h3>
+      <p class="field-help" data-i18n="importHelp">Already have chats copied with tg-crawl? Bring them in here. Messages, files and names are copied, nothing is downloaded again, and the tg-crawl folder is not changed.</p>
+      <label class="field">
+        <span class="field-label" data-i18n="importDir">tg-crawl folder</span>
+        <input id="importDir" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="importPh" placeholder="For example D:\tg-crawl">
+      </label>
+      <div class="set-actions">
+        <button class="btn" id="importPick" type="button" data-i18n="importPick">Choose folder</button>
+        <button class="btn" id="importCheck" type="button" data-i18n="importCheck">Check it</button>
+      </div>
+      <p class="import-note" id="importNote" aria-live="polite" hidden></p>
+      <div class="import-box" id="importBox" hidden>
+        <p class="import-sum" id="importSum" aria-live="polite"></p>
+        <ul class="import-skip" id="importSkip"></ul>
+        <div class="set-actions">
+          <button class="btn btn-primary" id="importGo" type="button" data-i18n="importGo">Import</button>
+          <button class="btn" id="importStop" type="button" data-i18n="stopBtn" hidden>Stop</button>
+        </div>
+        <p class="import-line" id="importLine" aria-live="polite"></p>
+        <div class="import-wrap" id="importWrap" hidden>
+          <table class="import-table" id="importTable">
+            <caption class="sr-only" data-i18n="importCheckHead">Check after import</caption>
+            <thead><tr>
+              <th scope="col" data-i18n="colChat">Chat</th>
+              <th scope="col" class="num" data-i18n="colCrawl">In tg-crawl</th>
+              <th scope="col" class="num" data-i18n="colNow">Now here</th>
+              <th scope="col" class="num" data-i18n="colFiles">Files</th>
+              <th scope="col" data-i18n="colResult">Result</th>
+            </tr></thead>
+            <tbody id="importRows"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -319,6 +361,7 @@
     <form class="su-pane" id="suChats" hidden>
       <p id="suWho"></p>
       <p data-i18n="suChatsWhy">Tick the chats Telegram Assistant should copy to this computer. Only these are searched and summarized.</p>
+      <p class="field-help"><span data-i18n="suCrawl">Already have a copy made with tg-crawl?</span> <button class="link-btn" id="suCrawl" type="button" data-i18n="suCrawlBtn">Import it instead of downloading again</button></p>
       <label class="field">
         <span class="sr-only" data-i18n="suFilter">Find a chat</span>
         <input id="suFilter" type="search" data-i18n-ph="suFilter" placeholder="Find a chat" autocomplete="off">

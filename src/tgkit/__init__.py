@@ -2,7 +2,8 @@
 summarize and track tasks from your own Telegram chats, and see what to do today.
 
 Everything reads a local copy of the chats you picked. Only `sync`, `add`,
-`who`, `setup` and `search --online` talk to Telegram.
+`who`, `setup`, `search --online` and `import-crawl` (to check each chat
+against the account) talk to Telegram.
 """
 
-__version__ = "0.2.6"
+__version__ = "0.2.7"
