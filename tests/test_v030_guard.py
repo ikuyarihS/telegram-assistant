@@ -10,12 +10,17 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 from tgkit import claude, codex, connectors, mcp
+from tgkit.ai import run_env as ai_env
 from tgkit.appserver import App
 from tgkit.claude import ClaudeRunner
 from tgkit.codex import CodexRunner
@@ -47,7 +52,15 @@ OFF_URLS = ("https://wa.me/84900000000?text=I%20quit", "https://news.example.com
             "https://web.whatsapp.com:8443/", "https://web%2Ewhatsapp.com/", "https://\uff57eb.whatsapp.com/",
             "https://web.whatsapp.com/ x", "https://chat.zalo.me/?next=https://news.example.com/?q=chat",
             "https://chat.zalo.me/#//news.example.com", "https://chat.zalo.me/?u=%2F%2Fnews.example.com",
-            "javascript:alert(1)", "file:///C:/Users/x/a.txt", "chrome://settings", "back", "")
+            "javascript:alert(1)", "file:///C:/Users/x/a.txt", "chrome://settings", "back", "",
+            # gate 2 NOTE 3: another host in the query or fragment, without "//"
+            "https://chat.zalo.me/?next=evil.com/?q=chat", "https://chat.zalo.me/#evil.com",
+            "https://chat.zalo.me/?u=evil%2Ecom", "https://chat.zalo.me/?u=evil%252Ecom%252Fx",
+            "https://web.whatsapp.com/?go=www.evil.com", "https://web.whatsapp.com/?go=evil\u3002com",
+            "https://web.whatsapp.com/?go=%EF%BD%85vil%EF%BC%8Ecom", "https://web.whatsapp.com/?go=me@evil.com",
+            "https://web.whatsapp.com/?go=%5C%5Cevil.com", "https://web.whatsapp.com/?go=10.0.0.1",
+            "https://web.whatsapp.com/?go=evil.com:8080", "https://web.whatsapp.com/?go=[::1]",
+            "https://web.whatsapp.com/?a=1&b=xn--80ak6aa92e.com", "https://web.whatsapp.com/#x=1;go=evil.com")
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +101,9 @@ def test_only_the_sites_on_the_list_and_never_a_send_link():
         with pytest.raises(UserError):
             connectors.url_check(url)
     for url in ("https://web.whatsapp.com/", "http://web.whatsapp.com", "https://WEB.WhatsApp.com./",
-                "https://chat.zalo.me/", "https://web.whatsapp.com:443/"):
+                "https://chat.zalo.me/", "https://web.whatsapp.com:443/", "https://chat.zalo.me/?lang=vi",
+                "https://web.whatsapp.com/#chat", "https://web.whatsapp.com/?v=2.3000.1",
+                "https://chat.zalo.me/?next=web.whatsapp.com/x"):  # a site on the list is not another host
         assert connectors.url_check(url) == url
     assert connectors.url_check("https://news.example.com/a", ["news.example.com"])
     assert connectors.site_of("x.chat.zalo.me", ["chat.zalo.me"]) == "chat.zalo.me"
@@ -186,6 +201,49 @@ def test_a_click_reads_the_elements_own_text(snap):
 def test_a_chat_row_preview_around_the_target_is_not_judged():
     row = ZALO + "  - listitem:\n    - text: \"Mai: em gửi anh rồi\"\n    - generic [ref=e41]: Mai\n"
     assert click("e41", row, element="chat Mai")["target"] == "e41"  # text beside it, not on it
+
+
+# Gate 2 NOTE 2, in the shape of the real @playwright/mcp snapshot the gate read: a side pane
+# (search box, chat list) and the composer (the box to type in, Send, an unnamed div, "➤").
+UNNAMED = ("- Page URL: https://web.whatsapp.com/\n- Page Snapshot:\n"
+           "- generic [ref=e1]:\n"
+           "  - generic [ref=e20]:\n"
+           "    - searchbox \"Search or start new chat\" [ref=e21]\n"
+           "    - grid \"Chat list\" [ref=e2]:\n"
+           "      - row [ref=e3] [cursor=pointer]:\n"
+           "        - gridcell \"Boss\" [ref=e6]\n"
+           "      - row [ref=e5] [cursor=pointer]:\n"
+           "        - img [ref=e22]\n"
+           "    - generic [ref=e23]:\n"
+           "      - link [ref=e24] [cursor=pointer]:\n"
+           "        - /url: /chat/lan\n"
+           "  - generic [ref=e7]:\n"
+           "    - generic [ref=e8]:\n"
+           "      - text: \"Mai: hi\"\n"
+           "    - textbox \"Type a message\" [ref=e12]\n"
+           "    - button \"Send\" [ref=e13]\n"
+           "    - generic [ref=e16] [cursor=pointer]\n"
+           "    - button \"➤\" [ref=e19] [cursor=pointer]\n"
+           "    - button [ref=e25]:\n"
+           "      - img [ref=e26]\n"
+           "    - link [ref=e27] [cursor=pointer]:\n"
+           "      - /url: /x\n"
+           "    - generic [ref=e28] [cursor=pointer]: \"\U0001f44d\"\n"
+           "  - button [ref=e29]\n")
+
+
+@pytest.mark.parametrize("target", ["e13", "e16", "e19", "e25", "e26", "e27", "e28", "e29"])
+def test_an_unnamed_button_or_anything_unnamed_in_the_composer_is_refused(target):
+    with pytest.raises(UserError) as exc:
+        click(target, UNNAMED, element="chat Mai")
+    assert "not allowed" in exc.value.message or "does not press it" in exc.value.message
+
+
+@pytest.mark.parametrize("page", [UNNAMED, UNNAMED.replace('searchbox "Search', 'textbox "Search'),
+                                  UNNAMED.replace('searchbox "Search or start new chat"', 'textbox "Tìm kiếm"')])
+def test_unnamed_chat_rows_and_links_still_open_a_chat(page):
+    for target in ("e3", "e5", "e6", "e24"):
+        assert click(target, page, element="chat Boss")["target"] == target
 
 
 # ---------------------------------------------------------------- the bridge (Gemini, GPT)
@@ -380,6 +438,184 @@ def test_the_hook_itself(home):
     assert script.exists() and repr(str(Path(home))) in script.read_text(encoding="utf-8")
 
 
+# ---------------------------------------------------------------- the hook runs on every install (gate 2 BLOCKER 1)
+# The installer puts the kit in "Telegram Assistant/.venv"; a data folder can have a space
+# too. Claude Code runs a command line through Git Bash, or PowerShell without Git Bash, and
+# PowerShell does not run a quoted first word: the hook is the program plus "args" instead,
+# which Claude Code starts with no shell at all.
+
+def _spaced_kit(tmp_path) -> tuple[str, Path]:
+    """This python seen through a folder named like the installer's ("Telegram Assistant/.venv"):
+    (the python, the link)."""
+    root = Path(sys.prefix)
+    try:
+        rel = Path(sys.executable).relative_to(root)
+    except ValueError:
+        pytest.skip("python is not inside sys.prefix")
+    link = tmp_path / "kit dir" / "Telegram Assistant" / ".venv"
+    link.parent.mkdir(parents=True)
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(str(root), str(link))  # no admin needed, unlike a symlink
+    else:
+        link.symlink_to(root, target_is_directory=True)
+    return str(link / rel), link
+
+
+@pytest.fixture
+def spaced(tmp_path, monkeypatch):
+    """A data folder with a space and the kit's python through a folder with a space."""
+    py, link = _spaced_kit(tmp_path)
+    data = tmp_path / "my data"
+    data.mkdir()
+    monkeypatch.setenv("TGKIT_HOME", str(data))
+    monkeypatch.setattr(mcp, "python_exe", lambda: py)
+    connectors.set_browser(data, True, accept=True)
+    yield data, py
+    (os.rmdir if os.name == "nt" else os.unlink)(link)  # the link only, never the venv behind it
+
+
+def test_the_hook_runs_with_a_space_in_the_kit_and_the_data_folder(spaced):
+    home, py = spaced
+    assert claude.hook_problem(home) is None
+    entry = json.loads(claude.hooks_file(home).read_text(encoding="utf-8"))["hooks"]["PreToolUse"][0]["hooks"][0]
+    assert entry["command"] == py and " " in py and " " in entry["args"][-1] and entry["onFailure"] == "block"
+
+    def run(url):  # as Claude Code starts it: the program and its arguments, no shell
+        payload = json.dumps({"tool_name": claude.CHROME + "navigate", "tool_input": {"url": url}})
+        done = subprocess.run([entry["command"], *entry["args"]], input=payload.encode("utf-8"),
+                              capture_output=True, timeout=60)
+        return done.returncode, done.stdout.decode("utf-8"), done.stderr.decode("utf-8")
+    code, out, _ = run("https://web.whatsapp.com/")
+    assert code == 0 and json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "allow"
+    code, out, err = run("https://news.example.com/")
+    assert code == 2 and not out and "news.example.com is not on it" in err
+
+
+def test_a_hook_that_cannot_run_turns_claudes_browser_off(home, chrome, monkeypatch):
+    connectors.set_browser(home, True, accept=True)
+    real = mcp.python_exe
+    monkeypatch.setattr(mcp, "python_exe", lambda: str(Path(home) / "no such" / "python.exe"))
+    run = ClaudeRunner(cmd=[sys.executable, CLAUDE])
+    assert claude.hook_problem(home)
+    argv = run.args(home, None, None)
+    assert "--no-chrome" in argv and "--chrome" not in argv and "--settings" not in argv
+    assert connectors.browser_view(home)["status"]["claude"]["state"] == "hook_failed"  # Settings says so
+    _, ok = claude_step(run, home, monkeypatch, "navigate", {"url": "https://web.whatsapp.com/"})
+    assert ok is False and not lines(chrome)
+    monkeypatch.setattr(mcp, "python_exe", real)  # the hook runs again: checked again, browser back
+    assert claude.hook_problem(home) is None and "--chrome" in run.args(home, None, None)
+    assert connectors.browser_view(home)["status"]["claude"]["state"] == "not_checked"
+
+
+def _git_bash() -> str | None:
+    git = shutil.which("git")
+    for d in ([Path(git).resolve().parent, *Path(git).resolve().parents] if git else []):
+        if (d / "bin" / "bash.exe").exists():
+            return str(d / "bin" / "bash.exe")
+    return None
+
+
+class _FakeApi(BaseHTTPRequestHandler):
+    """The Anthropic API as the real claude reads it: the first answer calls TOOL with URL."""
+    tool, url = "", ""
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        if not self.path.startswith("/v1/messages") or "count_tokens" in self.path:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"input_tokens": 10}')
+            return
+        offered = any(str(t.get("name")).startswith("mcp__") for t in body.get("tools") or [])
+        last = (body.get("messages") or [{}])[-1]
+        answered = isinstance(last.get("content"), list) and any(
+            isinstance(c, dict) and c.get("type") == "tool_result" for c in last["content"])
+        msg = {"id": "msg_1", "type": "message", "role": "assistant", "model": body.get("model"), "content": [],
+               "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1}}
+        if offered and not answered:
+            block = {"type": "tool_use", "id": "toolu_x", "name": self.tool, "input": {}}
+            delta = {"type": "input_json_delta", "partial_json": json.dumps({"url": self.url, "tabId": 1})}
+            stop = "tool_use"
+        else:
+            block, delta, stop = {"type": "text", "text": ""}, {"type": "text_delta", "text": "done"}, "end_turn"
+        ev = [{"type": "message_start", "message": msg}, {"type": "content_block_start", "index": 0, "content_block": block},
+              {"type": "content_block_delta", "index": 0, "delta": delta}, {"type": "content_block_stop", "index": 0},
+              {"type": "message_delta", "delta": {"stop_reason": stop, "stop_sequence": None}, "usage": {"output_tokens": 1}},
+              {"type": "message_stop"}]
+        data = "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in ev).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+def _real_claude() -> list[str] | None:
+    found = shutil.which("claude.cmd") or shutil.which("claude")
+    if not found:
+        return None
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", claude._run([found], "--version")[1])
+    return [found] if m and tuple(map(int, m.groups())) >= (2, 1, 318) else None
+
+
+def test_the_real_claude_runs_the_hook_in_powershell_and_git_bash(spaced, tmp_path):
+    """Claude Code 2.1.318 itself, with a stand-in for the Anthropic API (no account, no
+    network): on Windows once with no Git Bash (PowerShell) and once with Git Bash, on Mac
+    and Linux with sh. The real Claude in Chrome tools need a claude.ai login and a hook
+    never runs for a tool that is not offered, so the same hook is matched on a tgkit tool
+    and its script reads that call as navigate; the command Claude starts is unchanged."""
+    cmd = _real_claude()
+    if not cmd:
+        pytest.skip("Claude Code 2.1.318 or later is not installed")
+    home, _ = spaced
+    run = ClaudeRunner(cmd=cmd)
+    claude._HELP_CACHE.clear()
+    atomic = claude.atomic_write
+    atomic(claude.mcp_file(home), json.dumps(claude.mcp_config(home)))
+    argv = run.args(home, None, None)
+    assert "--chrome" in argv and "--settings" in argv
+    hf = claude.hooks_file(home)
+    conf = json.loads(hf.read_text(encoding="utf-8"))
+    conf["hooks"]["PreToolUse"][0]["matcher"] = _FakeApi.tool = "mcp__tgkit__search"
+    atomic(hf, json.dumps(conf))
+    script = Path(conf["hooks"]["PreToolUse"][0]["hooks"][0]["args"][-1])
+    atomic(script, script.read_text(encoding="utf-8").replace(
+        "from tgkit import connectors\n", "from tgkit import connectors\nimport io, json\nd = json.loads(sys.stdin.read())\n"
+        "d['tool_name'] = 'mcp__claude-in-chrome__navigate'\nsys.stdin = io.StringIO(json.dumps(d))\n"))
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _FakeApi)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    modes = ["sh"]
+    if os.name == "nt":
+        modes = ["powershell"] + (["git bash"] if _git_bash() else [])
+    try:
+        for mode in modes:
+            env = dict(ai_env(home), ANTHROPIC_BASE_URL=f"http://127.0.0.1:{srv.server_port}",
+                       ANTHROPIC_API_KEY="sk-ant-fake-test", CLAUDE_CONFIG_DIR=str(tmp_path / f"cfg {mode}"),
+                       DISABLE_TELEMETRY="1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
+            env.pop("CLAUDE_CODE_GIT_BASH_PATH", None)
+            if mode == "powershell":  # no Git Bash to be found
+                env["PATH"] = os.pathsep.join(p for p in env["PATH"].split(os.pathsep) if "git" not in p.lower())
+            elif mode == "git bash":
+                env["CLAUDE_CODE_GIT_BASH_PATH"] = _git_bash()
+            for url, want in (("https://web.whatsapp.com/", None), ("https://news.example.com/", "is not on it")):
+                _FakeApi.url = url
+                done = subprocess.run(argv, env=env, input=b"hi", capture_output=True, timeout=180,
+                                      cwd=str(hf.parent), creationflags=claude.NO_WINDOW)
+                results = [x for x in done.stdout.decode("utf-8", "replace").splitlines() if '"tool_result"' in x]
+                assert results, (mode, url, done.stderr[-400:])
+                if want:
+                    assert want in results[0] and "failed;" not in results[0], (mode, results[0][:500])
+                else:
+                    assert "hook error" not in results[0], (mode, results[0][:500])
+    finally:
+        srv.shutdown()
+
+
 # ---------------------------------------------------------------- Settings
 
 def test_the_user_adds_and_removes_sites(home):
@@ -428,7 +664,7 @@ def test_the_window_has_the_new_strings_in_both_languages():
     js = (ROOT / "src" / "tgkit" / "web" / "static" / "app.js").read_text(encoding="utf-8")
     html = (ROOT / "src" / "tgkit" / "web" / "index.html").read_text(encoding="utf-8")
     for key in ("sitesTitle", "sitesHelp", "siteAddLabel", "siteAdd", "siteAddPh", "siteRemove", "siteRemoveLabel",
-                "sitesEmpty", "siteAdded", "siteRemoved", "extConnected", "extNotConnected", "extNotChecked",
+                "sitesEmpty", "siteAdded", "siteRemoved", "extConnected", "extNotConnected", "extNotChecked", "extHookFailed",
                 "browserDamagedNow", "browserDamagedCopy"):
         assert len(re.findall(rf"\b{key}: (?!\$\()", js)) == 2, key
     for ident in ("siteList", "siteInput", "siteAdd", "browserDamaged", "chromeDot", "geminiExtDot", "gptExtDot"):

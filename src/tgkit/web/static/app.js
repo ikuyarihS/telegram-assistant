@@ -176,6 +176,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       extConnected: (who, at) => `${who}: the extension answered${at ? ` (${at})` : ""}.`,
       extNotConnected: (who) => `${who}: the extension did not answer the last time. Open Chrome or Edge, check that the extension is on, and ask again.`,
       extNotChecked: (who) => `${who}: not checked yet. It shows here after the AI first uses your browser.`,
+      extHookFailed: (who) => `${who}: off. Telegram Assistant's page check cannot run on this computer, so Claude opens no pages. Run the Telegram Assistant installer again, then open Settings again.`,
       browserDamagedNow: "The connector settings file is damaged, so the browser is off and no connector is used. Your next change here starts them fresh, and the damaged file is kept as a copy in your data folder.",
       browserDamagedCopy: (f) => `The connector settings file was damaged. It is kept as ${f} in your data folder, and the settings started fresh.`,
       secConn: "Add a connector (advanced)",
@@ -430,6 +431,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       extConnected: (who, at) => `${who}: tiện ích đã phản hồi${at ? ` (${at})` : ""}.`,
       extNotConnected: (who) => `${who}: lần trước tiện ích không phản hồi. Mở Chrome hoặc Edge, kiểm tra tiện ích đang bật, rồi hỏi lại.`,
       extNotChecked: (who) => `${who}: chưa kiểm tra. Sẽ hiện ở đây sau lần đầu AI dùng trình duyệt của bạn.`,
+      extHookFailed: (who) => `${who}: đang tắt. Bước kiểm tra trang của Telegram Assistant không chạy được trên máy này, nên Claude không mở trang nào. Hãy chạy lại trình cài đặt Telegram Assistant, rồi mở lại Cài đặt.`,
       browserDamagedNow: "Tệp cài đặt kết nối bị hỏng, nên trình duyệt đang tắt và không dùng kết nối nào. Lần thay đổi tiếp theo ở đây sẽ bắt đầu lại, và tệp hỏng được giữ một bản trong thư mục dữ liệu.",
       browserDamagedCopy: (f) => `Tệp cài đặt kết nối đã bị hỏng. Bản cũ được giữ là ${f} trong thư mục dữ liệu, và cài đặt đã bắt đầu lại.`,
       secConn: "Thêm kết nối (nâng cao)",
@@ -2061,9 +2063,11 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     for (const [who, label, dot, text] of [["claude", "Claude in Chrome", ui.chromeDot, ui.chromeText],
       ["gemini", "Gemini", ui.geminiExtDot, ui.geminiExtText], ["gpt", "GPT", ui.gptExtDot, ui.gptExtText]]) {
       const s = st[who] || {};
-      dot.className = `state-dot ${s.state === "connected" ? "ok" : s.state === "not_connected" ? "bad" : ""}`.trim();
+      const bad = s.state === "not_connected" || s.state === "hook_failed";
+      dot.className = `state-dot ${s.state === "connected" ? "ok" : bad ? "bad" : ""}`.trim();
       text.textContent = s.state === "connected" ? t("extConnected", label, when(s.at))
-        : s.state === "not_connected" ? t("extNotConnected", label) : t("extNotChecked", label);
+        : s.state === "not_connected" ? t("extNotConnected", label)
+        : s.state === "hook_failed" ? t("extHookFailed", label) : t("extNotChecked", label);
     }
   }
 

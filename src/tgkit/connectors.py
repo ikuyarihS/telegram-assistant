@@ -177,10 +177,30 @@ def _addresses(host: str) -> list:
     return out
 
 
-def _carries_link(u) -> bool:
-    """A query or fragment holding another address (an open redirect to another site)."""
-    text = unquote(unquote(f"{u.query}#{u.fragment}")).lower()
-    return "://" in text or bool(re.search(r"(?:^|[=&#?])(?:https?:)?//", text))
+# A value that names a host, with or without a scheme or slashes: evil.com/?q=chat,
+# //evil.com, \\evil.com, user@evil.com, evil.com:8080, 10.0.0.1, [::1].
+_HOSTLIKE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?[/\\]*(?:[^/\\?#@\s]*@)?(\[[0-9a-f:.]+\]|[\w-]+(?:\.[\w-]+)+)\.?"
+                       r"(?::\d*)?(?:[/\\?#]|$)")
+
+
+def _carries_link(u, sites=()) -> bool:
+    """A query or fragment holding another address (an open redirect to another site):
+    a URL, or any value that reads as a host not on the user's list (gate 2 NOTE 3)."""
+    text = unicodedata.normalize("NFKC", unquote(unquote(f"{u.query}#{u.fragment}"))).lower()
+    for dot in ("。", "．", "｡"):  # the dots IDNA reads as "."
+        text = text.replace(dot, ".")
+    if "://" in text or re.search(r"(?:^|[=&#?])(?:https?:)?//", text):
+        return True
+    for token in re.split(r"[&;=?#,|\s]+", text):
+        m = _HOSTLIKE.match(token)
+        if not m:
+            continue
+        host = m.group(1)
+        last = host.rsplit(".", 1)[-1]
+        if (host.startswith("[") or re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", host)
+                or re.fullmatch(r"[^\W\d_]{2,}|xn--[a-z0-9-]+", last)) and not site_of(host, sites):
+            return True
+    return False
 
 
 def url_check(url, sites=None, send: bool = True, dns: bool = True) -> str:
@@ -223,7 +243,7 @@ def url_check(url, sites=None, send: bool = True, dns: bool = True) -> str:
                         "The user can add a site in Settings, Your browser.")
     if port not in (None, 80, 443):
         raise UserError(NOT_PLAIN, "")
-    if send and (SEND_PATH.search(u.path or "") or _carries_link(u)
+    if send and (SEND_PATH.search(u.path or "") or _carries_link(u, sites)
                  or any(k.lower() in SEND_QUERY for k in parse_qs(u.query, True))):
         raise UserError("The AI may not open a link that writes, sends or shares a message.", "")
     if dns:
@@ -310,6 +330,14 @@ def _refused_click(text: str) -> str | None:
 NAMED_ROLES = frozenset(("button", "link", "menuitem", "menuitemcheckbox", "menuitemradio", "checkbox", "switch",
                          "radio", "tab", "option", "img", "image", "treeitem", "menu", "menubar", "toolbar"))
 TYPE_ROLES = frozenset(("textbox", "searchbox", "combobox", "spinbutton", "slider"))  # a box to type in
+# Pressed, not opened: with no word on it (no name, or only an icon such as "➤") the AI cannot
+# tell Send from anything else, so it is refused (gate 2 NOTE 2). So is any unnamed thing in
+# the message composer: the area around the box where a message is typed. A list (the chat
+# list) between the target and that box means it is not in the composer.
+BUTTON_ROLES = frozenset(("button", "menuitem", "menuitemcheckbox", "menuitemradio", "switch", "checkbox", "radio",
+                          "tab", "option", "combobox", "slider", "spinbutton"))
+LIST_ROLES = frozenset(("list", "listbox", "grid", "treegrid", "table", "tree", "rowgroup", "feed"))
+SEARCH_BOX = re.compile(r"search|tìm|find", re.I)
 _ROLE = re.compile(r"[a-z][a-zA-Z0-9-]*")
 _ATTR = re.compile(r" \[([a-z][a-z-]*)(?:=([^\]\s]*))?\]")
 
@@ -497,6 +525,30 @@ def _click_check(ref: str, element: str, page: str | None, allowed_sites) -> Non
             raise UserError(f"A click on something that says '{word}' is not allowed: the AI only reads.", "")
         if n.url is not None:
             url_check(urljoin(tree["url"] or "", n.url), allowed_sites)
+    unnamed = not any(ch.isalnum() for x in [node, *inside] for ch in unicodedata.normalize("NFKC", x.words()))
+    if unnamed and (node.role in BUTTON_ROLES or _in_composer(node)):
+        raise UserError("That has no words on it (only an icon, or nothing), and it is a button or sits by the "
+                        "box where a message is typed, so the AI does not press it.", "")
+
+
+def _in_composer(node) -> bool:
+    """Whether the element sits in the message composer: going up from it, the first
+    element that holds a box to type in holds one that is not a search box, with no
+    list (the chat list) on the way."""
+    n = node.parent
+    while n is not None:
+        if n.role in LIST_ROLES:
+            return False
+        boxes, todo = [], list(n.children)
+        while todo:
+            d = todo.pop()
+            if d.role in ("textbox", "searchbox"):
+                boxes.append(d)
+            todo.extend(d.children)
+        if boxes:
+            return any(b.role == "textbox" and not SEARCH_BOX.search(b.name) for b in boxes)
+        n = n.parent
+    return False
 
 
 def browser_check(name: str, args, page: str | None = None, home=None) -> dict:
@@ -727,14 +779,23 @@ def browser_view(home: Path) -> dict:
     """What Settings shows: the switch, the warning, and per AI what it needs."""
     st = load(home)["browser"]
     bridge = find_bridge()
+    status = status_view(home)
+    if st.get("enabled") and st.get("accepted_at"):
+        from . import claude  # noqa: PLC0415
+
+        if claude.hook_problem(home):  # Claude's address hook cannot run here: Claude gets no browser
+            status["claude"] = {"state": "hook_failed", "at": None}
     return {"enabled": bool(st.get("enabled") and st.get("accepted_at")), "accepted": bool(st.get("accepted_at")),
             "token_set": bool(st.get("token")), "warning": WARNING,
             "sites": _sites_of(st), "default_sites": list(DEFAULT_SITES),
-            "status": status_view(home), "damaged": damaged_view(home),
+            "status": status, "damaged": damaged_view(home),
             "claude": {"extension_url": CLAUDE_EXTENSION_URL},
             "bridge": {"installed": bool(bridge), "version": bridge_version(), "package": BRIDGE_PACKAGE,
                        "extension_url": BRIDGE_EXTENSION_URL},
             "allowed": list(BROWSER_ALLOWED), "denied": list(BROWSER_DENIED)}
+
+
+HOOK_ONLY = "Telegram Assistant allows only Claude in Chrome's navigate here."  # claude.hook_problem asks for it
 
 
 def chrome_hook(home, stdin=None, stdout=None, stderr=None) -> int:
@@ -749,7 +810,7 @@ def chrome_hook(home, stdin=None, stdout=None, stderr=None) -> int:
         tool = str(data.get("tool_name") or "")
         given = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else None
         if given is None or not tool.startswith("mcp__claude-in-chrome__"):
-            raise UserError("Telegram Assistant allows only Claude in Chrome's navigate here.", "")
+            raise UserError(HOOK_ONLY, "")
         short = tool[len("mcp__claude-in-chrome__"):]
         if short not in ("navigate", "tabs_create_mcp"):
             raise UserError(f"{short} is not allowed: the AI may only read the browser.", "")

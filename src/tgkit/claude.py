@@ -47,7 +47,8 @@ DENIED = ["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glo
 # are in neither list either: a permission rule cannot look at an address, so each call
 # goes to tgkit's PreToolUse hook (connectors.chrome_hook, passed per run with --settings),
 # which allows it only for a page on the user's list of sites. If the hook does not run,
-# dontAsk refuses the call. Claude cannot click at all (computer is denied).
+# dontAsk refuses the call, and a hook that cannot run here at all turns Claude's browser
+# off (hook_problem). Claude cannot click at all (computer is denied).
 CHROME = "mcp__claude-in-chrome__"
 CHROME_ALLOWED = [CHROME + t for t in ("read_page", "get_page_text", "find", "tabs_context_mcp")]
 CHROME_HOOKED = [CHROME + t for t in ("navigate", "tabs_create_mcp")]
@@ -212,11 +213,15 @@ def hooks_file(home: Path) -> Path:
     return Path(home) / "app" / "claude" / "chrome-hooks.json"
 
 
-def _arg(p) -> str:
-    """A path for the hook's command line: forward slashes (bash keeps them), quoted only
-    when it has a space (a quoted first word does not run in PowerShell: refused, not open)."""
-    s = Path(p).as_posix()
-    return f'"{s}"' if " " in s else s
+def hook_entry(home: Path) -> dict:
+    """The hook as Claude Code runs it: the program in "command", its arguments in "args"
+    (Claude Code 2.1.318 then starts it directly, with no shell). A command line would go
+    through Git Bash or, without Git Bash, PowerShell, which does not run a quoted first
+    word, and every default install has a space ("Telegram Assistant/.venv"). onFailure
+    block: a hook that fails to start refuses the call. -I: no PYTHONPATH or user site."""
+    script = Path(home) / "app" / "claude" / "chrome-hook.py"
+    return {"type": "command", "command": mcp.python_exe(), "args": ["-I", str(script)],
+            "onFailure": "block", "timeout": 60}
 
 
 def write_chrome_hook(home: Path) -> Path:
@@ -227,11 +232,41 @@ def write_chrome_hook(home: Path) -> Path:
     script = work / "chrome-hook.py"
     root = str(Path(__file__).resolve().parent.parent)
     atomic_write(script, HOOK_SCRIPT.format(root=root, home=str(Path(home))))
-    command = f"{_arg(mcp.python_exe())} {_arg(script)}"
-    conf = {"hooks": {"PreToolUse": [{"matcher": "|".join(CHROME_HOOKED), "hooks": [
-        {"type": "command", "command": command, "timeout": 60}]}]}}
+    conf = {"hooks": {"PreToolUse": [{"matcher": "|".join(CHROME_HOOKED), "hooks": [hook_entry(home)]}]}}
     atomic_write(hooks_file(home), json.dumps(conf, indent=2))
     return hooks_file(home)
+
+
+def hook_problem(home: Path) -> str | None:
+    """Does the address hook run on this computer? It is started the way Claude Code starts
+    it (the program and its arguments, Claude's environment) with a call it must refuse in
+    its own words. None when it does; else what went wrong, and Claude then gets no browser
+    (fail closed) and Settings says so. Kept per hook and version, so it runs once."""
+    from . import __version__, connectors  # noqa: PLC0415
+
+    write_chrome_hook(home)
+    entry = hook_entry(home)
+    script = Path(entry["args"][-1])
+    key = json.dumps([entry, script.read_text(encoding="utf-8"), __version__])
+    seen = Path(home) / "app" / "claude" / "chrome-hook-check.json"
+    try:
+        cached = json.loads(seen.read_text(encoding="utf-8"))
+        if isinstance(cached, dict) and cached.get("key") == key:
+            return cached.get("problem")
+    except (OSError, ValueError):
+        pass
+    probe = {"hook_event_name": "PreToolUse", "tool_name": "tgkit_self_check", "tool_input": {}}
+    try:
+        done = subprocess.run([entry["command"], *entry["args"]], input=json.dumps(probe).encode("utf-8"),
+                              capture_output=True, timeout=entry["timeout"], env=ai.run_env(Path(home)),
+                              creationflags=NO_WINDOW)
+        err = done.stderr.decode("utf-8", "replace").strip()
+        ok = done.returncode == 2 and connectors.HOOK_ONLY in err
+        problem = None if ok else f"exit code {done.returncode}: {err[-300:]}"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        problem = f"{type(exc).__name__}: {exc}"[:300]
+    atomic_write(seen, json.dumps({"key": key, "problem": problem}))
+    return problem
 
 
 class ClaudeRunner:
@@ -247,11 +282,12 @@ class ClaudeRunner:
         return bool(self.cmd)
 
     def chrome(self, home: Path) -> bool:
-        """Claude in Chrome for this answer: the user turned the browser on and this
-        Claude Code has --chrome."""
+        """Claude in Chrome for this answer: the user turned the browser on, this Claude
+        Code has --chrome, and the address hook runs here (else no browser: fail closed)."""
         from . import connectors  # noqa: PLC0415
 
-        return connectors.browser_on(home) and bool(capabilities(self.cmd).get("chrome"))
+        return (connectors.browser_on(home) and bool(capabilities(self.cmd).get("chrome"))
+                and hook_problem(home) is None)
 
     # -------------------------------------------------------------- command
 

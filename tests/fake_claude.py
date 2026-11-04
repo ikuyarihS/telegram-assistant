@@ -112,13 +112,15 @@ def pre_tool_hooks(tool, tool_input):
             continue
         for h in group.get("hooks") or []:
             payload = {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input}
-            done = subprocess.run(h["command"], shell=True, input=json.dumps(payload).encode("utf-8"),
+            # "args" (Claude Code 2.1.318): the program and its arguments, started with no shell.
+            run = [h["command"], *h["args"]] if isinstance(h.get("args"), list) else h["command"]
+            done = subprocess.run(run, shell=not isinstance(run, list), input=json.dumps(payload).encode("utf-8"),
                                   capture_output=True, timeout=120)
             err = done.stderr.decode("utf-8", "replace").strip()
             if os.environ.get("FAKE_HOOK_LOG"):
                 with open(os.environ["FAKE_HOOK_LOG"], "a", encoding="utf-8") as fh:
                     fh.write(json.dumps({"tool": tool, "code": done.returncode, "err": err}) + "\n")
-            if done.returncode == 2:
+            if done.returncode == 2 or (done.returncode != 0 and h.get("onFailure") == "block"):
                 return "deny", err
             if done.returncode == 0:
                 try:
