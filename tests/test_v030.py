@@ -597,7 +597,7 @@ def test_every_new_message_has_vietnamese():
     only to the AI (the browser rules, connector_call) are left out by name."""
     import ast
 
-    to_the_ai = {"browser_check", "_web_url", "ai_call"}
+    to_the_ai = {"browser_check", "url_check", "_ipv4", "_click_check", "chrome_hook", "call", "ai_call"}
 
     def sample(arg):
         if isinstance(arg, ast.Constant) and isinstance(arg.value, str):

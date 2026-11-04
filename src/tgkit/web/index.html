@@ -196,14 +196,28 @@
 
     <section class="set-sec" aria-labelledby="secBrowser">
       <h3 id="secBrowser" data-i18n="secBrowser">Your browser (WhatsApp, Zalo, ...)</h3>
-      <p class="field-help" data-i18n="browserWhat">Let the AI read chats you have open in your own Chrome or Edge, such as WhatsApp Web or Zalo. It opens a chat and reads it; it never types or sends.</p>
+      <p class="field-help" data-i18n="browserWhat">Let the AI read chats you have open in your own Chrome or Edge, such as WhatsApp Web or Zalo. It opens only the sites on your list and reads them. It cannot type, press Send or open a link that sends or shares a message.</p>
+      <div class="warn-box" id="browserDamaged" role="status" hidden><p id="browserDamagedText"></p></div>
       <div class="warn-box">
         <p data-i18n="browserWarn">The AI can then read the pages you are signed in to. WhatsApp and Zalo do not officially allow other programs to read chats and could limit an account that does it: use it gently, at your own risk. Opening a chat marks it as read on your phone too.</p>
         <label class="check"><input type="checkbox" id="browserAccept"> <span data-i18n="browserAccept">I read this and understand it</span></label>
       </div>
       <label class="check"><input type="checkbox" id="browserOn"> <span data-i18n="browserOn">Let the AI read your browser</span></label>
       <div class="sub-sec" id="browserSetup" hidden>
+        <h4 data-i18n="sitesTitle">Sites the AI may open</h4>
+        <p class="field-help" id="sitesHelp" data-i18n="sitesHelp">The AI opens only these sites. It never opens a page on this computer or your home network, and never a link that sends or shares a message.</p>
+        <ul class="site-list" id="siteList" aria-describedby="sitesHelp"></ul>
+        <div class="field-row site-add">
+          <label class="field">
+            <span class="field-label" data-i18n="siteAddLabel">Add a site</span>
+            <input id="siteInput" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="siteAddPh" placeholder="for example chat.zalo.me">
+          </label>
+          <div class="set-actions">
+            <button class="btn" id="siteAdd" type="button" data-i18n="siteAdd">Add</button>
+          </div>
+        </div>
         <h4 data-i18n="browserClaude">When Claude answers</h4>
+        <p class="state-line"><span class="state-dot" id="chromeDot"></span><span id="chromeText"></span></p>
         <ol class="fix-steps">
           <li data-i18n="browserClaude1">Press Get Claude in Chrome and add it to Chrome or Edge.</li>
           <li data-i18n="browserClaude2">Open it once and sign in with the same Claude account.</li>
@@ -213,6 +227,8 @@
         </div>
         <h4 data-i18n="browserOther">When Gemini or GPT answers</h4>
         <p class="state-line"><span class="state-dot" id="bridgeDot"></span><span id="bridgeText" data-i18n="checking">Checking...</span></p>
+        <p class="state-line"><span class="state-dot" id="geminiExtDot"></span><span id="geminiExtText"></span></p>
+        <p class="state-line"><span class="state-dot" id="gptExtDot"></span><span id="gptExtText"></span></p>
         <ol class="fix-steps">
           <li data-i18n="browserOther1">Press Install the browser helper (about a minute; needs Node.js, see Gemini or GPT above).</li>
           <li data-i18n="browserOther2">Press Get Playwright Extension and add it to Chrome or Edge.</li>

@@ -427,6 +427,23 @@ you have open), but it cannot type, send, reply, forward, call, delete or
 change settings. Opening a chat marks it as read on your phone too. Use it at
 your own risk; you can turn it off at any time.
 
+**Only the sites on your list.** The AI opens only **WhatsApp Web**
+(web.whatsapp.com) and **Zalo** (chat.zalo.me) until you add more under
+**Sites the AI may open** (type a site's name, for example `chat.zalo.me`, and
+press **Add**; **Remove** takes one off). This holds for every AI and every
+way to a page: opening an address, a new tab, and a click on a link. So a
+message that says "open this link" cannot make the AI carry your chats to
+another site. The AI never opens a page on this computer or your home
+network, and never a link that sends or shares a message, whatever the list
+says. A click on a Send, Delete, Call or similar button is refused, judged by
+the page itself, not by what a message claims.
+
+Settings also shows, for Claude, Gemini and GPT, whether the extension
+answered the last time the AI used your browser ("not checked yet" until
+then). If the connector settings file is ever damaged, Telegram Assistant
+keeps a copy of it in your data folder, starts the settings fresh and tells
+you in Settings.
+
 To turn it on: open **Settings**, **Your browser**, read the warning, tick
 **I read this and understand it**, then turn on **Let the AI read your
 browser**. Then, once:

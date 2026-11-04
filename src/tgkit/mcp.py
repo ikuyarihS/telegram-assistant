@@ -208,7 +208,7 @@ def python_exe() -> str:
     return str(exe)
 
 
-def server_command(home: Path, browser: bool = False) -> dict:
+def server_command(home: Path, browser: bool = False, who: str = "") -> dict:
     """The server as the CLIs' config describes it (command + args, no shell). Its env
     puts THIS tgkit first: Claude Code starts a server with only a few of its own
     variables, so without it the python could import an older installed tgkit (or none).
@@ -219,7 +219,10 @@ def server_command(home: Path, browser: bool = False) -> dict:
     env = {"PYTHONPATH": root, "TGKIT_READONLY": "1", "PYTHONIOENCODING": "utf-8"}
     if browser:  # the bridge is node: it needs the PATH that finds it (Claude Code passes few variables)
         env["PATH"] = os.environ.get("PATH", "")
-        for k in ("TGKIT_BROWSER_MCP", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME", "SYSTEMROOT"):
+        if who:  # which AI uses the browser: Settings shows whether its extension answered
+            env["TGKIT_BROWSER_FOR"] = who
+        for k in ("TGKIT_BROWSER_MCP", "TGKIT_TEST_DNS", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME",
+                  "SYSTEMROOT"):
             if os.environ.get(k):
                 env[k] = os.environ[k]
     return {"command": python_exe(), "args": args, "env": env}

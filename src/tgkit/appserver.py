@@ -1013,6 +1013,12 @@ class App:
                                token=body.get("token") if "token" in body else None)
         return self.connectors_view()
 
+    def browser_sites(self, body: dict) -> dict:
+        """Add or remove one site the AI may open (Settings, Your browser)."""
+        connectors.set_sites(self.home, add=body.get("add") if body.get("add") is not None else None,
+                             remove=body.get("remove") if body.get("remove") is not None else None)
+        return self.connectors_view()
+
     def browser_install(self) -> dict:
         """The browser helper for Gemini and GPT: `npm install -g @playwright/mcp`."""
         res = self._npm_install(connectors.BRIDGE_PACKAGE, "the browser helper")
@@ -1466,6 +1472,8 @@ def make_handler(app: App):
                     return self._json(app.gemini_node())
                 if path == "/api/connectors/browser":
                     return self._json(app.browser_set(body))
+                if path == "/api/connectors/browser/sites":
+                    return self._json(app.browser_sites(body))
                 if path == "/api/connectors/open":
                     return self._json(app.open_store(body))
                 m = re.fullmatch(r"/api/connectors/mcp/(add|allow|refresh|remove)", path)

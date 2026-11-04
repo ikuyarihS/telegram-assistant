@@ -206,6 +206,15 @@ VI = {
     "Then turn it on again.": "Rồi bật lại.",
     "That does not look like the extension's token.": "Đây có vẻ không phải mã của tiện ích.",
     "Copy it again from the Playwright Extension page.": "Chép lại mã từ trang Playwright Extension.",
+    "That is not a web site the AI may open.": "Đây không phải là trang web AI được mở.",
+    "Type the site's name, for example chat.zalo.me. This computer and your home network are never allowed.":
+        "Gõ tên trang, ví dụ chat.zalo.me. Không bao giờ được mở máy tính này hay mạng trong nhà.",
+    "The list is full.": "Danh sách đã đầy.",
+    "Remove a site you no longer need first.": "Hãy bỏ một trang không cần nữa trước.",
+    "The connector settings file is damaged and could not be copied aside, so nothing was changed.":
+        "Tệp cài đặt kết nối bị hỏng và không chép ra được, nên chưa có gì thay đổi.",
+    "Close other programs that may use the data folder and try again.":
+        "Đóng các chương trình khác có thể đang dùng thư mục dữ liệu rồi thử lại.",
     "The connector settings are being saved by another Telegram Assistant.":
         "Một Telegram Assistant khác đang lưu cài đặt kết nối.",
     "Wait a moment and try again.": "Chờ một chút rồi thử lại.",

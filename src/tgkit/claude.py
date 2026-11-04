@@ -43,13 +43,24 @@ DENIED = ["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glo
 # presses keys in one tool and browser_batch runs several, so both are denied with every
 # tool that fills, runs scripts, uploads, records or changes the browser. Any other
 # claude-in-chrome tool is in neither list and so not allowed (dontAsk refuses it).
+# The tools that open a page (navigate; tabs_create_mcp, which takes no address in 2.1.318)
+# are in neither list either: a permission rule cannot look at an address, so each call
+# goes to tgkit's PreToolUse hook (connectors.chrome_hook, passed per run with --settings),
+# which allows it only for a page on the user's list of sites. If the hook does not run,
+# dontAsk refuses the call. Claude cannot click at all (computer is denied).
 CHROME = "mcp__claude-in-chrome__"
-CHROME_ALLOWED = [CHROME + t for t in ("navigate", "read_page", "get_page_text", "find", "tabs_context_mcp",
-                                       "tabs_create_mcp")]
+CHROME_ALLOWED = [CHROME + t for t in ("read_page", "get_page_text", "find", "tabs_context_mcp")]
+CHROME_HOOKED = [CHROME + t for t in ("navigate", "tabs_create_mcp")]
 CHROME_DENIED = [CHROME + t for t in ("computer", "browser_batch", "form_input", "javascript_tool", "file_upload",
                                       "upload_image", "gif_creator", "shortcuts_execute", "shortcuts_list",
                                       "switch_browser", "resize_window", "read_console_messages",
-                                      "read_network_requests", "tabs_close_mcp")]
+                                      "read_network_requests", "tabs_close_mcp", "list_connected_browsers",
+                                      "select_browser")]
+HOOK_SCRIPT = """import sys
+sys.path.insert(0, {root!r})
+from tgkit import connectors
+sys.exit(connectors.chrome_hook({home!r}))
+"""
 
 # The app's session reads the same playbook as every other Claude Code session
 # (playbook.md, also `tgkit guide` and the plugin skill), plus the rules of the app.
@@ -196,6 +207,33 @@ def mcp_config(home: Path) -> dict:
     return {"mcpServers": {mcp.SERVER: {"type": "stdio", **mcp.server_command(home)}}}
 
 
+def hooks_file(home: Path) -> Path:
+    """The per-run settings (`--settings`) holding only the Claude in Chrome address hook."""
+    return Path(home) / "app" / "claude" / "chrome-hooks.json"
+
+
+def _arg(p) -> str:
+    """A path for the hook's command line: forward slashes (bash keeps them), quoted only
+    when it has a space (a quoted first word does not run in PowerShell: refused, not open)."""
+    s = Path(p).as_posix()
+    return f'"{s}"' if " " in s else s
+
+
+def write_chrome_hook(home: Path) -> Path:
+    """Write the hook script and the settings file that runs it before navigate and
+    tabs_create_mcp; the script imports THIS tgkit and reads this data folder."""
+    work = Path(home) / "app" / "claude"
+    work.mkdir(parents=True, exist_ok=True)
+    script = work / "chrome-hook.py"
+    root = str(Path(__file__).resolve().parent.parent)
+    atomic_write(script, HOOK_SCRIPT.format(root=root, home=str(Path(home))))
+    command = f"{_arg(mcp.python_exe())} {_arg(script)}"
+    conf = {"hooks": {"PreToolUse": [{"matcher": "|".join(CHROME_HOOKED), "hooks": [
+        {"type": "command", "command": command, "timeout": 60}]}]}}
+    atomic_write(hooks_file(home), json.dumps(conf, indent=2))
+    return hooks_file(home)
+
+
 class ClaudeRunner:
     name = "claude"
 
@@ -230,6 +268,8 @@ class ClaudeRunner:
         chrome = self.chrome(home)
         if capabilities(self.cmd).get("chrome"):
             a += ["--chrome" if chrome else "--no-chrome"]
+        if chrome and not self.compat:  # the address hook (navigate, tabs_create_mcp); no hook: refused
+            a += ["--settings", str(hooks_file(home))]
         a += ["--allowedTools", *ALLOWED, *(CHROME_ALLOWED if chrome else []),
               "--disallowedTools", *DENIED, *CHROME_DENIED]
         chosen = settings(home)
@@ -274,6 +314,8 @@ class ClaudeRunner:
         guide = work / "tgkit-guide.md"
         atomic_write(guide, GUIDE)
         atomic_write(mcp_file(home), json.dumps(mcp_config(home), indent=2))
+        if self.chrome(home):
+            write_chrome_hook(home)
         env = ai.run_env(home)
         flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
         try:
@@ -330,11 +372,11 @@ class ClaudeRunner:
                             params = block.get("input") if isinstance(block.get("input"), dict) else {}
                             tool = mcp.tool_of(name)
                             cmd = mcp.describe(tool, params) if tool else str(params.get("command") or name)
-                            if not tool and name in CHROME_ALLOWED and self.chrome(home):
+                            if not tool and name in CHROME_ALLOWED + CHROME_HOOKED and self.chrome(home):
                                 tool = name  # a reading tool of Claude in Chrome, allowed this answer
                                 what = params.get("url") or params.get("query") or ""
                                 cmd = f"browser: {name[len(CHROME):].replace('_', ' ')} {str(what)[:120]}".rstrip()
-                            tools[block.get("id")] = (tool, name, cmd)
+                            tools[block.get("id")] = (tool, name, cmd, params)
                             yield {"type": "step", "id": block.get("id"), "command": cmd}
                         elif block.get("type") == "text" and not streamed:
                             yield {"type": "token", "text": plain(block.get("text", ""))}
@@ -349,12 +391,29 @@ class ClaudeRunner:
                         ok = not block.get("is_error")
                         yield {"type": "step_done", "id": block.get("tool_use_id"), "ok": ok,
                                "note": "" if ok else body[:300]}
-                        tool, name, cmd = tools.get(block.get("tool_use_id")) or (None, "", "")
+                        tool, name, cmd, params = tools.get(block.get("tool_use_id")) or (None, "", "", {})
                         if ok and not tool:
                             # A tool outside the tgkit server ran (a shell, a file tool):
                             # Claude's rules should have refused it. Stop now.
                             blocked = f"{name}: {cmd}"
                             break
+                        if name.startswith(CHROME):
+                            from . import connectors  # noqa: PLC0415
+                            if ok and name in CHROME_HOOKED:
+                                # The hook should have refused an address off the list: if one
+                                # was opened anyway, stop the answer (nothing more is read).
+                                try:
+                                    for k, v in params.items():
+                                        if str(k).lower() in ("url", "href", "uri", "link") or \
+                                                (isinstance(v, str) and "//" in v):
+                                            connectors.url_check(v, connectors.sites(home))
+                                except connectors.UserError:
+                                    blocked = f"{name}: {cmd}"
+                                    break
+                            if ok:
+                                connectors.record_status(home, "claude", "connected")
+                            elif connectors.NOT_CONNECTED.search(body):
+                                connectors.record_status(home, "claude", "not_connected")
                         if ok and "--json" in cmd:
                             try:
                                 yield {"type": "tool_json", "command": cmd, "data": json.loads(body)}

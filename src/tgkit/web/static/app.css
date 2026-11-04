@@ -785,6 +785,21 @@ textarea::placeholder { color: var(--muted); }
 .warn-box p { text-wrap: pretty; }
 .sub-sec { display: grid; gap: 10px; padding-top: 4px; }
 .sub-sec h4 { font-size: 14px; font-weight: 600; padding-top: 6px; }
+.site-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.site-list:empty { display: none; }
+.site-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 4px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.site-add { align-items: flex-end; }
 .conn-target { flex: 2; }
 .conn-list { display: grid; gap: 10px; }
 .conn-list:empty { display: none; }

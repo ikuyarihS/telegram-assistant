@@ -144,7 +144,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       installingGpt: "Installing GPT. This takes about a minute...",
       gptInstalled: "GPT is installed. Now press Sign in to ChatGPT.",
       secBrowser: "Your browser (WhatsApp, Zalo, ...)",
-      browserWhat: "Let the AI read chats you have open in your own Chrome or Edge, such as WhatsApp Web or Zalo. It opens a chat and reads it; it never types or sends.",
+      browserWhat: "Let the AI read chats you have open in your own Chrome or Edge, such as WhatsApp Web or Zalo. It opens only the sites on your list and reads them. It cannot type, press Send or open a link that sends or shares a message.",
       browserWarn: "The AI can then read the pages you are signed in to. WhatsApp and Zalo do not officially allow other programs to read chats and could limit an account that does it: use it gently, at your own risk. Opening a chat marks it as read on your phone too.",
       browserAccept: "I read this and understand it",
       browserOn: "Let the AI read your browser",
@@ -166,6 +166,18 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       bridgeToken: "Extension token (optional)",
       bridgeTokenHelp: "The extension's page shows a token. Paste it here so Chrome stops asking each time.",
       storeOpened: "The store page opened in your browser. Press Add to Chrome there.",
+      sitesTitle: "Sites the AI may open",
+      sitesHelp: "The AI opens only these sites. It never opens a page on this computer or your home network, and never a link that sends or shares a message.",
+      siteAddLabel: "Add a site", siteAddPh: "for example chat.zalo.me", siteAdd: "Add",
+      siteRemove: "Remove", siteRemoveLabel: (s) => `Remove ${s} from the list`,
+      sitesEmpty: "No sites: the AI opens no page. Add one below.",
+      siteAdded: (s) => `Added ${s}. The AI may open it from the next answer.`,
+      siteRemoved: (s) => `Removed ${s}.`,
+      extConnected: (who, at) => `${who}: the extension answered${at ? ` (${at})` : ""}.`,
+      extNotConnected: (who) => `${who}: the extension did not answer the last time. Open Chrome or Edge, check that the extension is on, and ask again.`,
+      extNotChecked: (who) => `${who}: not checked yet. It shows here after the AI first uses your browser.`,
+      browserDamagedNow: "The connector settings file is damaged, so the browser is off and no connector is used. Your next change here starts them fresh, and the damaged file is kept as a copy in your data folder.",
+      browserDamagedCopy: (f) => `The connector settings file was damaged. It is kept as ${f} in your data folder, and the settings started fresh.`,
       secConn: "Add a connector (advanced)",
       connWhat: "A connector (MCP server) lets the AI read another app, such as notes or a calendar. Only the tools you tick are used, and never a tool that changes something.",
       connName: "Name", connNamePh: "Notes", connTarget: "Command or web address",
@@ -386,7 +398,7 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       installingGpt: "Đang cài GPT. Mất khoảng một phút...",
       gptInstalled: "Đã cài GPT. Giờ bấm Đăng nhập ChatGPT.",
       secBrowser: "Trình duyệt của bạn (WhatsApp, Zalo, ...)",
-      browserWhat: "Cho AI đọc các cuộc trò chuyện bạn đang mở trong Chrome hoặc Edge của mình, như WhatsApp Web hay Zalo. AI mở một cuộc trò chuyện và đọc; không bao giờ gõ hay gửi.",
+      browserWhat: "Cho AI đọc các cuộc trò chuyện bạn đang mở trong Chrome hoặc Edge của mình, như WhatsApp Web hay Zalo. AI chỉ mở các trang trong danh sách của bạn và đọc. AI không gõ được, không bấm Gửi được và không mở được đường dẫn gửi hay chia sẻ tin nhắn.",
       browserWarn: "Khi bật, AI đọc được các trang bạn đang đăng nhập. WhatsApp và Zalo không chính thức cho chương trình khác đọc tin nhắn và có thể hạn chế tài khoản làm vậy: hãy dùng nhẹ nhàng, tự chịu rủi ro. Mở một cuộc trò chuyện cũng đánh dấu đã đọc trên điện thoại.",
       browserAccept: "Tôi đã đọc và hiểu điều này",
       browserOn: "Cho AI đọc trình duyệt của bạn",
@@ -408,6 +420,18 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       bridgeToken: "Mã của tiện ích (không bắt buộc)",
       bridgeTokenHelp: "Trang của tiện ích có hiện một mã. Dán vào đây để Chrome không hỏi lại mỗi lần.",
       storeOpened: "Trang cửa hàng đã mở trong trình duyệt. Bấm Thêm vào Chrome ở đó.",
+      sitesTitle: "Trang AI được mở",
+      sitesHelp: "AI chỉ mở các trang này. AI không bao giờ mở trang trên máy tính này hay mạng trong nhà, và không bao giờ mở đường dẫn gửi hoặc chia sẻ tin nhắn.",
+      siteAddLabel: "Thêm trang", siteAddPh: "ví dụ chat.zalo.me", siteAdd: "Thêm",
+      siteRemove: "Bỏ", siteRemoveLabel: (s) => `Bỏ ${s} khỏi danh sách`,
+      sitesEmpty: "Chưa có trang nào: AI không mở trang nào. Thêm một trang ở dưới.",
+      siteAdded: (s) => `Đã thêm ${s}. AI được mở trang này từ câu trả lời tiếp theo.`,
+      siteRemoved: (s) => `Đã bỏ ${s}.`,
+      extConnected: (who, at) => `${who}: tiện ích đã phản hồi${at ? ` (${at})` : ""}.`,
+      extNotConnected: (who) => `${who}: lần trước tiện ích không phản hồi. Mở Chrome hoặc Edge, kiểm tra tiện ích đang bật, rồi hỏi lại.`,
+      extNotChecked: (who) => `${who}: chưa kiểm tra. Sẽ hiện ở đây sau lần đầu AI dùng trình duyệt của bạn.`,
+      browserDamagedNow: "Tệp cài đặt kết nối bị hỏng, nên trình duyệt đang tắt và không dùng kết nối nào. Lần thay đổi tiếp theo ở đây sẽ bắt đầu lại, và tệp hỏng được giữ một bản trong thư mục dữ liệu.",
+      browserDamagedCopy: (f) => `Tệp cài đặt kết nối đã bị hỏng. Bản cũ được giữ là ${f} trong thư mục dữ liệu, và cài đặt đã bắt đầu lại.`,
       secConn: "Thêm kết nối (nâng cao)",
       connWhat: "Một kết nối (máy chủ MCP) cho AI đọc một ứng dụng khác, như ghi chú hay lịch. Chỉ các công cụ bạn đánh dấu mới được dùng, và không bao giờ dùng công cụ thay đổi dữ liệu.",
       connName: "Tên", connNamePh: "Ghi chú", connTarget: "Lệnh hoặc địa chỉ web",
@@ -565,6 +589,10 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     browserAccept: $("browserAccept"), browserOn: $("browserOn"), browserSetup: $("browserSetup"),
     browserClaudeExt: $("browserClaudeExt"), bridgeDot: $("bridgeDot"), bridgeText: $("bridgeText"),
     bridgeInstall: $("bridgeInstall"), bridgeExt: $("bridgeExt"), bridgeToken: $("bridgeToken"),
+    siteList: $("siteList"), siteInput: $("siteInput"), siteAdd: $("siteAdd"),
+    browserDamaged: $("browserDamaged"), browserDamagedText: $("browserDamagedText"),
+    chromeDot: $("chromeDot"), chromeText: $("chromeText"), geminiExtDot: $("geminiExtDot"),
+    geminiExtText: $("geminiExtText"), gptExtDot: $("gptExtDot"), gptExtText: $("gptExtText"),
     connName: $("connName"), connTarget: $("connTarget"), connAdd: $("connAdd"), connList: $("connList"),
     modelRow: $("modelRow"), modelPick: $("modelPick"), effortField: $("effortField"), effortPick: $("effortPick"),
     usageGrid: $("usageGrid"), usageCost: $("usageCost"), limitInput: $("limitInput"), hardStop: $("hardStop"),
@@ -2017,6 +2045,38 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.bridgeText.textContent = br.installed ? t("bridgeOk", br.version) : t("bridgeMissing");
     ui.bridgeInstall.hidden = !!br.installed;
     ui.bridgeToken.placeholder = b.token_set ? "********" : "";
+    const dm = b.damaged;
+    ui.browserDamaged.hidden = !dm;
+    ui.browserDamagedText.textContent = !dm ? "" : dm.state === "now" ? t("browserDamagedNow") : t("browserDamagedCopy", dm.copy);
+    const sites = b.sites || [];
+    ui.siteList.replaceChildren(...(sites.length ? sites.map((s) => el("li", {}, el("span", {}, s),
+      el("button", { class: "btn", type: "button", "aria-label": t("siteRemoveLabel", s),
+        onclick: () => setSites({ remove: s }, t("siteRemoved", s)) }, t("siteRemove"))))
+      : [el("li", {}, el("span", {}, t("sitesEmpty")))]));
+    const st = b.status || {};
+    const when = (at) => {
+      const d = at ? new Date(at) : null;
+      return d && !isNaN(d) ? d.toLocaleString(LANG === "vi" ? "vi-VN" : undefined, { dateStyle: "short", timeStyle: "short" }) : "";
+    };
+    for (const [who, label, dot, text] of [["claude", "Claude in Chrome", ui.chromeDot, ui.chromeText],
+      ["gemini", "Gemini", ui.geminiExtDot, ui.geminiExtText], ["gpt", "GPT", ui.gptExtDot, ui.gptExtText]]) {
+      const s = st[who] || {};
+      dot.className = `state-dot ${s.state === "connected" ? "ok" : s.state === "not_connected" ? "bad" : ""}`.trim();
+      text.textContent = s.state === "connected" ? t("extConnected", label, when(s.at))
+        : s.state === "not_connected" ? t("extNotConnected", label) : t("extNotChecked", label);
+    }
+  }
+
+  async function setSites(body, note) {
+    try {
+      const r = await api("/api/connectors/browser/sites", body);
+      showBrowser(r.browser);
+      if (note) setNote(note);
+      return true;
+    } catch (e) {
+      setNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message);
+      return false;
+    }
   }
 
   function showConnectors(list) {
@@ -2094,6 +2154,16 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     .then(() => setNote(t("storeOpened"))).catch((e) => setNote(e.message));
   ui.browserClaudeExt.addEventListener("click", () => openStore("claude"));
   ui.bridgeExt.addEventListener("click", () => openStore("bridge"));
+  const addSite = async () => {
+    const s = ui.siteInput.value.trim();
+    if (!s) { ui.siteInput.focus(); return; }
+    ui.siteAdd.disabled = true;
+    try {
+      if (await setSites({ add: s }, t("siteAdded", s))) ui.siteInput.value = "";
+    } finally { ui.siteAdd.disabled = false; }
+  };
+  ui.siteAdd.addEventListener("click", addSite);
+  ui.siteInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addSite(); } });
   ui.bridgeInstall.addEventListener("click", async () => {
     ui.bridgeInstall.disabled = true;
     clearTimeout(setTimer);

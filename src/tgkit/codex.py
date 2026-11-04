@@ -57,7 +57,11 @@ GUIDE = playbook.text() + APP_RULES
 # Built-in tools switched off for every run (names from `codex features list`, 0.166.0).
 DISABLED_FEATURES = ("shell_tool", "unified_exec", "view_image", "multi_agent", "goals", "apps", "browser_use",
                      "browser_use_external", "computer_use", "image_generation", "plugins", "hooks",
-                     "tool_suggest", "sleep_tool")
+                     "tool_suggest", "sleep_tool",
+                     # Codex's own browser and automation (on by default in 0.166.0): the AI reads the
+                     # browser only through tgkit's checked bridge, never through these.
+                     "in_app_browser", "in_app_local_automation", "code_mode_host", "browser_annotation_api",
+                     "browser_use_full_cdp_access")
 # Items that mean something other than tgkit's tools ran: the run is stopped.
 FORBIDDEN_ITEMS = ("command_execution", "file_change", "web_search", "collab_tool_call")
 TARGETS = {("win32", "AMD64"): ("x86_64-pc-windows-msvc", "win32-x64"),
@@ -236,7 +240,7 @@ class CodexRunner:
     def args(self, home: Path, session: str | None, work: Path) -> list[str]:
         from . import connectors  # noqa: PLC0415
 
-        srv = mcp.server_command(home, browser=connectors.browser_on(home))
+        srv = mcp.server_command(home, browser=connectors.browser_on(home), who="gpt")
         a = list(self.cmd) + ["exec"]
         if session:
             a += ["resume", session]

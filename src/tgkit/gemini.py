@@ -128,7 +128,8 @@ def settings_for(home: Path) -> dict:
 
     browser = connectors.browser_on(home)
     tools = list(mcp.TOOLS) + (list(connectors.BROWSER_ALLOWED) if browser else [])
-    return {"mcpServers": {mcp.SERVER: {**mcp.server_command(home, browser=browser), "timeout": mcp.TIMEOUT * 1000,
+    return {"mcpServers": {mcp.SERVER: {**mcp.server_command(home, browser=browser, who="gemini"),
+                                        "timeout": mcp.TIMEOUT * 1000,
                                         "includeTools": tools}}}
 
 

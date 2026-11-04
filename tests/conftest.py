@@ -17,6 +17,11 @@ def _no_github(monkeypatch):
     """No test asks the real GitHub: an address the updater refuses (tests/test_v0210.py has a fake one)."""
     from tgkit import updater
     monkeypatch.setattr(updater, "API", "https://127.0.0.1:9/no-network-in-tests")
+    # No test asks DNS either: the browser's site check resolves names from this table.
+    monkeypatch.setenv("TGKIT_TEST_DNS", json.dumps({
+        "web.whatsapp.com": ["157.240.0.53"], "chat.zalo.me": ["49.213.95.137"], "id.zalo.me": ["49.213.95.120"],
+        "news.example.com": ["93.184.215.14"], "rebind.example.com": ["127.0.0.1"],
+        "lan.example.com": ["192.168.1.10", "93.184.215.14"]}))
 
 
 @pytest.fixture

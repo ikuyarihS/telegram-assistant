@@ -5,10 +5,14 @@ FAKE_CLAUDE_CALL='{"tool": "tasks", "args": {...}}' calls that tool of the MCP s
 in --mcp-config (started and called over stdio, as Claude Code does), when
 --allowedTools allows mcp__tgkit__<tool> and --disallowedTools does not deny it.
 FAKE_CLAUDE_SHELL=Bash|PowerShell asks for a shell command instead (FAKE_CLAUDE_CMD);
-it is denied unless FAKE_CLAUDE_IGNORE_RULES=1 (a broken CLI that says it ran it)."""
+it is denied unless FAKE_CLAUDE_IGNORE_RULES=1 (a broken CLI that says it ran it).
+PreToolUse hooks of --settings run as the real CLI runs them (a shell command, the call
+as JSON on stdin; exit 2 refuses, permissionDecision allow runs a tool outside
+--allowedTools); FAKE_HOOK_LOG gets one line per hook run."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -94,13 +98,56 @@ else:  # call["name"]: a full tool name (mcp__claude-in-chrome__computer, ...)
     params = call.get("args", {}) if call else {"query": "biên bản"}
 out({"type": "assistant", "session_id": session, "message": {"content": [
     {"type": "tool_use", "id": "toolu_1", "name": name, "input": params}]}})
+def pre_tool_hooks(tool, tool_input):
+    """Like Claude Code: the PreToolUse hooks of --settings whose matcher matches run as a
+    shell command with the call as JSON on stdin. Exit 2 refuses (stderr is the reason);
+    exit 0 with permissionDecision allow lets a tool outside --allowedTools run, deny refuses;
+    anything else decides nothing. Returns (decision or None, reason)."""
+    if "--settings" not in argv:
+        return None, ""
+    with open(argv[argv.index("--settings") + 1], encoding="utf-8") as fh:
+        conf = json.load(fh)
+    for group in (conf.get("hooks") or {}).get("PreToolUse") or []:
+        if not re.fullmatch(group.get("matcher") or ".*", tool):
+            continue
+        for h in group.get("hooks") or []:
+            payload = {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input}
+            done = subprocess.run(h["command"], shell=True, input=json.dumps(payload).encode("utf-8"),
+                                  capture_output=True, timeout=120)
+            err = done.stderr.decode("utf-8", "replace").strip()
+            if os.environ.get("FAKE_HOOK_LOG"):
+                with open(os.environ["FAKE_HOOK_LOG"], "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"tool": tool, "code": done.returncode, "err": err}) + "\n")
+            if done.returncode == 2:
+                return "deny", err
+            if done.returncode == 0:
+                try:
+                    out_ = json.loads(done.stdout.decode("utf-8") or "{}")
+                except ValueError:
+                    out_ = {}
+                decision = (out_.get("hookSpecificOutput") or {}).get("permissionDecision")
+                if decision in ("allow", "deny"):
+                    return decision, err
+    return None, ""
+
+
 allowed = name in flag_values("--allowedTools") and name not in flag_values("--disallowedTools")
 if name.startswith("mcp__claude-in-chrome__") and "--chrome" not in argv:
     allowed = False  # Claude in Chrome's tools exist only with --chrome
+hook_says, hook_why = (None, "") if not allowed and name in flag_values("--disallowedTools") else \
+    pre_tool_hooks(name, params)
+if name.startswith("mcp__claude-in-chrome__") and "--chrome" not in argv:
+    hook_says = None
+if hook_says == "deny":
+    allowed = False
+elif hook_says == "allow" and name not in flag_values("--disallowedTools") and (
+        not name.startswith("mcp__claude-in-chrome__") or "--chrome" in argv):
+    allowed = True
 if os.environ.get("FAKE_CLAUDE_IGNORE_RULES"):
     body, failed = "done", False
 elif not allowed:
-    body, failed = f"Permission to use {name} has been denied.", True
+    body, failed = (f"PreToolUse:{name} hook error: {hook_why}" if hook_says == "deny"
+                    else f"Permission to use {name} has been denied."), True
 elif name.startswith("mcp__claude-in-chrome__"):  # Claude in Chrome reading a page
     body, failed = os.environ.get("FAKE_PAGE", "WhatsApp Web: Lan: hello"), False
     if os.environ.get("FAKE_CHROME_LOG"):
