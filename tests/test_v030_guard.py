@@ -60,7 +60,15 @@ OFF_URLS = ("https://wa.me/84900000000?text=I%20quit", "https://news.example.com
             "https://web.whatsapp.com/?go=%EF%BD%85vil%EF%BC%8Ecom", "https://web.whatsapp.com/?go=me@evil.com",
             "https://web.whatsapp.com/?go=%5C%5Cevil.com", "https://web.whatsapp.com/?go=10.0.0.1",
             "https://web.whatsapp.com/?go=evil.com:8080", "https://web.whatsapp.com/?go=[::1]",
-            "https://web.whatsapp.com/?a=1&b=xn--80ak6aa92e.com", "https://web.whatsapp.com/#x=1;go=evil.com")
+            "https://web.whatsapp.com/?a=1&b=xn--80ak6aa92e.com", "https://web.whatsapp.com/#x=1;go=evil.com",
+            # gate round 3 B-1/B-2: a numeric or short IPv4 host, and localhost with no dot
+            "https://web.whatsapp.com/?go=127.1", "https://web.whatsapp.com/?go=2130706433",
+            "https://web.whatsapp.com/?go=0x7f000001", "https://web.whatsapp.com/?go=0177.0.0.1",
+            "https://web.whatsapp.com/?go=0x7f.1", "https://web.whatsapp.com/#0x7f.0.0.1:80/x",
+            "https://web.whatsapp.com/?go=localhost", "https://web.whatsapp.com/?go=localhost:8765/api/state",
+            "https://web.whatsapp.com/#localhost:8765", "https://web.whatsapp.com/?go=LOCALHOST.",
+            "https://web.whatsapp.com/?go=a.localhost", "https://web.whatsapp.com/?go=http:localhost",
+            "https://web.whatsapp.com/?go=me@router", "https://web.whatsapp.com/?go=router:8080/admin")
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +111,9 @@ def test_only_the_sites_on_the_list_and_never_a_send_link():
     for url in ("https://web.whatsapp.com/", "http://web.whatsapp.com", "https://WEB.WhatsApp.com./",
                 "https://chat.zalo.me/", "https://web.whatsapp.com:443/", "https://chat.zalo.me/?lang=vi",
                 "https://web.whatsapp.com/#chat", "https://web.whatsapp.com/?v=2.3000.1",
-                "https://chat.zalo.me/?next=web.whatsapp.com/x"):  # a site on the list is not another host
+                "https://chat.zalo.me/?next=web.whatsapp.com/x",  # a site on the list is not another host
+                "https://chat.zalo.me/?page=2&t=12:30", "https://web.whatsapp.com/#chat/84900000000",
+                "https://web.whatsapp.com/?n=0177"):  # short numbers stay numbers
         assert connectors.url_check(url) == url
     assert connectors.url_check("https://news.example.com/a", ["news.example.com"])
     assert connectors.site_of("x.chat.zalo.me", ["chat.zalo.me"]) == "chat.zalo.me"
@@ -506,6 +516,26 @@ def test_a_hook_that_cannot_run_turns_claudes_browser_off(home, chrome, monkeypa
     monkeypatch.setattr(mcp, "python_exe", real)  # the hook runs again: checked again, browser back
     assert claude.hook_problem(home) is None and "--chrome" in run.args(home, None, None)
     assert connectors.browser_view(home)["status"]["claude"]["state"] == "not_checked"
+
+
+@pytest.mark.parametrize("fault", [OSError("transient"), subprocess.TimeoutExpired("python", 60)])
+def test_a_hook_check_that_failed_once_is_checked_again(home, fault, monkeypatch):
+    """Gate round 3 B-3/B-4: only a pass is kept, so a hook that failed once (a busy disk,
+    a slow start) or was fixed by running the installer again brings the browser back."""
+    connectors.set_browser(home, True, accept=True)
+    (Path(home) / "app" / "claude" / "chrome-hook-check.json").unlink(missing_ok=True)  # no pass yet
+    real = subprocess.run
+
+    def broken(*a, **k):
+        raise fault
+    monkeypatch.setattr(subprocess, "run", broken)
+    assert claude.hook_problem(home)
+    assert connectors.browser_view(home)["status"]["claude"]["state"] == "hook_failed"
+    monkeypatch.setattr(subprocess, "run", real)
+    assert claude.hook_problem(home) is None
+    assert connectors.browser_view(home)["status"]["claude"]["state"] != "hook_failed"
+    monkeypatch.setattr(subprocess, "run", broken)  # a pass is kept: not run again
+    assert claude.hook_problem(home) is None
 
 
 def _git_bash() -> str | None:
