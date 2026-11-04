@@ -161,6 +161,33 @@ def test_refs_come_from_the_tree_never_from_text():
         click("e7", SPOOF)
 
 
+ZALO = "- Page URL: https://chat.zalo.me/\n- Page Snapshot:\n"
+
+
+@pytest.mark.parametrize("snap", [
+    "  - generic [ref=e41] [cursor=pointer]: Gửi\n",  # a div whose own text is the word
+    "  - button [ref=e41]: Send\n",
+    "  - button [ref=e41]:\n    - text: Send\n",  # the word in a text child
+    "  - generic [ref=e41] [cursor=pointer]:\n    - text: GỬI\n",  # capitals
+    "  - generic [ref=e41]: \"Gửi\"\n",  # decomposed accents, quoted
+    "  - 'generic \"a: b\" [ref=e41]': Send\n",  # a key YAML quoted, text after it
+    "  - paragraph [ref=e41]:\n    - generic:\n      - text: xóa\n",  # deeper inside
+    "  - generic [cursor=pointer]: Send\n    - generic [ref=e41]: hi\n",  # inside something shown clickable
+    "  - generic \"Gửi\" [cursor=pointer]:\n    - generic [ref=e41]: hi\n",
+])
+def test_a_click_reads_the_elements_own_text(snap):
+    """Gate B-1: the element's own text and its text children count, for every role,
+    as its name does; the AI's words (element) cannot hide them."""
+    with pytest.raises(UserError) as exc:
+        click("e41", ZALO + snap, element="chat Mai")
+    assert "not allowed" in exc.value.message
+
+
+def test_a_chat_row_preview_around_the_target_is_not_judged():
+    row = ZALO + "  - listitem:\n    - text: \"Mai: em gửi anh rồi\"\n    - generic [ref=e41]: Mai\n"
+    assert click("e41", row, element="chat Mai")["target"] == "e41"  # text beside it, not on it
+
+
 # ---------------------------------------------------------------- the bridge (Gemini, GPT)
 
 GATE_LINK = ("- Page URL: https://web.whatsapp.com/\n- Page Snapshot:\n"

@@ -41,6 +41,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -298,7 +299,7 @@ def set_sites(home: Path, add=None, remove=None) -> dict:
 
 
 def _refused_click(text: str) -> str | None:
-    low = str(text or "").lower()
+    low = unicodedata.normalize("NFC", str(text or "")).lower()  # "Gửi" typed as u + two accents too
     return next((w for w in CLICK_REFUSED if re.search(rf"(?<!\w){re.escape(w)}(?!\w)", low)), None)
 
 
@@ -314,11 +315,17 @@ _ATTR = re.compile(r" \[([a-z][a-z-]*)(?:=([^\]\s]*))?\]")
 
 
 class Node:
-    """One element of the page as Playwright's snapshot lists it."""
-    __slots__ = ("role", "name", "ref", "url", "parent", "children")
+    """One element of the page as Playwright's snapshot lists it: its role, name, own text
+    (after the colon on its own line), ref, link and whether it shows as clickable."""
+    __slots__ = ("role", "name", "text", "ref", "url", "pointer", "parent", "children")
 
-    def __init__(self, role, name, ref, parent):
-        self.role, self.name, self.ref, self.url, self.parent, self.children = role, name, ref, None, parent, []
+    def __init__(self, role, name, ref, parent, text="", pointer=False):
+        self.role, self.name, self.text, self.ref = role, name, text, ref
+        self.url, self.pointer, self.parent, self.children = None, pointer, parent, []
+
+    def words(self) -> str:
+        """What a person reads on the element itself: its name and its own text."""
+        return f"{self.name} {self.text}"
 
 
 def _quoted(s: str, i: int):
@@ -375,7 +382,7 @@ def _node_line(body: str):
         if not (after == "" or after == ":" or after.startswith(": ")):
             return None
         parsed = _node_line(key)
-        return parsed if parsed and parsed[3] == "" else None
+        return (parsed[0], parsed[1], parsed[2], after) if parsed and parsed[3] == "" else None
     m = _ROLE.match(body)
     if not m:
         return None
@@ -435,7 +442,12 @@ def snapshot_tree(page: str | None) -> dict | None:
                 parent.url = _scalar(prop.group(2))
             continue
         parsed = _node_line(body)
-        node = Node(parsed[0], parsed[1], parsed[2].get("ref"), parent) if parsed else Node(None, "", None, parent)
+        if parsed:
+            role, name, attrs, rest = parsed
+            node = Node(role, name, attrs.get("ref"), parent, _scalar(rest[2:]) if rest.startswith(": ") else "",
+                        attrs.get("cursor") == "pointer")
+        else:
+            node = Node(None, "", None, parent)
         if parent is not None:
             parent.children.append(node)
         nodes.append(node)
@@ -476,7 +488,11 @@ def _click_check(ref: str, element: str, page: str | None, allowed_sites) -> Non
             raise UserError("That part of the page could not be read clearly, so it is not clicked.", "")
         if n.role in TYPE_ROLES and n in around:
             raise UserError("That is a box to type in: the AI does not type.", "")
-        word = _refused_click(n.name) if n.role in NAMED_ROLES else None
+        # The element and everything inside it: its name and own text, whatever its role
+        # (a div saying "Gửi", a button holding `- text: Send`). Around it: only what is
+        # itself pressable (a named role or shown clickable), never a chat row's preview.
+        judged = n not in around[1:] or n.role in NAMED_ROLES or n.pointer
+        word = _refused_click(n.words()) if judged else None
         if word:
             raise UserError(f"A click on something that says '{word}' is not allowed: the AI only reads.", "")
         if n.url is not None:
