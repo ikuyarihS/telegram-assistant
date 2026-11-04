@@ -37,6 +37,7 @@ import re
 import shlex
 import shutil
 import socket
+import stringprep
 import subprocess
 import sys
 import threading
@@ -224,7 +225,12 @@ def _carries_link(u, sites=()) -> bool:
     text = unicodedata.normalize("NFKC", unquote_plus(unquote_plus(f"{u.query}#{u.fragment}"))).lower()
     for dot in ("。", "．", "｡"):  # the dots IDNA reads as "."
         text = text.replace(dot, ".")
-    text = re.sub(r"[\t\n\r]", "", text)  # Chrome drops these from an address: ev<TAB>il.com is evil.com
+    # Drop every sign an address reader skips: Chrome drops TAB/CR/LF, and IDNA maps the
+    # invisible ones to nothing (soft hyphen, variation selectors, U+034F, U+180B..D, zero
+    # widths), so evil.c<soft hyphen>om is evil.com. Any format, control or combining
+    # mark goes, not a list of them: a sign missing from a list would hide the host.
+    text = "".join(ch for ch in text if not (stringprep.in_table_b1(ch)
+                                             or unicodedata.category(ch) in ("Cc", "Cf", "Mn", "Me")))
     if "://" in text or re.search(r"[/\\]{2}", text):  # a URL, or //host and \\host anywhere
         return True
     return _names_a_host(text, sites)

@@ -719,3 +719,17 @@ def test_the_window_has_the_new_strings_in_both_languages():
     bad = re.compile("[\u2013\u2014]")
     for rel in ("tests/test_v030_guard.py", "tests/fake_claude.py", "tests/conftest.py", "src/tgkit/claude.py"):
         assert not bad.search((ROOT / rel).read_text(encoding="utf-8")), rel
+
+
+def test_a_host_split_by_a_sign_idna_drops_is_still_found():
+    """Gate round 4 B-1..B-3: soft hyphen, variation selector and the other code points
+    IDNA maps to nothing join a host back together (evil.c<U+00AD>om is evil.com)."""
+    from tgkit import connectors as c
+    from tgkit.errors import UserError
+
+    for sign in ("%C2%AD", "%EF%B8%80", "%CD%8F", "%E1%A0%8B", "%E2%80%8B", "%E2%81%A0", "%EF%BB%BF"):
+        for where in ("?next=evil.c{}om", "#evil.c{}om"):
+            url = "https://chat.zalo.me/" + where.format(sign)
+            with pytest.raises(UserError):
+                c.url_check(url, dns=False)
+    assert c.url_check("https://chat.zalo.me/?q=chat", dns=False)
