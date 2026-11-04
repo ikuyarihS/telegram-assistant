@@ -46,7 +46,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urljoin, urlparse, urlsplit
+from urllib.parse import parse_qs, unquote, unquote_plus, urljoin, urlparse, urlsplit
 
 from . import __version__
 from .errors import UserError, localize
@@ -219,12 +219,13 @@ def _names_a_host(token: str, sites=()) -> bool:
 def _carries_link(u, sites=()) -> bool:
     """A query or fragment holding another address (an open redirect to another site):
     a URL, or any value that reads as a host not on the user's list (gate 2 NOTE 3)."""
-    text = unicodedata.normalize("NFKC", unquote(unquote(f"{u.query}#{u.fragment}"))).lower()
+    # Decoded as a server reads a form value ("+" is a space, as parse_qs has it), twice.
+    text = unicodedata.normalize("NFKC", unquote_plus(unquote_plus(f"{u.query}#{u.fragment}"))).lower()
     for dot in ("。", "．", "｡"):  # the dots IDNA reads as "."
         text = text.replace(dot, ".")
-    if "://" in text or re.search(r"(?:^|[=&#?])(?:https?:)?//", text):
+    if "://" in text or re.search(r"(?:^|[=&#?;,|+\s\"'()<>])(?:https?:)?//", text):
         return True
-    return any(_names_a_host(token, sites) for token in re.split(r"[&;=?#,|\s]+", text) if token)
+    return any(_names_a_host(token, sites) for token in re.split(r"[&;=?#,|+\s\"'()<>]+", text) if token)
 
 
 def url_check(url, sites=None, send: bool = True, dns: bool = True) -> str:

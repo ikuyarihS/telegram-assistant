@@ -262,7 +262,8 @@ def hook_problem(home: Path) -> str | None:
     probe = {"hook_event_name": "PreToolUse", "tool_name": "tgkit_self_check", "tool_input": {}}
     try:
         done = subprocess.run([entry["command"], *entry["args"]], input=json.dumps(probe).encode("utf-8"),
-                              capture_output=True, timeout=entry["timeout"], env=ai.run_env(Path(home)),
+                              # a failure is checked again per answer: a short wait, not the hook's 60 s
+                              capture_output=True, timeout=min(entry["timeout"], 20), env=ai.run_env(Path(home)),
                               creationflags=NO_WINDOW)
         err = done.stderr.decode("utf-8", "replace").strip()
         ok = done.returncode == 2 and connectors.HOOK_ONLY in err

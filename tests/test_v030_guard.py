@@ -68,7 +68,12 @@ OFF_URLS = ("https://wa.me/84900000000?text=I%20quit", "https://news.example.com
             "https://web.whatsapp.com/?go=localhost", "https://web.whatsapp.com/?go=localhost:8765/api/state",
             "https://web.whatsapp.com/#localhost:8765", "https://web.whatsapp.com/?go=LOCALHOST.",
             "https://web.whatsapp.com/?go=a.localhost", "https://web.whatsapp.com/?go=http:localhost",
-            "https://web.whatsapp.com/?go=me@router", "https://web.whatsapp.com/?go=router:8080/admin")
+            "https://web.whatsapp.com/?go=me@router", "https://web.whatsapp.com/?go=router:8080/admin",
+            # gate round 4 B-1: "+" is a space in a form value; a host in quotes or brackets
+            "https://chat.zalo.me/?next=+evil.com", "https://chat.zalo.me/?next=evil.com+",
+            "https://chat.zalo.me/?a=1&next=+10.0.0.1", "https://chat.zalo.me/?next=%2Bevil.com",
+            "https://chat.zalo.me/?next=%22evil.com%22", "https://chat.zalo.me/?next='evil.com'",
+            "https://chat.zalo.me/#(evil.com)", "https://chat.zalo.me/?next=<localhost:8765>")
 
 
 @pytest.fixture(autouse=True)
