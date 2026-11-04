@@ -177,23 +177,22 @@ def _addresses(host: str) -> list:
     return out
 
 
-# A value that names a host, with or without slashes: evil.com/?q=chat, //evil.com,
-# \\evil.com, user@evil.com, evil.com:8080, 10.0.0.1, 127.1, 0x7f000001, [::1], localhost:8765.
-_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:")
-_HOSTLIKE = re.compile(r"^[/\\]*(?:([^/\\?#@\s]*)@)?(\[[0-9a-f:.]+\]|[\w-]+(?:\.[\w-]+)*)\.?"
-                       r"(:\d*)?(?:[/\\?#]|$)")
+# A host name or number anywhere in a value, whatever is around it: every run of the
+# signs a host is made of (letters, digits, "-", "."), so [evil.com], *evil.com, `evil.com`,
+# evil.com!, me@evil.com, localhost:8765, 127.1, 0x7f000001 are all found. Not split on a
+# list of separators: a sign missing from such a list would hide the host (gate round 5).
+_HOST_RUN = re.compile(r"[\w-]+(?:\.[\w-]+)*\.?")
+_V6 = re.compile(r"\[[0-9a-f.]*:[0-9a-f:.]*\]")
 
 
-def _names_a_host(token: str, sites=()) -> bool:
-    """Does this value read as a host off the list? Read with and without a leading
-    scheme (localhost:8765 is a host and a port, http:evil.com a scheme and a host)."""
-    for text in {token, _SCHEME.sub("", token)}:
-        m = _HOSTLIKE.match(text)
-        if not m:
+def _names_a_host(text: str, sites=()) -> bool:
+    """Does any part of this text read as a host off the list?"""
+    if _V6.search(text):
+        return True
+    for m in _HOST_RUN.finditer(text):
+        host = m.group().rstrip(".")
+        if not host:
             continue
-        user, host, port = m.groups()
-        if host.startswith("["):
-            return True
         if host == "localhost" or host.endswith(".localhost"):
             return True
         try:
@@ -206,8 +205,10 @@ def _names_a_host(token: str, sites=()) -> bool:
             if "." in host or host.startswith("0x") or int(ip) >= 256 ** 3:
                 return True
             continue
-        if "." not in host:  # one word: a host only with a user name or a port (router:8080)
-            if (user is not None or port) and re.search(r"[^\W\d_]", host):
+        if "." not in host:  # one word: a host only with a user name or a port (me@router, router:8080)
+            user = text[m.start() - 1:m.start()] == "@"
+            port = re.match(r":\d", text[m.end():m.end() + 2])
+            if (user or port) and re.search(r"[^\W\d_]", host):
                 return True
             continue
         last = host.rsplit(".", 1)[-1]
@@ -223,9 +224,10 @@ def _carries_link(u, sites=()) -> bool:
     text = unicodedata.normalize("NFKC", unquote_plus(unquote_plus(f"{u.query}#{u.fragment}"))).lower()
     for dot in ("。", "．", "｡"):  # the dots IDNA reads as "."
         text = text.replace(dot, ".")
-    if "://" in text or re.search(r"(?:^|[=&#?;,|+\s\"'()<>])(?:https?:)?//", text):
+    text = re.sub(r"[\t\n\r]", "", text)  # Chrome drops these from an address: ev<TAB>il.com is evil.com
+    if "://" in text or re.search(r"[/\\]{2}", text):  # a URL, or //host and \\host anywhere
         return True
-    return any(_names_a_host(token, sites) for token in re.split(r"[&;=?#,|+\s\"'()<>]+", text) if token)
+    return _names_a_host(text, sites)
 
 
 def url_check(url, sites=None, send: bool = True, dns: bool = True) -> str:

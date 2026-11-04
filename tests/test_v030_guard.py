@@ -73,7 +73,16 @@ OFF_URLS = ("https://wa.me/84900000000?text=I%20quit", "https://news.example.com
             "https://chat.zalo.me/?next=+evil.com", "https://chat.zalo.me/?next=evil.com+",
             "https://chat.zalo.me/?a=1&next=+10.0.0.1", "https://chat.zalo.me/?next=%2Bevil.com",
             "https://chat.zalo.me/?next=%22evil.com%22", "https://chat.zalo.me/?next='evil.com'",
-            "https://chat.zalo.me/#(evil.com)", "https://chat.zalo.me/?next=<localhost:8765>")
+            "https://chat.zalo.me/#(evil.com)", "https://chat.zalo.me/?next=<localhost:8765>",
+            # gate round 5 B-1: any sign around or before the host (not a list of separators)
+            "https://chat.zalo.me/?next=%5Bevil.com%5D", "https://chat.zalo.me/?next=%7Bevil.com%7D",
+            "https://chat.zalo.me/?next=%60evil.com%60", "https://chat.zalo.me/?next=*evil.com",
+            "https://chat.zalo.me/?next=!evil.com", "https://chat.zalo.me/?next=evil.com!",
+            "https://chat.zalo.me/?next=$evil.com", "https://chat.zalo.me/?next=:evil.com",
+            "https://chat.zalo.me/?next=~evil.com", "https://chat.zalo.me/?next=evil.com%00",
+            "https://chat.zalo.me/?next=ev%09il.com", "https://chat.zalo.me/?next=*//router",
+            "https://chat.zalo.me/?next=%5C%5Crouter", "https://chat.zalo.me/?next=^127.1^",
+            "https://chat.zalo.me/?next=x%E2%80%A4evil%E2%80%A4com", "https://chat.zalo.me/#!localhost")
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +127,8 @@ def test_only_the_sites_on_the_list_and_never_a_send_link():
                 "https://web.whatsapp.com/#chat", "https://web.whatsapp.com/?v=2.3000.1",
                 "https://chat.zalo.me/?next=web.whatsapp.com/x",  # a site on the list is not another host
                 "https://chat.zalo.me/?page=2&t=12:30", "https://web.whatsapp.com/#chat/84900000000",
-                "https://web.whatsapp.com/?n=0177"):  # short numbers stay numbers
+                "https://web.whatsapp.com/?n=0177",  # short numbers stay numbers
+                "https://chat.zalo.me/?q=a+b", "https://chat.zalo.me/?q=hi%21%20(ok)*"):
         assert connectors.url_check(url) == url
     assert connectors.url_check("https://news.example.com/a", ["news.example.com"])
     assert connectors.site_of("x.chat.zalo.me", ["chat.zalo.me"]) == "chat.zalo.me"
