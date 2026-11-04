@@ -61,7 +61,7 @@
       </div>
       <fieldset class="mode-pick">
         <legend data-i18n="answersBy">Answers</legend>
-        <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude or Gemini when available</span></label>
+        <label><input type="radio" name="mode" value="auto" checked> <span data-i18n="auto">Claude, Gemini or GPT when available</span></label>
         <label><input type="radio" name="mode" value="offline"> <span data-i18n="offline">Telegram Assistant only</span></label>
       </fieldset>
       <p class="mode-note" id="modeNote"></p>
@@ -140,6 +140,7 @@
         <label><input type="radio" name="ai" value="auto"> <span data-i18n="aiAutoPick">Automatic</span></label>
         <label><input type="radio" name="ai" value="claude"> <span>Claude</span></label>
         <label><input type="radio" name="ai" value="gemini"> <span>Gemini</span></label>
+        <label><input type="radio" name="ai" value="gpt"> <span>GPT</span></label>
         <label><input type="radio" name="ai" value="off"> <span data-i18n="aiOff">Off</span></label>
       </fieldset>
       <p class="field-help" id="aiNote" data-i18n="aiHelp">Who writes the answers. Off: Telegram Assistant answers by itself, with its own rules.</p>
@@ -178,6 +179,74 @@
         <button class="btn btn-primary" id="geminiLogin" type="button" data-i18n="loginGemini" hidden>Sign in to Google</button>
         <button class="btn" id="geminiCheck" type="button" data-i18n="checkAgain">Check again</button>
       </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secGpt">
+      <h3 id="secGpt">GPT</h3>
+      <p class="field-help" data-i18n="gptWhat">For a ChatGPT account (Plus, Pro, Business), instead of Claude.</p>
+      <p class="state-line" id="gptState"><span class="state-dot" id="gptDot"></span><span id="gptStateText" data-i18n="checking">Checking...</span></p>
+      <ol class="fix-steps" id="gptSteps" hidden></ol>
+      <div class="set-actions">
+        <button class="btn btn-primary" id="gptNode" type="button" data-i18n="installNode" hidden>Install Node.js</button>
+        <button class="btn btn-primary" id="gptInstall" type="button" data-i18n="installGpt" hidden>Install GPT</button>
+        <button class="btn btn-primary" id="gptLogin" type="button" data-i18n="loginGpt" hidden>Sign in to ChatGPT</button>
+        <button class="btn" id="gptCheck" type="button" data-i18n="checkAgain">Check again</button>
+      </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secBrowser">
+      <h3 id="secBrowser" data-i18n="secBrowser">Your browser (WhatsApp, Zalo, ...)</h3>
+      <p class="field-help" data-i18n="browserWhat">Let the AI read chats you have open in your own Chrome or Edge, such as WhatsApp Web or Zalo. It opens a chat and reads it; it never types or sends.</p>
+      <div class="warn-box">
+        <p data-i18n="browserWarn">The AI can then read the pages you are signed in to. WhatsApp and Zalo do not officially allow other programs to read chats and could limit an account that does it: use it gently, at your own risk. Opening a chat marks it as read on your phone too.</p>
+        <label class="check"><input type="checkbox" id="browserAccept"> <span data-i18n="browserAccept">I read this and understand it</span></label>
+      </div>
+      <label class="check"><input type="checkbox" id="browserOn"> <span data-i18n="browserOn">Let the AI read your browser</span></label>
+      <div class="sub-sec" id="browserSetup" hidden>
+        <h4 data-i18n="browserClaude">When Claude answers</h4>
+        <ol class="fix-steps">
+          <li data-i18n="browserClaude1">Press Get Claude in Chrome and add it to Chrome or Edge.</li>
+          <li data-i18n="browserClaude2">Open it once and sign in with the same Claude account.</li>
+        </ol>
+        <div class="set-actions">
+          <button class="btn" id="browserClaudeExt" type="button" data-i18n="browserClaudeExt">Get Claude in Chrome</button>
+        </div>
+        <h4 data-i18n="browserOther">When Gemini or GPT answers</h4>
+        <p class="state-line"><span class="state-dot" id="bridgeDot"></span><span id="bridgeText" data-i18n="checking">Checking...</span></p>
+        <ol class="fix-steps">
+          <li data-i18n="browserOther1">Press Install the browser helper (about a minute; needs Node.js, see Gemini or GPT above).</li>
+          <li data-i18n="browserOther2">Press Get Playwright Extension and add it to Chrome or Edge.</li>
+          <li data-i18n="browserOther3">The first time the AI uses it, Chrome asks which tab to share: pick it and press Allow.</li>
+        </ol>
+        <div class="set-actions">
+          <button class="btn btn-primary" id="bridgeInstall" type="button" data-i18n="bridgeInstall" hidden>Install the browser helper</button>
+          <button class="btn" id="bridgeExt" type="button" data-i18n="bridgeExt">Get Playwright Extension</button>
+        </div>
+        <label class="field">
+          <span class="field-label" data-i18n="bridgeToken">Extension token (optional)</span>
+          <input id="bridgeToken" type="password" spellcheck="false" autocomplete="off" aria-describedby="bridgeTokenHelp">
+        </label>
+        <p class="field-help" id="bridgeTokenHelp" data-i18n="bridgeTokenHelp">The extension's page shows a token. Paste it here so Chrome stops asking each time.</p>
+      </div>
+    </section>
+
+    <section class="set-sec" aria-labelledby="secConn">
+      <h3 id="secConn" data-i18n="secConn">Add a connector (advanced)</h3>
+      <p class="field-help" data-i18n="connWhat">A connector (MCP server) lets the AI read another app, such as notes or a calendar. Only the tools you tick are used, and never a tool that changes something.</p>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label" data-i18n="connName">Name</span>
+          <input id="connName" type="text" spellcheck="false" autocomplete="off" data-i18n-ph="connNamePh" placeholder="Notes">
+        </label>
+        <label class="field conn-target">
+          <span class="field-label" data-i18n="connTarget">Command or web address</span>
+          <input id="connTarget" type="text" spellcheck="false" autocomplete="off" placeholder="npx -y @modelcontextprotocol/server-memory">
+        </label>
+      </div>
+      <div class="set-actions">
+        <button class="btn" id="connAdd" type="button" data-i18n="connAdd">Add and check its tools</button>
+      </div>
+      <div class="conn-list" id="connList"></div>
     </section>
 
     <section class="set-sec" aria-labelledby="secUsage">

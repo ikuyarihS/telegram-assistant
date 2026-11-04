@@ -38,6 +38,18 @@ from .store import atomic_write
 SHELLS = ("Bash", "PowerShell")
 ALLOWED = [f"mcp__{mcp.SERVER}__{t}" for t in mcp.TOOLS]
 DENIED = ["Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Read", "Glob", "Grep", "Task", *SHELLS]
+# Claude in Chrome (`--chrome`, Claude Code 2.1.317; tool names from its binary), only when
+# the user turned the browser on (connectors.py). Reading only: `computer` clicks, types and
+# presses keys in one tool and browser_batch runs several, so both are denied with every
+# tool that fills, runs scripts, uploads, records or changes the browser. Any other
+# claude-in-chrome tool is in neither list and so not allowed (dontAsk refuses it).
+CHROME = "mcp__claude-in-chrome__"
+CHROME_ALLOWED = [CHROME + t for t in ("navigate", "read_page", "get_page_text", "find", "tabs_context_mcp",
+                                       "tabs_create_mcp")]
+CHROME_DENIED = [CHROME + t for t in ("computer", "browser_batch", "form_input", "javascript_tool", "file_upload",
+                                      "upload_image", "gif_creator", "shortcuts_execute", "shortcuts_list",
+                                      "switch_browser", "resize_window", "read_console_messages",
+                                      "read_network_requests", "tabs_close_mcp")]
 
 # The app's session reads the same playbook as every other Claude Code session
 # (playbook.md, also `tgkit guide` and the plugin skill), plus the rules of the app.
@@ -104,7 +116,8 @@ def capabilities(cmd: list[str] | None) -> dict:
     found = re.findall(r"'([a-z][a-z0-9-]*)'", model_help)
     models = list(dict.fromkeys([*BASE_MODELS, *found])) if model_help else []
     caps = {"model": bool(model_help), "models": models, "effort": bool(effort_help and efforts),
-            "efforts": efforts, "auth": bool(re.search(r"^\s+auth\b", text, re.M))}
+            "efforts": efforts, "auth": bool(re.search(r"^\s+auth\b", text, re.M)),
+            "chrome": bool(_option_block(text, "--chrome")) and bool(_option_block(text, "--no-chrome"))}
     if code == 0:
         _HELP_CACHE[key] = caps
     return caps
@@ -195,6 +208,13 @@ class ClaudeRunner:
     def available(self) -> bool:
         return bool(self.cmd)
 
+    def chrome(self, home: Path) -> bool:
+        """Claude in Chrome for this answer: the user turned the browser on and this
+        Claude Code has --chrome."""
+        from . import connectors  # noqa: PLC0415
+
+        return connectors.browser_on(home) and bool(capabilities(self.cmd).get("chrome"))
+
     # -------------------------------------------------------------- command
 
     def args(self, home: Path, session: str | None, guide_file: Path | None) -> list[str]:
@@ -207,7 +227,11 @@ class ClaudeRunner:
             if guide_file is not None:
                 a += ["--append-system-prompt-file", str(guide_file)]
         a += ["--mcp-config", str(mcp_file(home)), "--strict-mcp-config"]
-        a += ["--allowedTools", *ALLOWED, "--disallowedTools", *DENIED]
+        chrome = self.chrome(home)
+        if capabilities(self.cmd).get("chrome"):
+            a += ["--chrome" if chrome else "--no-chrome"]
+        a += ["--allowedTools", *ALLOWED, *(CHROME_ALLOWED if chrome else []),
+              "--disallowedTools", *DENIED, *CHROME_DENIED]
         chosen = settings(home)
         model = self.model or chosen["model"]
         if model:
@@ -306,6 +330,10 @@ class ClaudeRunner:
                             params = block.get("input") if isinstance(block.get("input"), dict) else {}
                             tool = mcp.tool_of(name)
                             cmd = mcp.describe(tool, params) if tool else str(params.get("command") or name)
+                            if not tool and name in CHROME_ALLOWED and self.chrome(home):
+                                tool = name  # a reading tool of Claude in Chrome, allowed this answer
+                                what = params.get("url") or params.get("query") or ""
+                                cmd = f"browser: {name[len(CHROME):].replace('_', ' ')} {str(what)[:120]}".rstrip()
                             tools[block.get("id")] = (tool, name, cmd)
                             yield {"type": "step", "id": block.get("id"), "command": cmd}
                         elif block.get("type") == "text" and not streamed:

@@ -89,16 +89,23 @@ delta("tìm...")
 call = json.loads(os.environ["FAKE_CLAUDE_CALL"]) if os.environ.get("FAKE_CLAUDE_CALL") else None
 if shell:
     name, params = shell, {"command": os.environ.get("FAKE_CLAUDE_CMD", 'tgkit search "x" --json')}
-else:
-    name = f"mcp__tgkit__{call['tool'] if call else 'search'}"
-    params = call["args"] if call else {"query": "biên bản"}
+else:  # call["name"]: a full tool name (mcp__claude-in-chrome__computer, ...)
+    name = (call or {}).get("name") or f"mcp__tgkit__{call['tool'] if call else 'search'}"
+    params = call.get("args", {}) if call else {"query": "biên bản"}
 out({"type": "assistant", "session_id": session, "message": {"content": [
     {"type": "tool_use", "id": "toolu_1", "name": name, "input": params}]}})
 allowed = name in flag_values("--allowedTools") and name not in flag_values("--disallowedTools")
+if name.startswith("mcp__claude-in-chrome__") and "--chrome" not in argv:
+    allowed = False  # Claude in Chrome's tools exist only with --chrome
 if os.environ.get("FAKE_CLAUDE_IGNORE_RULES"):
     body, failed = "done", False
 elif not allowed:
     body, failed = f"Permission to use {name} has been denied.", True
+elif name.startswith("mcp__claude-in-chrome__"):  # Claude in Chrome reading a page
+    body, failed = os.environ.get("FAKE_PAGE", "WhatsApp Web: Lan: hello"), False
+    if os.environ.get("FAKE_CHROME_LOG"):
+        with open(os.environ["FAKE_CHROME_LOG"], "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"tool": name, "args": params}) + "\n")
 elif call:
     body, failed = call_server(call["tool"], call["args"])
 else:

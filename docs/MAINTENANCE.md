@@ -390,3 +390,19 @@ shortcuts.
   `*.session` file.
 - Nothing from a user's data folder belongs in this repository. `.gitignore`
   covers the data file names in case someone points `TGKIT_HOME` inside it.
+
+## 6. Browser and connectors (0.3.0)
+
+- The AI reads the user's own logged-in browser only through tools, never a shell:
+  Claude through Claude Code's own Chrome integration, Gemini and GPT through the
+  Playwright MCP bridge extension (`connectors.BRIDGE_PACKAGE`).
+- `connectors.BROWSER_ALLOWED` is the whole allow list (read, open a page, one plain
+  click). `BROWSER_DENIED` names everything that types, presses keys, fills, uploads,
+  runs code or reads traffic. A tool in neither list is the third bucket
+  (`browser_buckets`) and is denied too: a newer bridge never adds a tool silently.
+- A click on an element described with a word in `CLICK_REFUSED` (send, delete, reply,
+  call, settings, and their Vietnamese words) is refused. `SEND_PATH` and `SEND_QUERY`
+  stop any link that fills or sends a message (`wa.me/...?text=`, share and compose
+  pages). Add a word or path there before you allow a new tool.
+- MCP connectors the user adds run per answer from the app's own config, with only the
+  tools the user ticked; never write them into a CLI's global settings.

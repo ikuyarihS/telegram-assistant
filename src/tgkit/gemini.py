@@ -122,9 +122,14 @@ priority = 100
 
 def settings_for(home: Path) -> dict:
     """The work folder's .gemini/settings.json: the tgkit MCP server and nothing else.
-    Workspace settings, so an administrator's system settings still come first."""
-    return {"mcpServers": {mcp.SERVER: {**mcp.server_command(home), "timeout": mcp.TIMEOUT * 1000,
-                                        "includeTools": list(mcp.TOOLS)}}}
+    Workspace settings, so an administrator's system settings still come first. With the
+    browser on (connectors.py), the server also passes on the browser's reading tools."""
+    from . import connectors  # noqa: PLC0415
+
+    browser = connectors.browser_on(home)
+    tools = list(mcp.TOOLS) + (list(connectors.BROWSER_ALLOWED) if browser else [])
+    return {"mcpServers": {mcp.SERVER: {**mcp.server_command(home, browser=browser), "timeout": mcp.TIMEOUT * 1000,
+                                        "includeTools": tools}}}
 
 
 # ------------------------------------------------------------------ finding it

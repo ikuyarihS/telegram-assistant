@@ -29,8 +29,11 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("TGKIT_NO_REVEAL", "1")
     # A Gemini CLI on the test computer never answers a test (tests/fake_gemini.py does, when asked).
     monkeypatch.setenv("TGKIT_GEMINI", "off")
+    # The same for Codex (GPT) and the browser bridge (tests/fake_codex.py, fake_browser_mcp.py).
+    monkeypatch.setenv("TGKIT_CODEX", "off")
+    monkeypatch.setenv("TGKIT_BROWSER_MCP", "off")
     for k in ("TG_API_ID", "TG_API_HASH", "TGKIT_API_ID", "TGKIT_API_HASH", "TGKIT_DEBUG", "TGKIT_CLAUDE_MODEL",
-              "TGKIT_GEMINI_MODEL", "GEMINI_API_KEY"):
+              "TGKIT_GEMINI_MODEL", "GEMINI_API_KEY", "TGKIT_CODEX_MODEL", "OPENAI_API_KEY", "CODEX_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     return base
 

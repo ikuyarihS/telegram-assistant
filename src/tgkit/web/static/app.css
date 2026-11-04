@@ -773,6 +773,29 @@ textarea::placeholder { color: var(--muted); }
 .state-dot.bad { background: var(--danger); }
 .fix-steps { margin: 0; padding-left: 22px; display: grid; gap: 4px; font-size: 13px; text-wrap: pretty; }
 
+.warn-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--warn-soft);
+  border-radius: var(--r-md);
+}
+.warn-box p { text-wrap: pretty; }
+.sub-sec { display: grid; gap: 10px; padding-top: 4px; }
+.sub-sec h4 { font-size: 14px; font-weight: 600; padding-top: 6px; }
+.conn-target { flex: 2; }
+.conn-list { display: grid; gap: 10px; }
+.conn-list:empty { display: none; }
+.conn-card { display: grid; gap: 8px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.conn-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.conn-head h4 { font-size: 14px; font-weight: 600; }
+.conn-where { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.conn-tools { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.conn-tools .why { display: block; font-size: 12px; color: var(--muted); }
+.conn-tools .refused { color: var(--muted); cursor: default; }
+
 .field-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .field { display: grid; gap: 4px; min-width: 200px; flex: 1; }
 .field-label { font-size: 13px; font-weight: 600; }

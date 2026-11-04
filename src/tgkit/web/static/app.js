@@ -56,11 +56,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       sync: "Get new messages", syncing: "Getting new messages...",
       syncDone: (n) => (n ? `${n} new ${plural(n, "message", "messages")}.` : "Everything is up to date."),
       syncFail: "Some chats could not be updated.", syncBusy: "A sync is already running.",
-      connect: "Connect to Telegram", answersBy: "Answers", auto: "Claude or Gemini when available", offline: "Telegram Assistant only",
-      modeClaude: "Claude", modeGemini: "Gemini", modeOffline: "Offline",
+      connect: "Connect to Telegram", answersBy: "Answers", auto: "Claude, Gemini or GPT when available", offline: "Telegram Assistant only",
+      modeClaude: "Claude", modeGemini: "Gemini", modeGpt: "GPT", modeOffline: "Offline",
       claudeOn: "Claude Code is on this computer: it plans each search and writes the answer.",
       geminiOn: "Gemini is on this computer: it plans each search and writes the answer.",
-      noAi: "No AI is set up yet: Telegram Assistant answers with its own rules. Settings shows how to add Claude or Gemini.",
+      gptOn: "GPT (Codex) is on this computer: it plans each search and writes the answer.",
+      noAi: "No AI is set up yet: Telegram Assistant answers with its own rules. Settings shows how to add Claude, Gemini or GPT.",
       offlineOn: "Telegram Assistant answers with its own rules, without Claude.",
       emptyTitle: "Ask about your Telegram chats",
       emptyBody: "Search messages, get a summary of what happened, or see your tasks. Type in Vietnamese or English, accents optional.",
@@ -99,8 +100,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       loginOpened: "A window opened. Log in there, then press Check again.",
       secAi: "AI answers", aiOff: "Off", aiAutoPick: "Automatic",
       aiHelp: "Who writes the answers. Off: Telegram Assistant answers by itself, with its own rules.",
-      aiAuto: (name) => `Automatic: Claude first, then Gemini when it is signed in. Now answering: ${name}.`,
-      aiNone: "No AI is ready yet: set up Claude or Gemini below. Until then Telegram Assistant answers by itself.",
+      aiAuto: (name) => `Automatic: Claude first, then Gemini, then GPT, whichever is signed in. Now answering: ${name}.`,
+      aiNone: "No AI is ready yet: set up Claude, Gemini or GPT below. Until then Telegram Assistant answers by itself.",
       secUpdate: "Updates", updateThis: (v) => `This is Telegram Assistant ${v}.`, updateCheck: "Check for updates",
       updateNewest: (v) => `${v} is the newest version.`,
       updateOffline: "Could not check: no internet, or GitHub is busy. Try again later.",
@@ -127,8 +128,55 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       geminiInstalled: "Gemini is installed. Now press Sign in to Google.",
       nodeOpened: "The Node.js installer is starting in a new window. When it is done, press Check again.",
       nodeSite: "The Node.js download page opened. Install the LTS version, then press Check again.",
+      gptWhat: "For a ChatGPT account (Plus, Pro, Business), instead of Claude.",
+      oStNoNode: "GPT: not installed. It needs Node.js first, a free helper program.",
+      oStOldNode: (v) => `GPT: not installed. Node.js ${v} on this computer is too old for it.`,
+      oStMissing: "GPT: not installed. How to install it:",
+      oStNotLogged: "GPT: sign in needed.",
+      oStConnected: (acct) => `GPT: signed in${acct ? ` as ${acct}` : ""}.`,
+      oFixNoNode: ["Press Install Node.js. In its installer, click Next until Finish.",
+        "Press Check again, then Install GPT.", "Then press Sign in to ChatGPT."],
+      oFixMissing: ["Press Install GPT. It takes about a minute.", "Then press Sign in to ChatGPT."],
+      oFixNotLogged: ["Press Sign in to ChatGPT. A black window opens and then the ChatGPT page in the browser.",
+        "Sign in with your ChatGPT account there.",
+        "When the page says you are signed in, close the black window and press Check again."],
+      installGpt: "Install GPT", loginGpt: "Sign in to ChatGPT",
+      installingGpt: "Installing GPT. This takes about a minute...",
+      gptInstalled: "GPT is installed. Now press Sign in to ChatGPT.",
+      secBrowser: "Your browser (WhatsApp, Zalo, ...)",
+      browserWhat: "Let the AI read chats you have open in your own Chrome or Edge, such as WhatsApp Web or Zalo. It opens a chat and reads it; it never types or sends.",
+      browserWarn: "The AI can then read the pages you are signed in to. WhatsApp and Zalo do not officially allow other programs to read chats and could limit an account that does it: use it gently, at your own risk. Opening a chat marks it as read on your phone too.",
+      browserAccept: "I read this and understand it",
+      browserOn: "Let the AI read your browser",
+      browserOnNote: "On. Ask, for example: what is new in my WhatsApp chat with Lan?",
+      browserOffNote: "Off. The AI does not see your browser.",
+      browserClaude: "When Claude answers",
+      browserClaude1: "Press Get Claude in Chrome and add it to Chrome or Edge.",
+      browserClaude2: "Open it once and sign in with the same Claude account.",
+      browserClaudeExt: "Get Claude in Chrome",
+      browserOther: "When Gemini or GPT answers",
+      browserOther1: "Press Install the browser helper (about a minute; needs Node.js, see Gemini or GPT above).",
+      browserOther2: "Press Get Playwright Extension and add it to Chrome or Edge.",
+      browserOther3: "The first time the AI uses it, Chrome asks which tab to share: pick it and press Allow.",
+      bridgeInstall: "Install the browser helper", bridgeExt: "Get Playwright Extension",
+      bridgeOk: (v) => `Browser helper: installed${v ? ` (v${v})` : ""}.`,
+      bridgeMissing: "Browser helper: not installed.",
+      bridgeInstalling: "Installing the browser helper. This takes about a minute...",
+      bridgeInstalled: "The browser helper is installed. Now add the Playwright Extension.",
+      bridgeToken: "Extension token (optional)",
+      bridgeTokenHelp: "The extension's page shows a token. Paste it here so Chrome stops asking each time.",
+      storeOpened: "The store page opened in your browser. Press Add to Chrome there.",
+      secConn: "Add a connector (advanced)",
+      connWhat: "A connector (MCP server) lets the AI read another app, such as notes or a calendar. Only the tools you tick are used, and never a tool that changes something.",
+      connName: "Name", connNamePh: "Notes", connTarget: "Command or web address",
+      connAdd: "Add and check its tools", connAdding: "Starting the connector to see its tools...",
+      connAdded: "Added. Tick the tools the AI may use.",
+      connRefresh: "Check tools again", connRemove: "Remove", connSaveTools: "Use the ticked tools",
+      connNoTools: "This connector has no tools.",
+      connRefused: (why) => `Not allowed: ${why}.`,
+      connCounts: (a, n) => `${a} of ${n} tools in use`,
       secUsage: "Token use",
-      usageWhat: "Only answers written by Claude or Gemini use tokens. Search, summary, tasks and Get new messages run on this computer and use none.",
+      usageWhat: "Only answers written by an AI (Claude, Gemini or GPT) use tokens. Search, summary, tasks and Get new messages run on this computer and use none.",
       today: "Today", month: "This month", thisConv: "This conversation",
       answersN: (n) => `${n} ${plural(n, "answer", "answers")}`,
       tokensN: (n) => `${n} tokens`,
@@ -253,11 +301,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       sync: "Lấy tin mới", syncing: "Đang lấy tin mới...",
       syncDone: (n) => (n ? `Có ${n} tin nhắn mới.` : "Đã cập nhật đầy đủ."),
       syncFail: "Một số nhóm chưa cập nhật được.", syncBusy: "Đang có một lượt lấy tin khác.",
-      connect: "Kết nối Telegram", answersBy: "Trả lời bằng", auto: "Claude hoặc Gemini nếu có", offline: "Chỉ Telegram Assistant",
-      modeClaude: "Claude", modeGemini: "Gemini", modeOffline: "Ngoại tuyến",
+      connect: "Kết nối Telegram", answersBy: "Trả lời bằng", auto: "Claude, Gemini hoặc GPT nếu có", offline: "Chỉ Telegram Assistant",
+      modeClaude: "Claude", modeGemini: "Gemini", modeGpt: "GPT", modeOffline: "Ngoại tuyến",
       claudeOn: "Máy này có Claude Code: Claude lên kế hoạch tìm kiếm và viết câu trả lời.",
       geminiOn: "Máy này có Gemini: Gemini lên kế hoạch tìm kiếm và viết câu trả lời.",
-      noAi: "Chưa cài AI nào: Telegram Assistant tự trả lời theo quy tắc có sẵn. Vào Cài đặt để thêm Claude hoặc Gemini.",
+      gptOn: "Máy này có GPT (Codex): GPT lên kế hoạch tìm kiếm và viết câu trả lời.",
+      noAi: "Chưa cài AI nào: Telegram Assistant tự trả lời theo quy tắc có sẵn. Vào Cài đặt để thêm Claude, Gemini hoặc GPT.",
       offlineOn: "Telegram Assistant tự trả lời theo quy tắc có sẵn, không dùng Claude.",
       emptyTitle: "Hỏi về các nhóm Telegram của bạn",
       emptyBody: "Tìm tin nhắn, tóm tắt những gì đã diễn ra, hoặc xem việc cần làm. Gõ tiếng Việt hay tiếng Anh, có dấu hay không dấu đều được.",
@@ -293,8 +342,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       loginOpened: "Một cửa sổ đã mở. Đăng nhập ở đó rồi bấm Kiểm tra lại.",
       secAi: "AI trả lời", aiOff: "Tắt", aiAutoPick: "Tự động",
       aiHelp: "Ai viết câu trả lời. Tắt: Telegram Assistant tự trả lời theo quy tắc có sẵn.",
-      aiAuto: (name) => `Tự động: Claude trước, rồi đến Gemini khi đã đăng nhập. Đang trả lời: ${name}.`,
-      aiNone: "Chưa có AI nào sẵn sàng: cài Claude hoặc Gemini ở dưới. Trong lúc đó Telegram Assistant tự trả lời.",
+      aiAuto: (name) => `Tự động: Claude trước, rồi Gemini, rồi GPT, cái nào đã đăng nhập. Đang trả lời: ${name}.`,
+      aiNone: "Chưa có AI nào sẵn sàng: cài Claude, Gemini hoặc GPT ở dưới. Trong lúc đó Telegram Assistant tự trả lời.",
       secUpdate: "Cập nhật", updateThis: (v) => `Đây là Telegram Assistant ${v}.`, updateCheck: "Kiểm tra bản mới",
       updateNewest: (v) => `${v} là bản mới nhất.`,
       updateOffline: "Chưa kiểm tra được: không có mạng, hoặc GitHub đang bận. Thử lại sau.",
@@ -321,8 +370,55 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
       geminiInstalled: "Đã cài Gemini. Giờ bấm Đăng nhập Google.",
       nodeOpened: "Trình cài Node.js đang mở trong một cửa sổ mới. Cài xong thì bấm Kiểm tra lại.",
       nodeSite: "Trang tải Node.js đã mở. Cài bản LTS rồi bấm Kiểm tra lại.",
+      gptWhat: "Dành cho tài khoản ChatGPT (Plus, Pro, Business), thay cho Claude.",
+      oStNoNode: "GPT: chưa cài. Cần cài Node.js trước, một chương trình hỗ trợ miễn phí.",
+      oStOldNode: (v) => `GPT: chưa cài. Node.js ${v} trên máy này đã quá cũ.`,
+      oStMissing: "GPT: chưa cài. Cách cài:",
+      oStNotLogged: "GPT: cần đăng nhập.",
+      oStConnected: (acct) => `GPT: đã đăng nhập${acct ? ` với ${acct}` : ""}.`,
+      oFixNoNode: ["Bấm Cài Node.js. Trong trình cài đặt, bấm Next đến khi Finish.",
+        "Bấm Kiểm tra lại, rồi bấm Cài GPT.", "Sau đó bấm Đăng nhập ChatGPT."],
+      oFixMissing: ["Bấm Cài GPT. Mất khoảng một phút.", "Sau đó bấm Đăng nhập ChatGPT."],
+      oFixNotLogged: ["Bấm Đăng nhập ChatGPT. Một cửa sổ màu đen mở ra, rồi trang ChatGPT mở trong trình duyệt.",
+        "Đăng nhập tài khoản ChatGPT ở trang đó.",
+        "Khi trang báo đã đăng nhập, đóng cửa sổ màu đen và bấm Kiểm tra lại."],
+      installGpt: "Cài GPT", loginGpt: "Đăng nhập ChatGPT",
+      installingGpt: "Đang cài GPT. Mất khoảng một phút...",
+      gptInstalled: "Đã cài GPT. Giờ bấm Đăng nhập ChatGPT.",
+      secBrowser: "Trình duyệt của bạn (WhatsApp, Zalo, ...)",
+      browserWhat: "Cho AI đọc các cuộc trò chuyện bạn đang mở trong Chrome hoặc Edge của mình, như WhatsApp Web hay Zalo. AI mở một cuộc trò chuyện và đọc; không bao giờ gõ hay gửi.",
+      browserWarn: "Khi bật, AI đọc được các trang bạn đang đăng nhập. WhatsApp và Zalo không chính thức cho chương trình khác đọc tin nhắn và có thể hạn chế tài khoản làm vậy: hãy dùng nhẹ nhàng, tự chịu rủi ro. Mở một cuộc trò chuyện cũng đánh dấu đã đọc trên điện thoại.",
+      browserAccept: "Tôi đã đọc và hiểu điều này",
+      browserOn: "Cho AI đọc trình duyệt của bạn",
+      browserOnNote: "Đang bật. Ví dụ hỏi: có gì mới trong WhatsApp với Lan?",
+      browserOffNote: "Đang tắt. AI không thấy trình duyệt của bạn.",
+      browserClaude: "Khi Claude trả lời",
+      browserClaude1: "Bấm Tải Claude in Chrome rồi thêm vào Chrome hoặc Edge.",
+      browserClaude2: "Mở nó một lần và đăng nhập cùng tài khoản Claude.",
+      browserClaudeExt: "Tải Claude in Chrome",
+      browserOther: "Khi Gemini hoặc GPT trả lời",
+      browserOther1: "Bấm Cài trình trợ giúp trình duyệt (khoảng một phút; cần Node.js, xem phần Gemini hoặc GPT ở trên).",
+      browserOther2: "Bấm Tải Playwright Extension rồi thêm vào Chrome hoặc Edge.",
+      browserOther3: "Lần đầu AI dùng, Chrome hỏi chia sẻ thẻ nào: chọn thẻ đó và bấm Allow.",
+      bridgeInstall: "Cài trình trợ giúp trình duyệt", bridgeExt: "Tải Playwright Extension",
+      bridgeOk: (v) => `Trình trợ giúp trình duyệt: đã cài${v ? ` (v${v})` : ""}.`,
+      bridgeMissing: "Trình trợ giúp trình duyệt: chưa cài.",
+      bridgeInstalling: "Đang cài trình trợ giúp trình duyệt. Mất khoảng một phút...",
+      bridgeInstalled: "Đã cài trình trợ giúp trình duyệt. Giờ thêm Playwright Extension.",
+      bridgeToken: "Mã của tiện ích (không bắt buộc)",
+      bridgeTokenHelp: "Trang của tiện ích có hiện một mã. Dán vào đây để Chrome không hỏi lại mỗi lần.",
+      storeOpened: "Trang cửa hàng đã mở trong trình duyệt. Bấm Thêm vào Chrome ở đó.",
+      secConn: "Thêm kết nối (nâng cao)",
+      connWhat: "Một kết nối (máy chủ MCP) cho AI đọc một ứng dụng khác, như ghi chú hay lịch. Chỉ các công cụ bạn đánh dấu mới được dùng, và không bao giờ dùng công cụ thay đổi dữ liệu.",
+      connName: "Tên", connNamePh: "Ghi chú", connTarget: "Lệnh hoặc địa chỉ web",
+      connAdd: "Thêm và xem công cụ", connAdding: "Đang khởi động kết nối để xem công cụ...",
+      connAdded: "Đã thêm. Đánh dấu các công cụ AI được dùng.",
+      connRefresh: "Kiểm tra công cụ lại", connRemove: "Xóa", connSaveTools: "Dùng các công cụ đã đánh dấu",
+      connNoTools: "Kết nối này không có công cụ nào.",
+      connRefused: (why) => `Không cho phép: ${why}.`,
+      connCounts: (a, n) => `Đang dùng ${a} trên ${n} công cụ`,
       secUsage: "Mức dùng token",
-      usageWhat: "Chỉ câu trả lời do Claude hoặc Gemini viết mới dùng token. Tìm kiếm, tóm tắt, việc cần làm và Lấy tin mới chạy trên máy này, không dùng token.",
+      usageWhat: "Chỉ câu trả lời do AI (Claude, Gemini hoặc GPT) viết mới dùng token. Tìm kiếm, tóm tắt, việc cần làm và Lấy tin mới chạy trên máy này, không dùng token.",
       today: "Hôm nay", month: "Tháng này", thisConv: "Cuộc trò chuyện này",
       answersN: (n) => `${n} câu trả lời`,
       tokensN: (n) => `${n} token`,
@@ -464,6 +560,12 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     claudeInstall: $("claudeInstall"), claudeLogin: $("claudeLogin"), claudeCheck: $("claudeCheck"),
     aiNote: $("aiNote"), geminiDot: $("geminiDot"), geminiStateText: $("geminiStateText"), geminiSteps: $("geminiSteps"),
     geminiNode: $("geminiNode"), geminiInstall: $("geminiInstall"), geminiLogin: $("geminiLogin"), geminiCheck: $("geminiCheck"),
+    gptDot: $("gptDot"), gptStateText: $("gptStateText"), gptSteps: $("gptSteps"),
+    gptNode: $("gptNode"), gptInstall: $("gptInstall"), gptLogin: $("gptLogin"), gptCheck: $("gptCheck"),
+    browserAccept: $("browserAccept"), browserOn: $("browserOn"), browserSetup: $("browserSetup"),
+    browserClaudeExt: $("browserClaudeExt"), bridgeDot: $("bridgeDot"), bridgeText: $("bridgeText"),
+    bridgeInstall: $("bridgeInstall"), bridgeExt: $("bridgeExt"), bridgeToken: $("bridgeToken"),
+    connName: $("connName"), connTarget: $("connTarget"), connAdd: $("connAdd"), connList: $("connList"),
     modelRow: $("modelRow"), modelPick: $("modelPick"), effortField: $("effortField"), effortPick: $("effortPick"),
     usageGrid: $("usageGrid"), usageCost: $("usageCost"), limitInput: $("limitInput"), hardStop: $("hardStop"),
     exportDir: $("exportDir"), exportDefault: $("exportDefault"), openExport: $("openExport"),
@@ -690,15 +792,15 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     }
   }
 
-  // The AI that answers ("claude", "gemini") or "offline", as a label.
-  const modeName = (m) => (m === "claude" ? t("modeClaude") : m === "gemini" ? t("modeGemini") : t("modeOffline"));
+  // The AI that answers ("claude", "gemini", "gpt") or "offline", as a label.
+  const modeName = (m) => ({ claude: t("modeClaude"), gemini: t("modeGemini"), gpt: t("modeGpt") }[m] || t("modeOffline"));
 
   function setMode() {
     const ai = app.mode !== "offline" ? app.ai : null;
     ui.modeBadge.textContent = modeName(ai || "offline");
     ui.modeBadge.classList.toggle("offline", !ai);
     ui.modeNote.textContent = app.mode === "offline" ? t("offlineOn")
-      : (app.ai === "gemini" ? t("geminiOn") : app.ai === "claude" ? t("claudeOn") : t("noAi"));
+      : ({ gemini: t("geminiOn"), claude: t("claudeOn"), gpt: t("gptOn") }[app.ai] || t("noAi"));
     document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === app.mode; });
   }
 
@@ -1873,15 +1975,156 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.geminiLogin.hidden = g.state !== "not_logged_in";
   }
 
+  function showGpt(g) {
+    const node = g.node || {};
+    const states = {
+      connected: ["ok", t("oStConnected", g.account)],
+      not_logged_in: ["warn", t("oStNotLogged")],
+      missing: ["bad", t("oStMissing")],
+      no_node: ["bad", node.found && node.version ? t("oStOldNode", node.version) : t("oStNoNode")],
+    };
+    const [dot, text] = states[g.state] || states.missing;
+    ui.gptDot.className = `state-dot ${dot}`;
+    ui.gptStateText.textContent = g.version ? `${text} (v${g.version})` : text;
+    const steps = { no_node: t("oFixNoNode"), missing: t("oFixMissing"), not_logged_in: t("oFixNotLogged") }[g.state] || [];
+    ui.gptSteps.replaceChildren(...steps.map((s) => el("li", {}, s)));
+    ui.gptSteps.hidden = !steps.length;
+    ui.gptNode.hidden = g.state !== "no_node";
+    ui.gptInstall.hidden = g.state !== "missing";
+    ui.gptLogin.hidden = g.state !== "not_logged_in";
+  }
+
   function showAi(st) {
     document.querySelectorAll('input[name="ai"]').forEach((r) => {
       r.checked = r.value === st.choice;  // Automatic stays a choice: the way back after picking one
     });
-    const now = st.active === "gemini" ? "Gemini" : "Claude";
+    const now = modeName(st.active);
     ui.aiNote.textContent = st.choice !== "auto" ? t("aiHelp") : st.active !== "off" ? t("aiAuto", now) : t("aiNone");
     showClaude(st.claude);
     showGemini(st.gemini);
+    if (st.gpt) showGpt(st.gpt);
   }
+
+  // ------------------------------------------------------------ browser and connectors
+
+  function showBrowser(b) {
+    ui.browserAccept.checked = !!b.accepted;
+    ui.browserOn.checked = !!b.enabled;
+    ui.browserOn.disabled = !b.accepted;
+    ui.browserSetup.hidden = !b.enabled;
+    const br = b.bridge || {};
+    ui.bridgeDot.className = `state-dot ${br.installed ? "ok" : "bad"}`;
+    ui.bridgeText.textContent = br.installed ? t("bridgeOk", br.version) : t("bridgeMissing");
+    ui.bridgeInstall.hidden = !!br.installed;
+    ui.bridgeToken.placeholder = b.token_set ? "********" : "";
+  }
+
+  function showConnectors(list) {
+    ui.connList.replaceChildren(...(list || []).map((c) => {
+      const tools = c.tools || [];
+      const boxes = tools.map((tl) => {
+        const refused = tl.state === "refused";
+        const box = el("input", { type: "checkbox", value: tl.name, checked: tl.state === "allowed", disabled: refused });
+        return el("li", {}, el("label", { class: refused ? "check refused" : "check" }, box,
+          el("span", {}, tl.name, tl.description ? `: ${tl.description}` : "",
+            refused ? el("span", { class: "why" }, t("connRefused", LANG === "vi" ? (tl.write_vi || tl.write) : tl.write)) : null)));
+      });
+      const used = tools.filter((tl) => tl.state === "allowed").length;
+      const act = async (path, body, note) => {
+        try {
+          const r = await api(path, body);
+          showConnectors(r.connectors);
+          if (note) setNote(note);
+        } catch (e) { setNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message); }
+      };
+      const list_ = el("ul", { class: "conn-tools" }, ...boxes);
+      return el("div", { class: "conn-card" },
+        el("div", { class: "conn-head" }, el("h4", {}, c.name),
+          el("span", { class: "conn-where" }, c.url || (c.command || []).join(" ")),
+          el("span", { class: "conn-where" }, t("connCounts", used, tools.length))),
+        tools.length ? list_ : el("p", { class: "field-help" }, t("connNoTools")),
+        el("div", { class: "set-actions" },
+          tools.length ? el("button", { class: "btn btn-primary", type: "button", onclick: () => act("/api/connectors/mcp/allow",
+            { id: c.id, tools: [...list_.querySelectorAll("input:checked")].map((x) => x.value) }, t("saved")) }, t("connSaveTools")) : null,
+          el("button", { class: "btn", type: "button", onclick: () => act("/api/connectors/mcp/refresh", { id: c.id }) }, t("connRefresh")),
+          el("button", { class: "btn", type: "button", onclick: () => act("/api/connectors/mcp/remove", { id: c.id }) }, t("connRemove"))));
+    }));
+  }
+
+  async function loadConnectors() {
+    try {
+      const r = await api("/api/connectors");
+      showBrowser(r.browser);
+      showConnectors(r.mcp);
+    } catch (e) { setNote(e.message); }
+  }
+
+  async function setBrowser(body) {
+    try {
+      const b = await api("/api/connectors/browser", body);
+      showBrowser(b.browser);
+      return b.browser;
+    } catch (e) {
+      setNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message);
+      loadConnectors();
+      return null;
+    }
+  }
+
+  ui.browserAccept.addEventListener("change", async () => {
+    if (ui.browserAccept.checked) {
+      ui.browserOn.disabled = false;
+      return;
+    }
+    ui.browserOn.disabled = true;
+    if (ui.browserOn.checked) {
+      const b = await setBrowser({ enabled: false });
+      if (b) setNote(t("browserOffNote"));
+    }
+  });
+  ui.browserOn.addEventListener("change", async () => {
+    const b = await setBrowser({ enabled: ui.browserOn.checked, accept: ui.browserOn.checked && ui.browserAccept.checked });
+    if (b) setNote(b.enabled ? t("browserOnNote") : t("browserOffNote"));
+  });
+  ui.bridgeToken.addEventListener("change", async () => {
+    const b = await setBrowser({ enabled: ui.browserOn.checked, token: ui.bridgeToken.value.trim() });
+    if (b) { ui.bridgeToken.value = ""; setNote(t("saved")); }
+  });
+  const openStore = (which) => api("/api/connectors/open", { which })
+    .then(() => setNote(t("storeOpened"))).catch((e) => setNote(e.message));
+  ui.browserClaudeExt.addEventListener("click", () => openStore("claude"));
+  ui.bridgeExt.addEventListener("click", () => openStore("bridge"));
+  ui.bridgeInstall.addEventListener("click", async () => {
+    ui.bridgeInstall.disabled = true;
+    clearTimeout(setTimer);
+    ui.setStatus.textContent = t("bridgeInstalling");
+    ui.bridgeText.textContent = t("bridgeInstalling");
+    try {
+      const r = await api("/api/connectors/browser/install", {});
+      if (r.browser) showBrowser(r.browser);
+      setNote(r.ok ? t("bridgeInstalled") : [r.message, r.hint].filter(Boolean).join(" "));
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      ui.bridgeInstall.disabled = false;
+    }
+  });
+  ui.connAdd.addEventListener("click", async () => {
+    ui.connAdd.disabled = true;
+    clearTimeout(setTimer);
+    ui.setStatus.textContent = t("connAdding");
+    try {
+      const r = await api("/api/connectors/mcp/add", { name: ui.connName.value.trim(), target: ui.connTarget.value.trim() });
+      showConnectors(r.connectors);
+      ui.connName.value = "";
+      ui.connTarget.value = "";
+      setNote(t("connAdded"));
+    } catch (e) {
+      setNote(e.data && e.data.hint ? `${e.message} ${e.data.hint}` : e.message);
+    } finally {
+      ui.connAdd.disabled = false;
+    }
+  });
 
   function showSettings(s) {
     fillSelect(ui.modelPick, s.models || [], s.model, t("modelDefault"));
@@ -1920,6 +2163,8 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     setNote("");
     ui.claudeStateText.textContent = t("checking");
     ui.geminiStateText.textContent = t("checking");
+    ui.gptStateText.textContent = t("checking");
+    loadConnectors();
     try {
       const conv = app.conv ? `?conversation=${encodeURIComponent(app.conv.id)}` : "";
       const [s, u, st] = await Promise.all([api("/api/settings"), api(`/api/usage${conv}`), api("/api/ai-status")]);
@@ -1945,6 +2190,9 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
     ui.claudeDot.className = "state-dot";
     ui.geminiStateText.textContent = t("checking");
     ui.geminiDot.className = "state-dot";
+    ui.gptStateText.textContent = t("checking");
+    ui.gptDot.className = "state-dot";
+    loadConnectors();
     try {
       showAi(await api("/api/ai-status?refresh=1"));
       showSettings(await api("/api/settings"));
@@ -1999,6 +2247,36 @@ if (typeof module === "object" && module.exports) module.exports = TGPick;
   ui.geminiLogin.addEventListener("click", async () => {
     try {
       const r = await api("/api/gemini/login", {});
+      setNote(r.ok ? t("loginOpened") : (r.hint || t("errGeneric")));
+    } catch (e) { setNote(e.message); }
+  });
+  ui.gptCheck.addEventListener("click", recheckClaude);
+  ui.gptNode.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/gpt/node", {});
+      setNote(r.how === "winget" ? t("nodeOpened") : t("nodeSite"));
+    } catch (e) { setNote(e.message); }
+  });
+  ui.gptInstall.addEventListener("click", async () => {
+    ui.gptInstall.disabled = true;
+    ui.gptStateText.textContent = t("installingGpt");
+    ui.gptDot.className = "state-dot";
+    clearTimeout(setTimer);
+    ui.setStatus.textContent = t("installingGpt");
+    try {
+      const r = await api("/api/gpt/install", {});
+      if (r.status) showGpt(r.status);
+      setNote(r.ok ? t("gptInstalled") : [r.message, r.hint].filter(Boolean).join(" "));
+      if (r.ok) refresh().catch(() => {});
+    } catch (e) {
+      setNote(e.message);
+    } finally {
+      ui.gptInstall.disabled = false;
+    }
+  });
+  ui.gptLogin.addEventListener("click", async () => {
+    try {
+      const r = await api("/api/gpt/login", {});
       setNote(r.ok ? t("loginOpened") : (r.hint || t("errGeneric")));
     } catch (e) { setNote(e.message); }
   });

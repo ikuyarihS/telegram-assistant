@@ -28,8 +28,11 @@ from urllib.parse import parse_qs, urlparse
 
 from . import __version__, account, ai, applog, config, engine, export, intent, setupflow, updater, usage
 from . import claude as claudemod
+from . import codex as codexmod
+from . import connectors
 from . import gemini as geminimod
 from .claude import ClaudeRunner
+from .codex import CodexRunner
 from .gemini import GeminiRunner
 from .conversations import Conversations
 from .errors import UserError, is_vi, localize
@@ -204,11 +207,13 @@ def _local_event(ev, lang: str | None):
 
 class App:
     def __init__(self, home: Path | None = None, claude: ClaudeRunner | None = None, token: str | None = None,
-                 gemini: GeminiRunner | None = None):
+                 gemini: GeminiRunner | None = None, gpt: CodexRunner | None = None):
         self.home = Path(home) if home else config.home()
         self.claude = claude if claude is not None else ClaudeRunner()
         self.gemini = gemini if gemini is not None else GeminiRunner()
+        self.gpt = gpt if gpt is not None else CodexRunner()
         self._gstatus = None
+        self._ostatus = None  # GPT (Codex) status, cached like Gemini's
         self._install_busy = threading.Lock()  # one Gemini install at a time
         self.token = token or secrets.token_urlsafe(24)
         self.convs = Conversations(self.home)
@@ -450,7 +455,7 @@ class App:
                        "text": f"You are over the daily {name} limit you set ({lim['used']:,} of "
                                f"{lim['limit']:,} tokens). {name} still answers; change it in Settings."}
         if mode != "offline":
-            runner = self.claude if provider == "claude" else self.gemini
+            runner = {"claude": self.claude, "gemini": self.gemini, "gpt": self.gpt}[provider]
             key = f"{provider}_session"  # each AI resumes only its own session
             yield {"type": "mode", "mode": provider}
             steps, cards, final, failed = {}, [], None, None
@@ -499,6 +504,8 @@ class App:
             if failed and failed.get("reason") == "login":  # check again: Settings and the next pick see it
                 if provider == "gemini":
                     self._gstatus = None
+                elif provider == "gpt":
+                    self._ostatus = None
                 else:
                     self._status = None
             failed = failed or {"message": f"{name} stopped without an answer."}
@@ -713,25 +720,37 @@ class App:
             self._gstatus = geminimod.status(self.gemini.cmd or [], self.home)
         return self._gstatus
 
+    def gpt_status(self, refresh: bool = False) -> dict:
+        """Cached: checking runs `codex --version` and `codex login status`."""
+        if refresh or self._ostatus is None:
+            if refresh and self.gpt.cmd is None:  # installed since the app opened? (cmd=[] means "off")
+                self.gpt.cmd = codexmod.find_codex()
+            self._ostatus = codexmod.status(self.gpt.cmd or [], self.home)
+        return self._ostatus
+
     def provider(self) -> str | None:
         """The AI that answers now (ai.pick): Settings' choice, else Claude first, then
-        Gemini when it is signed in. Checks only what the choice needs, but checks it
-        (cached), so the window picks like `tgkit ai-status` from the first question."""
+        Gemini, then GPT, each when it is signed in. Checks only what the choice needs, but
+        checks it (cached), so the window picks like `tgkit ai-status` from the first question."""
         chosen = ai.choice(self.home)
         if chosen == "off":
             return None
-        gemini_state = claude_state = None
+        gemini_state = claude_state = gpt_state = None
         if chosen == "auto" and self.gemini.available:
             gemini_state = self.gemini_status()["state"]
-            if gemini_state == "connected" and self.claude.available:
-                claude_state = self.claude_status()["state"]  # logged in? else Gemini answers
-        return ai.pick(chosen, self.claude.available, claude_state, self.gemini.available, gemini_state)
+        if chosen == "auto" and self.gpt.available and gemini_state != "connected":
+            gpt_state = self.gpt_status()["state"]
+        if chosen == "auto" and self.claude.available and "connected" in (gemini_state, gpt_state):
+            claude_state = self.claude_status()["state"]  # logged in? else another one answers
+        return ai.pick(chosen, self.claude.available, claude_state, self.gemini.available, gemini_state,
+                       self.gpt.available, gpt_state)
 
     def ai_status(self, refresh: bool = False) -> dict:
         st_claude = self.claude_status(refresh)
         st_gemini = self.gemini_status(refresh)
+        st_gpt = self.gpt_status(refresh)
         return {"choice": ai.choice(self.home), "active": self.provider() or "off",
-                "claude": st_claude, "gemini": st_gemini}
+                "claude": st_claude, "gemini": st_gemini, "gpt": st_gpt}
 
     def settings(self) -> dict:
         cfg = self._cfg()
@@ -762,7 +781,8 @@ class App:
             if "ai_provider" in body:
                 chosen = str(body.get("ai_provider") or "")
                 if chosen not in ai.CHOICES:
-                    raise UserError("Pick Claude, Gemini or Off.", "Automatic picks Claude first, then Gemini.")
+                    raise UserError("Pick Claude, Gemini, GPT or Off.",
+                                    "Automatic picks Claude first, then Gemini, then GPT.")
                 cfg["ai_provider"] = chosen
             if "model" in body:
                 model = str(body.get("model") or "").strip()
@@ -921,36 +941,109 @@ class App:
                 return {**res, "how": "winget"}
         return {**self._browse(geminimod.NODE_URL), "how": "browser"}
 
-    def gemini_install(self) -> dict:
-        """`npm install -g @google/gemini-cli`, then check that the gemini command is really
-        there: an install that ends without it is reported as failed, never as done."""
+    def _npm_install(self, package: str, name: str) -> tuple[int, str] | dict:
+        """`npm install -g <package>`: (exit code, output tail), or a refusal dict."""
         npm = geminimod.find_npm()
         if not npm:
             return {"ok": False, "message": "Node.js is not installed yet.", "hint": "Press Install Node.js first."}
         if not self._install_busy.acquire(blocking=False):
-            return {"ok": False, "message": "Gemini is being installed already.", "hint": "Wait until it is done."}
+            return {"ok": False, "message": "Something is being installed already.", "hint": "Wait until it is done."}
         try:
             env = dict(os.environ)
             node = geminimod.find_node()
             if node:  # npm needs node on PATH, also when Node.js came after the app opened
                 env["PATH"] = os.pathsep.join([str(Path(node).parent), env.get("PATH", "")])
             try:
-                done = subprocess.run([*npm, "install", "-g", geminimod.PACKAGE], stdin=subprocess.DEVNULL,
+                done = subprocess.run([*npm, "install", "-g", package], stdin=subprocess.DEVNULL,
                                       capture_output=True, timeout=900, creationflags=NO_WINDOW, env=env)
-                code = done.returncode
-                tail = ((done.stdout or b"") + (done.stderr or b"")).decode("utf-8", "replace").strip()[-600:]
+                return done.returncode, ((done.stdout or b"") + (done.stderr or b"")).decode(
+                    "utf-8", "replace").strip()[-600:]
             except (OSError, subprocess.TimeoutExpired) as exc:
-                code, tail = -1, str(exc)
-            self.gemini.cmd = geminimod.find_gemini()
-            self._gstatus = None
-            st = self.gemini_status()
-            if code == 0 and st["installed"]:
-                return {"ok": True, "status": st}
-            return {"ok": False, "status": st, "detail": tail,
-                    "message": "Gemini could not be installed.",
-                    "hint": "Check the internet connection and press Install Gemini again."}
+                return -1, str(exc)
         finally:
             self._install_busy.release()
+
+    def gemini_install(self) -> dict:
+        """`npm install -g @google/gemini-cli`, then check that the gemini command is really
+        there: an install that ends without it is reported as failed, never as done."""
+        res = self._npm_install(geminimod.PACKAGE, "Gemini")
+        if isinstance(res, dict):
+            return res
+        code, tail = res
+        self.gemini.cmd = geminimod.find_gemini()
+        self._gstatus = None
+        st = self.gemini_status()
+        if code == 0 and st["installed"]:
+            return {"ok": True, "status": st}
+        return {"ok": False, "status": st, "detail": tail,
+                "message": "Gemini could not be installed.",
+                "hint": "Check the internet connection and press Install Gemini again."}
+
+    # ------------------------------------------------------------- GPT (Codex) setup (Settings)
+
+    def gpt_install(self) -> dict:
+        """`npm install -g @openai/codex`, then check that Codex really starts."""
+        res = self._npm_install(codexmod.PACKAGE, "GPT")
+        if isinstance(res, dict):
+            return res
+        code, tail = res
+        self.gpt.cmd = codexmod.find_codex()
+        self._ostatus = None
+        st = self.gpt_status()
+        if code == 0 and st["installed"]:
+            return {"ok": True, "status": st}
+        return {"ok": False, "status": st, "detail": tail, "message": "GPT (Codex) could not be installed.",
+                "hint": "Check the internet connection and press Install GPT again."}
+
+    def gpt_login(self) -> dict:
+        """Sign in to ChatGPT: `codex login` in its own window opens the ChatGPT page."""
+        cmd = self.gpt.cmd if self.gpt.available else codexmod.find_codex()
+        if not cmd:
+            return {"ok": False, "hint": "Install GPT first."}
+        self._ostatus = None
+        return self._console(codexmod.login_argv(cmd), None, "codex login")
+
+    # ------------------------------------------------------------- connectors (Settings)
+
+    def connectors_view(self) -> dict:
+        return {"browser": connectors.browser_view(self.home), "mcp": connectors.mcp_view(self.home)}
+
+    def browser_set(self, body: dict) -> dict:
+        connectors.set_browser(self.home, bool(body.get("enabled")), accept=bool(body.get("accept")),
+                               token=body.get("token") if "token" in body else None)
+        return self.connectors_view()
+
+    def browser_install(self) -> dict:
+        """The browser helper for Gemini and GPT: `npm install -g @playwright/mcp`."""
+        res = self._npm_install(connectors.BRIDGE_PACKAGE, "the browser helper")
+        if isinstance(res, dict):
+            return res
+        code, tail = res
+        view = self.connectors_view()
+        if code == 0 and view["browser"]["bridge"]["installed"]:
+            return {"ok": True, **view}
+        return {"ok": False, **view, "detail": tail, "message": "The browser helper could not be installed.",
+                "hint": "Check the internet connection and press Install again."}
+
+    def open_store(self, body: dict) -> dict:
+        """Open an extension's store page: only these two known addresses."""
+        url = {"claude": connectors.CLAUDE_EXTENSION_URL, "bridge": connectors.BRIDGE_EXTENSION_URL}.get(
+            str(body.get("which") or ""))
+        if not url:
+            raise UserError("Telegram Assistant does not know that page.", "")
+        return self._browse(url)
+
+    def mcp_action(self, action: str, body: dict) -> dict:
+        cid = str(body.get("id") or "")
+        if action == "add":
+            return connectors.mcp_add(self.home, str(body.get("name") or ""), str(body.get("target") or ""))
+        if action == "allow":
+            return connectors.mcp_allow(self.home, cid, body.get("tools") or [])
+        if action == "refresh":
+            return connectors.mcp_refresh(self.home, cid)
+        if action == "remove":
+            return connectors.mcp_remove(self.home, cid)
+        raise UserError("Unknown connector action.", "")
 
     def reveal(self, body: dict) -> dict:
         """Show a saved file: only one inside the export folder."""
@@ -1253,6 +1346,8 @@ def make_handler(app: App):
                     q = parse_qs(url.query)
                     flag = (q.get("refresh") or [""])[0].strip().lower()
                     return self._json(app.ai_status(flag in ("1", "true", "yes")))
+                if path == "/api/connectors":
+                    return self._json(app.connectors_view())
                 if path == "/api/update/check":
                     q = parse_qs(url.query)
                     return self._json(app.update_check((q.get("quiet") or [""])[0] in ("1", "true", "yes")))
@@ -1358,11 +1453,24 @@ def make_handler(app: App):
                     return self._json(app.gemini_login())
                 if path == "/api/gemini/node":
                     return self._json(app.gemini_node())
-                if path == "/api/gemini/install":
-                    res = app.gemini_install()
+                installs = {"/api/gemini/install": app.gemini_install, "/api/gpt/install": app.gpt_install,
+                            "/api/connectors/browser/install": app.browser_install}
+                if path in installs:
+                    res = installs[path]()
                     lang = self._lang()
                     return self._json({**res, "message": localize(res.get("message"), lang),
                                        "hint": localize(res.get("hint"), lang)})
+                if path == "/api/gpt/login":
+                    return self._json(app.gpt_login())
+                if path == "/api/gpt/node":
+                    return self._json(app.gemini_node())
+                if path == "/api/connectors/browser":
+                    return self._json(app.browser_set(body))
+                if path == "/api/connectors/open":
+                    return self._json(app.open_store(body))
+                m = re.fullmatch(r"/api/connectors/mcp/(add|allow|refresh|remove)", path)
+                if m:
+                    return self._json(app.mcp_action(m.group(1), body))
                 if path == "/api/update/start":
                     return self._json(app.update_start())
                 if path == "/api/reveal":

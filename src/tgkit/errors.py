@@ -166,6 +166,7 @@ VI = {
     "Not found.": "Không tìm thấy.",
     "Claude stopped without an answer.": "Claude dừng lại mà không trả lời.",
     "Gemini stopped without an answer.": "Gemini dừng lại mà không trả lời.",
+    "GPT stopped without an answer.": "GPT dừng lại mà không trả lời.",
     "Claude is not signed in on this computer.": "Claude chưa đăng nhập trên máy này.",
     "Gemini is not signed in on this computer.": "Gemini chưa đăng nhập trên máy này.",
     "Gemini has reached its limit for now.": "Gemini đã hết lượt dùng trong lúc này.",
@@ -181,6 +182,51 @@ VI = {
     "Press Install Node.js first.": "Bấm Cài Node.js trước.",
     "Gemini is being installed already.": "Gemini đang được cài.",
     "Wait until it is done.": "Chờ đến khi xong.",
+    # GPT (codex.py) and connectors (connectors.py), 0.3.0
+    "GPT (Codex) is not signed in on this computer.": "GPT (Codex) chưa đăng nhập trên máy này.",
+    "GPT has reached its limit for now.": "GPT đã hết lượt dùng trong lúc này.",
+    "GPT tried something Telegram Assistant does not allow, so it was stopped.":
+        "GPT đã thử làm một việc Telegram Assistant không cho phép, nên đã bị dừng.",
+    "GPT (Codex) could not start.": "GPT (Codex) không khởi động được.",
+    "GPT could not answer this time.": "Lần này GPT không trả lời được.",
+    "GPT (Codex) could not be installed.": "Chưa cài được GPT (Codex).",
+    "Check the internet connection and press Install GPT again.": "Kiểm tra kết nối mạng rồi bấm Cài GPT lại.",
+    "Install GPT first.": "Hãy cài GPT trước.",
+    "Install Gemini first.": "Hãy cài Gemini trước.",
+    "Something is being installed already.": "Đang cài một thứ khác.",
+    "Pick Claude, Gemini, GPT or Off.": "Chọn Claude, Gemini, GPT hoặc Tắt.",
+    "Automatic picks Claude first, then Gemini, then GPT.": "Tự động chọn Claude trước, rồi Gemini, rồi GPT.",
+    "The browser helper could not be installed.": "Chưa cài được trình trợ giúp trình duyệt.",
+    "Check the internet connection and press Install again.": "Kiểm tra kết nối mạng rồi bấm Cài lại.",
+    "The browser helper is not installed.": "Chưa cài trình trợ giúp trình duyệt.",
+    "Settings, Browser: press Install.": "Cài đặt, Trình duyệt: bấm Cài.",
+    "Telegram Assistant does not know that page.": "Telegram Assistant không biết trang này.",
+    "Unknown connector action.": "Không hiểu thao tác kết nối này.",
+    "Read the warning and tick that you understand it first.": "Hãy đọc cảnh báo và đánh dấu là bạn đã hiểu trước.",
+    "Then turn it on again.": "Rồi bật lại.",
+    "That does not look like the extension's token.": "Đây có vẻ không phải mã của tiện ích.",
+    "Copy it again from the Playwright Extension page.": "Chép lại mã từ trang Playwright Extension.",
+    "The connector settings are being saved by another Telegram Assistant.":
+        "Một Telegram Assistant khác đang lưu cài đặt kết nối.",
+    "Wait a moment and try again.": "Chờ một chút rồi thử lại.",
+    "Type the command that starts the connector, or its web address.":
+        "Gõ lệnh khởi động kết nối, hoặc địa chỉ web của nó.",
+    "For example: npx -y @modelcontextprotocol/server-memory": "Ví dụ: npx -y @modelcontextprotocol/server-memory",
+    "A connector's web address must start with https:// (or be on this computer).":
+        "Địa chỉ web của kết nối phải bắt đầu bằng https:// (hoặc ở trên máy này).",
+    "Ask its maker for the https address.": "Hỏi bên làm ra nó địa chỉ https.",
+    "Type the command that starts the connector.": "Gõ lệnh khởi động kết nối.",
+    "Check the command, or install the program it needs.": "Kiểm tra lệnh, hoặc cài chương trình nó cần.",
+    "Check its address.": "Kiểm tra địa chỉ của nó.",
+    "The connector stopped.": "Kết nối đã dừng.",
+    "Check the command in Settings.": "Kiểm tra lệnh trong Cài đặt.",
+    "The connector did not answer in time.": "Kết nối không trả lời kịp.",
+    "Try again later.": "Thử lại sau.",
+    "The connector gave no answer.": "Kết nối không trả lời.",
+    "Check the command or the address.": "Kiểm tra lệnh hoặc địa chỉ.",
+    "That connector is not there any more.": "Kết nối này không còn nữa.",
+    "Press Check tools again.": "Bấm Kiểm tra công cụ lại.",
+    "Telegram Assistant lets the AI only read.": "Telegram Assistant chỉ cho AI đọc.",
     # Check for updates (updater.py, 0.2.10)
     "Nothing was changed. Try again later, or ask whoever gave you Telegram Assistant.":
         "Không có gì bị thay đổi. Thử lại sau, hoặc hỏi người đã gửi Telegram Assistant cho bạn.",
@@ -315,6 +361,9 @@ VI = {
     "Import again: chats already imported are not copied twice, and the tg-crawl folder was not changed.":
         "Hãy nhập lại: các nhóm đã nhập không bị chép hai lần, và thư mục tg-crawl không bị thay đổi.",
     "Finish it or close the setup, then try again.": "Hoàn tất hoặc đóng phần cài đặt, rồi thử lại.",
+    # Why a connector tool can never be ticked (connectors.write_reason), shown in Settings.
+    "it says it can delete or change things": "nó tự cho biết là có thể xóa hoặc thay đổi dữ liệu",
+    "it says it changes things": "nó tự cho biết là có thay đổi dữ liệu",
 }
 
 # Texts with a name, a number or a path inside: (pattern, Vietnamese with {0}, {1}...).
@@ -365,13 +414,13 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
     (r"Could not copy '(.*)'\.", "Không sao chép được '{0}'."),
     (r"Telegram Assistant could not move (.+): the file is in use or the disk is full\. Nothing was deleted\.",
      "Telegram Assistant chưa chuyển được {0}: tệp đang được dùng hoặc ổ đĩa đã đầy. Không có gì bị xóa."),
-    (r"Today's (Claude|Gemini) limit that you set is reached \((.+) of (.+) tokens\)\. Answered without \1\.",
+    (r"Today's (Claude|Gemini|GPT) limit that you set is reached \((.+) of (.+) tokens\)\. Answered without \1\.",
      "Đã đạt giới hạn {0} hôm nay bạn đặt ({1} trên {2} token). Đã trả lời không dùng {0}."),
-    (r"You are over the daily (Claude|Gemini) limit you set \((.+) of (.+) tokens\)\. \1 still answers; "
+    (r"You are over the daily (Claude|Gemini|GPT) limit you set \((.+) of (.+) tokens\)\. \1 still answers; "
      r"change it in Settings\.",
      "Bạn đã dùng quá giới hạn {0} mỗi ngày bạn đặt ({1} trên {2} token). {0} vẫn trả lời; "
      "đổi mức này trong Cài đặt."),
-    (r"(.+) Answered without (Claude|Gemini)\.", "{0} Đã trả lời không dùng {1}."),
+    (r"(.+) Answered without (Claude|Gemini|GPT)\.", "{0} Đã trả lời không dùng {1}."),
     (r"(.+) is not on this computer\.", "{0} không có trên máy này."),
     (r"That pattern is not valid: (.+)\.", "Mẫu này không hợp lệ: {0}."),
     (r"The pattern took longer than (\S+) seconds and was stopped\.", "Mẫu chạy quá {0} giây nên đã dừng."),
@@ -389,6 +438,13 @@ VI_PATTERNS = [(re.compile(p, re.S), vi) for p, vi in (
     (r"'(.*)' appeared in Telegram Assistant while importing it; nothing was overwritten\.",
      "'{0}' đã xuất hiện trong Telegram Assistant trong lúc nhập; không ghi đè gì."),
     (r"Could not start the import \((.*)\)\.", "Không bắt đầu nhập được ({0})."),
+    # Connectors (connectors.py), 0.3.0: Settings, Add a connector / Check tools / Save.
+    (r"its name says it can (\w+)", "tên của nó có chữ '{0}', tức là có thể thay đổi dữ liệu"),
+    (r"The connector could not start \((.*)\)\.", "Không khởi động được kết nối ({0})."),
+    (r"The connector did not answer \((.*)\)\.", "Kết nối không trả lời ({0})."),
+    (r"The connector has no tool named (.+)\.", "Kết nối không có công cụ nào tên {0}."),
+    (r"(.+) cannot be allowed: (.+)\.", "Không thể cho phép {0}: {1}."),
+    (r"The connector said: (.*)", "Kết nối báo: {0}"),
 )]
 
 
@@ -405,5 +461,7 @@ def localize(text: str | None, lang: str | None) -> str | None:
     for pattern, vi in VI_PATTERNS:
         m = pattern.fullmatch(text)
         if m:
-            return vi.format(*(VI.get(g, g) for g in m.groups()))
+            # a caught part that is itself one of these texts (a reason inside a message) is
+            # put in Vietnamese too; each part is shorter than the text, so this ends
+            return vi.format(*(localize(g, lang) if g else g for g in m.groups()))
     return text

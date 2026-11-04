@@ -41,7 +41,8 @@ More:
                                   file "chat" <message id>; --format docx|xlsx|csv|md, --to folder)
   tgkit usage                     tokens used by AI answers in the Telegram Assistant window (--json)
   tgkit claude-status             is Claude Code installed and logged in (--json)
-  tgkit ai-status                 which AI answers in the window: Claude, Gemini or none (--json)
+  tgkit ai-status                 which AI answers in the window: Claude, Gemini, GPT or none (--json)
+  tgkit connector-tools           the read-only tools of the connectors added in Settings (--json)
   tgkit update --check            is a newer Telegram Assistant out on GitHub (--json)
   tgkit update                    update Telegram Assistant (your chats and tasks are kept)
   tgkit where                     where your data is kept
@@ -530,10 +531,11 @@ def cmd_ai_status(args) -> int:
     if args.json:
         print(json.dumps(st, ensure_ascii=False, indent=2))
         return 0
-    names = {"claude": "Claude", "gemini": "Gemini", "off": "nobody (Telegram Assistant answers by itself)"}
+    names = {"claude": "Claude", "gemini": "Gemini", "gpt": "GPT",
+             "off": "nobody (Telegram Assistant answers by itself)"}
     how = "chosen automatically" if st["choice"] == "auto" else "chosen in Settings"
     print(f"AI answers in the window: {names[st['active']]} ({how})")
-    c, g = st["claude"], st["gemini"]
+    c, g, o = st["claude"], st["gemini"], st["gpt"]
     print("Claude: " + {"missing": "not installed", "not_logged_in": "installed, not logged in",
                         "connected": "installed and logged in",
                         "unknown": "installed, login not checkable"}[c["state"]])
@@ -543,6 +545,34 @@ def cmd_ai_status(args) -> int:
                         "connected": f"signed in{account}"}[g["state"]])
     for i, step in enumerate(g.get("fix") or [], 1):
         print(f"  {i}. {step}")
+    print("GPT (Codex): " + {"no_node": "not installed (needs Node.js first)", "missing": "not installed",
+                             "not_logged_in": "installed, sign in to ChatGPT needed",
+                             "connected": "signed in"}[o["state"]])
+    for i, step in enumerate(o.get("fix") or [], 1):
+        print(f"  {i}. {step}")
+    return 0
+
+
+def cmd_connector_tools(args) -> int:
+    """The read-only tools of the connectors the user added (Settings, Add a connector)."""
+    from . import connectors  # noqa: PLC0415
+
+    tools = connectors.ai_tools(config.home())
+    if args.json:
+        print(json.dumps({"tools": tools}, ensure_ascii=False, indent=2))
+        return 0
+    if not tools:
+        print("No connector tools are allowed. Add a connector and tick its tools in Settings.")
+    for t in tools:
+        print(f"{t['name']}  ({t['connector']})\n    {t['description']}")
+    return 0
+
+
+def cmd_connector_call(args) -> int:
+    """Run one allowed connector tool; checked again against the connector's live list."""
+    from . import connectors  # noqa: PLC0415
+
+    print(connectors.ai_call(config.home(), args.name, args.arguments))
     return 0
 
 
@@ -778,6 +808,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ai-status", aliases=["ai"])
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_ai_status)
+
+    p = sub.add_parser("connector-tools")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_connector_tools)
+
+    p = sub.add_parser("connector-call")
+    p.add_argument("name", help="the tool as connector-tools names it, e.g. notes/search")
+    p.add_argument("--arguments", help='its fields as JSON text, e.g. {"query": "x"}')
+    p.set_defaults(func=cmd_connector_call)
 
     p = sub.add_parser("usage", aliases=["tokens"])
     p.add_argument("--conversation", help="also the total of one conversation (its id)")

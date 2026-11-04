@@ -1,6 +1,6 @@
 """tgkit's read commands as tools for the AI of the window: a small MCP server on stdio.
 
-Both AI CLIs (Claude Code and the Gemini CLI) get these tools and no shell. The
+The AI CLIs (Claude Code, the Gemini CLI and Codex for GPT) get these tools and no shell. The
 model fills typed JSON fields (a query, a chat name, a number); this server checks
 them against the table below and runs `python -m tgkit <command> ...` with an
 argv list, never through PowerShell, cmd or bash. So text from the model is only
@@ -69,6 +69,16 @@ TOOLS = {
     "ai_status": ("ai-status", True, "Which AI answers and whether it is signed in (tgkit ai-status --json).",
                   {}, {}),
     "claude_status": ("claude-status", True, "Claude Code on this computer (tgkit claude-status --json).", {}, {}),
+    # Connectors the user added in Settings (connectors.py): only the tools the user ticked,
+    # never one that looks like it changes something. Checked again on every call.
+    "connector_tools": ("connector-tools", True,
+                        "The read-only tools of the connectors the user added in Settings, with their fields "
+                        "(tgkit connector-tools --json).", {}, {}),
+    "connector_call": ("connector-call", False,
+                       "Run one read-only connector tool (tgkit connector-call). Only the tools connector_tools "
+                       "lists can run.",
+                       {"name": ("str", "the tool as connector_tools names it, e.g. notes/search")},
+                       {"arguments": ("str", 'the tool\'s fields as JSON text, e.g. {"query": "x"}')}),
 }
 # Options of these tgkit commands no tool offers (printed by the tests, so none goes unnoticed).
 NOT_OFFERED = {"search": ("online",), "tasks": ("rest", "due")}
@@ -84,14 +94,27 @@ def _schema(kind, text) -> dict:
     return {"type": {"str": "string", "int": "integer", "bool": "boolean"}[kind], "description": text}
 
 
-def tool_list() -> list[dict]:
+BROWSER_PREFIX = "browser_"  # the browser tools passed on from the bridge (connectors.BrowserBridge)
+
+
+def is_browser(tool: str) -> bool:
+    return str(tool or "").startswith(BROWSER_PREFIX)
+
+
+def tool_list(bridge=None) -> list[dict]:
+    """tgkit's read tools, plus the allowed browser tools when this run has the browser."""
     out = []
     for name, (_cmd, _js, text, pos, opts) in TOOLS.items():
         props = {k: _schema(*v) for k, v in {**pos, **opts}.items()}
         required = ["query"] if name == "search" else []
+        # Every tool only reads (readOnlyHint): Codex runs such tools without asking, and
+        # asking is "no" in a headless run.
         out.append({"name": name, "description": text,
                     "inputSchema": {"type": "object", "properties": props, "required": required,
-                                    "additionalProperties": False}})
+                                    "additionalProperties": False},
+                    "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}})
+    if bridge is not None:  # after tgkit's own tools
+        out += bridge.tools()
     return out
 
 
@@ -150,6 +173,10 @@ def argv(tool: str, args) -> list[str]:
 
 def describe(tool: str, args) -> str:
     """The step line the window shows, e.g. tgkit search "biên bản" --json (shown, never run)."""
+    if is_browser(tool):
+        args = args if isinstance(args, dict) else {}
+        what = args.get("url") or args.get("element") or args.get("text") or args.get("action") or ""
+        return f"browser: {tool[len(BROWSER_PREFIX):].replace('_', ' ')} {str(what)[:120]}".rstrip()
     try:
         words = argv(tool, args)
     except ToolError:
@@ -163,9 +190,14 @@ def tool_of(name: str) -> str | None:
     """The tool of a CLI's tool name: Gemini says mcp_tgkit_search, Claude mcp__tgkit__search."""
     name = str(name or "")
     for head in (f"mcp__{SERVER}__", f"mcp_{SERVER}_", f"{SERVER}__", f"{SERVER}_"):
-        if name.startswith(head) and name[len(head):] in TOOLS:
+        if name.startswith(head) and (name[len(head):] in TOOLS or is_browser(name[len(head):])):
             return name[len(head):]
     return None
+
+
+def known(tool: str) -> bool:
+    """A tool this server serves: tgkit's own, or a browser tool (checked again when called)."""
+    return tool in TOOLS or is_browser(tool)
 
 
 def python_exe() -> str:
@@ -176,13 +208,35 @@ def python_exe() -> str:
     return str(exe)
 
 
-def server_command(home: Path) -> dict:
+def server_command(home: Path, browser: bool = False) -> dict:
     """The server as the CLIs' config describes it (command + args, no shell). Its env
     puts THIS tgkit first: Claude Code starts a server with only a few of its own
-    variables, so without it the python could import an older installed tgkit (or none)."""
+    variables, so without it the python could import an older installed tgkit (or none).
+    browser=True (Gemini, GPT, when the user turned the browser on): the server also
+    passes on the allowed tools of the browser bridge."""
     root = str(Path(__file__).resolve().parent.parent)
-    return {"command": python_exe(), "args": ["-m", "tgkit.mcp", "--home", str(Path(home))],
-            "env": {"PYTHONPATH": root, "TGKIT_READONLY": "1", "PYTHONIOENCODING": "utf-8"}}
+    args = ["-m", "tgkit.mcp", "--home", str(Path(home))] + (["--browser"] if browser else [])
+    env = {"PYTHONPATH": root, "TGKIT_READONLY": "1", "PYTHONIOENCODING": "utf-8"}
+    if browser:  # the bridge is node: it needs the PATH that finds it (Claude Code passes few variables)
+        env["PATH"] = os.environ.get("PATH", "")
+        for k in ("TGKIT_BROWSER_MCP", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOME", "SYSTEMROOT"):
+            if os.environ.get(k):
+                env[k] = os.environ[k]
+    return {"command": python_exe(), "args": args, "env": env}
+
+
+def call_browser(bridge, tool: str, args) -> tuple[bool, list]:
+    """One browser tool through the bridge, after connectors.browser_check. (ok, content)."""
+    from .errors import UserError  # noqa: PLC0415
+
+    if bridge is None:
+        return False, [{"type": "text", "text": "The browser is off. The user turns it on in Settings."}]
+    try:
+        res = bridge.call(tool, args)
+    except UserError as exc:
+        return False, [{"type": "text", "text": exc.render()}]
+    content = [c for c in res.get("content") or [] if isinstance(c, dict) and c.get("type") in ("text", "image")]
+    return not res.get("isError"), content or [{"type": "text", "text": "(no output)"}]
 
 
 def run(tool: str, args, home: str | None) -> tuple[bool, str]:
@@ -210,7 +264,7 @@ def run(tool: str, args, home: str | None) -> tuple[bool, str]:
     return False, (err + out).strip() or f"tgkit {words[0]} failed (exit code {done.returncode})."
 
 
-def handle(msg: dict, home: str | None) -> dict | None:
+def handle(msg: dict, home: str | None, bridge=None) -> dict | None:
     """One JSON-RPC message in, its reply out (None for a notification)."""
     method, mid = msg.get("method"), msg.get("id")
     if mid is None:
@@ -225,7 +279,10 @@ def handle(msg: dict, home: str | None) -> dict | None:
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": tool_list()}
+        result = {"tools": tool_list(bridge)}
+    elif method == "tools/call" and is_browser(str(params.get("name") or "")):
+        ok, content = call_browser(bridge, str(params.get("name")), params.get("arguments"))
+        result = {"content": content, "isError": not ok}
     elif method == "tools/call":
         ok, text = run(str(params.get("name") or ""), params.get("arguments"), home)
         result = {"content": [{"type": "text", "text": text}], "isError": not ok}
@@ -234,9 +291,17 @@ def handle(msg: dict, home: str | None) -> dict | None:
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def serve(home: str | None, stdin=None, stdout=None) -> None:
+def serve(home: str | None, stdin=None, stdout=None, bridge=None) -> None:
     stdin = stdin or sys.stdin.buffer
     stdout = stdout or sys.stdout.buffer
+    try:
+        _serve(home, stdin, stdout, bridge)
+    finally:
+        if bridge is not None:
+            bridge.close()
+
+
+def _serve(home, stdin, stdout, bridge) -> None:
     for raw in stdin:
         line = raw.decode("utf-8", "replace").strip()
         if not line:
@@ -246,7 +311,7 @@ def serve(home: str | None, stdin=None, stdout=None) -> None:
         except ValueError:
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
         else:
-            reply = handle(msg, home) if isinstance(msg, dict) else None
+            reply = handle(msg, home, bridge) if isinstance(msg, dict) else None
         if reply is not None:
             stdout.write((json.dumps(reply, ensure_ascii=False) + "\n").encode("utf-8"))
             stdout.flush()
@@ -255,7 +320,13 @@ def serve(home: str | None, stdin=None, stdout=None) -> None:
 def main(argv_in=None) -> int:
     words = list(sys.argv[1:] if argv_in is None else argv_in)
     home = words[words.index("--home") + 1] if "--home" in words[:-1] else os.environ.get("TGKIT_HOME")
-    serve(home)
+    bridge = None
+    if "--browser" in words and home:
+        from . import connectors  # noqa: PLC0415
+
+        if connectors.browser_on(Path(home)):  # off since the answer began: no browser tools
+            bridge = connectors.BrowserBridge(Path(home))
+    serve(home, bridge=bridge)
     return 0
 
 

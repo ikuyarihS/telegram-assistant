@@ -374,10 +374,11 @@ button it shows, one at a time:
 4. Press **Check again**. It says "Gemini: signed in" when it is ready.
 
 At the top of Settings, **AI answers** says who writes the answers:
-**Automatic**, **Claude**, **Gemini** or **Off**. Automatic (the start
-setting) picks for you: Claude when it is there and logged in, otherwise
-Gemini when it is signed in. Pick **Automatic** again to go back to it. In a
-terminal, `tgkit ai-status` tells you the same.
+**Automatic**, **Claude**, **Gemini**, **GPT** or **Off**. Automatic (the
+start setting) picks for you: Claude when it is there and logged in,
+otherwise Gemini when it is signed in, otherwise GPT when it is signed in.
+Pick **Automatic** again to go back to it. In a terminal, `tgkit ai-status`
+tells you the same.
 
 Gemini answers like Claude does: you see its words as they come, each
 Telegram Assistant command it runs, and the same result cards. It may only
@@ -388,6 +389,77 @@ Claude gets a command line here: they can only ask Telegram Assistant for a
 search, a summary or a list, and whatever they write is searched for as text,
 never run. If it is not signed in or has reached its limit, Telegram
 Assistant answers by itself.
+
+## Using GPT
+
+Have ChatGPT instead (Plus, Pro, Business or Enterprise)? The window can use
+GPT through OpenAI's Codex program, signed in with your own ChatGPT account.
+There is no key to copy.
+
+Open **Settings** and look at the **GPT** part. Press the button it shows, one
+at a time:
+
+1. **Install Node.js** (only if it asks for it), the same helper Gemini uses.
+   Click **Next** until **Finish**, then press **Check again**.
+2. **Install GPT**. Wait about a minute until it says GPT is installed.
+3. **Sign in to ChatGPT**. A black window opens and then a ChatGPT page in your
+   browser. Sign in there. When the page says you are signed in, close the
+   black window.
+4. Press **Check again**. It says "GPT: signed in" when it is ready. Then pick
+   **GPT** (or **Automatic**) under **AI answers**.
+
+GPT has the same limits as Claude and Gemini here: it can only ask Telegram
+Assistant to search, summarize or list. It gets no command line, cannot write
+files, cannot use the web on its own, and your own Codex settings are not
+used or changed.
+
+## Let the AI read your browser
+
+The AI can also read chats you have open in your own Chrome or Edge, such as
+**WhatsApp Web** or **Zalo**, so you can ask "what is new in my WhatsApp chat
+with Lan?". It is **off** until you turn it on.
+
+**Read this first.** WhatsApp and Zalo do not officially allow other programs
+to read your chats, and they could limit or block an account that does it.
+Telegram Assistant keeps it gentle and only reads: the AI can open a page and
+read it (Gemini and GPT can also click to open a chat; Claude reads the chat
+you have open), but it cannot type, send, reply, forward, call, delete or
+change settings. Opening a chat marks it as read on your phone too. Use it at
+your own risk; you can turn it off at any time.
+
+To turn it on: open **Settings**, **Your browser**, read the warning, tick
+**I read this and understand it**, then turn on **Let the AI read your
+browser**. Then, once:
+
+- **When Claude answers**: press **Get Claude in Chrome**, add it to Chrome or
+  Edge, open it once and sign in with the same Claude account.
+- **When Gemini or GPT answers**: press **Install the browser helper** (about a
+  minute), then **Get Playwright Extension** and add it to Chrome or Edge. The
+  first time the AI uses it, Chrome asks which tab to share: pick it and press
+  **Allow**. The extension's page shows a token; paste it under **Extension
+  token** so Chrome stops asking each time.
+
+Telegram Assistant does not copy your WhatsApp or Zalo chats: the AI reads
+the page while it answers, and only its answer is kept, with your other
+answers.
+
+## Adding a connector
+
+For people who already use MCP servers (small programs that let an AI read
+another app, such as notes or a calendar). Open **Settings**, **Add a
+connector (advanced)**, give it a name and type the command that starts it
+(for example `npx -y @modelcontextprotocol/server-memory`) or its web address
+(it must start with `https://`, or be on this computer). Press **Add and check
+its tools**.
+
+Telegram Assistant starts it once and lists its tools. Nothing is ticked at
+first. Tick the tools the AI may use and press **Use the ticked tools**. A tool
+that looks like it changes something (its name says delete, send, create and
+the like, or the tool says so itself) is greyed out with the reason and can
+never be ticked. Each time the AI uses a tool, Telegram Assistant checks the
+connector's list again and refuses a tool that is gone or now says it changes
+things. Claude, Gemini and GPT all reach connectors only through Telegram
+Assistant, never through their own settings. **Remove** takes a connector away.
 
 ---
 

@@ -97,8 +97,8 @@ def test_api_ai_status_settings_and_setup_need_the_token(server, monkeypatch):
     code, s = call(base, "/api/settings", {"ai_provider": "gemini"})
     assert code == 200 and s["ai_provider"] == "gemini"
     assert call(base, "/api/state")[1]["ai"] == "gemini"
-    code, err = call(base, "/api/settings", {"ai_provider": "gpt"})
-    assert err.get("type") == "error" and "Claude, Gemini or Off" in err["message"]
+    code, err = call(base, "/api/settings", {"ai_provider": "chatgpt"})  # gpt is a choice since 0.3.0
+    assert err.get("type") == "error" and "Claude, Gemini, GPT or Off" in err["message"]
     code, s = call(base, "/api/settings", {"ai_provider": "off"})
     assert call(base, "/api/state")[1]["ai"] is None
     code, res = call(base, "/api/gemini/login", {})

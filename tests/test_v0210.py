@@ -27,7 +27,7 @@ from tgkit.gemini import GeminiRunner
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "src" / "tgkit" / "web"
 TOKEN = "tok-0210"
-NEXT = "0.2.11"
+NEXT = "0.3.1"  # newer than this version
 
 # The zip's own installer: it only ever runs through the helper, after the checks.
 INSTALL_STUB = ("$Kit = Split-Path -Parent $PSScriptRoot\n"
@@ -139,18 +139,18 @@ def refused(fn, *a) -> str:
 
 # ---------------------------------------------------------------- the check
 
-def test_version_is_0210_everywhere():
+def test_version_is_0210_or_later_everywhere():  # 0.3.0 and later keep every 0.2.10 test
     import tomllib
-    assert __version__ == "0.2.10"
-    assert tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] == "0.2.10"
-    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == "0.2.10"
+    assert updater.parse(__version__) >= (0, 2, 10)
+    assert tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] == __version__
+    assert json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"] == __version__
 
 
 def test_versions_compare_as_numbers():
     assert updater.parse("v0.2.10") == (0, 2, 10) > updater.parse("v0.2.9")
     assert updater.parse("0.3.0") and updater.parse("v1.0") is None and updater.parse("v0.2.10-beta") is None
-    assert updater.is_newer("0.2.11") and updater.is_newer("0.3.0")
-    assert not updater.is_newer("0.2.10") and not updater.is_newer("0.2.9") and not updater.is_newer("")
+    assert updater.is_newer(NEXT) and updater.is_newer("9.0.0")
+    assert not updater.is_newer(__version__) and not updater.is_newer("0.2.9") and not updater.is_newer("")
 
 
 def test_check_newer_same_and_older(home, gh):
@@ -212,8 +212,8 @@ def test_a_good_update_is_staged_and_nothing_ran(home, gh, kit):
     assert not list((kit / ".update").glob("*.zip"))  # the zip is gone once unzipped
     assert not (kit / "installed.txt").exists() and not (new / "installed.txt").exists()
     assert (kit / "README.md").read_text(encoding="utf-8") == f"Telegram Assistant {__version__}\n"  # not yet
-    assert ["/dl/TelegramAssistant-0.2.11.zip.sha256", "/obj/TelegramAssistant-0.2.11.zip.sha256",
-            "/dl/TelegramAssistant-0.2.11.zip", "/obj/TelegramAssistant-0.2.11.zip"] == gh.hits[1:]
+    assert [f"/dl/TelegramAssistant-{NEXT}.zip.sha256", f"/obj/TelegramAssistant-{NEXT}.zip.sha256",
+            f"/dl/TelegramAssistant-{NEXT}.zip", f"/obj/TelegramAssistant-{NEXT}.zip"] == gh.hits[1:]
     res = updater.start(kit, new, pid=12345)  # TGKIT_NO_REVEAL: says what would run
     script = kit / ".update" / ("apply.ps1" if os.name == "nt" else "apply.sh")
     assert res["ok"] and str(script) in res["argv"] and "12345" in res["argv"] and str(new) in res["argv"]
